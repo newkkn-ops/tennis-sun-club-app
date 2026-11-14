@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>테니스 클럽 운영 어플 - 통합 시스템</title>
+
+  <!-- PWA 메타 태그 및 매니페스트 -->
+  <link rel="manifest" href="../public/manifest.json">
+  <meta name="theme-color" content="#16a34a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="테니스클럽">
+  <link rel="apple-touch-icon" href="../public/icon-192.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .badge-gold { background-color: #fef08a; color: #854d0e; border: 1px solid #facc15; }
+    .badge-silver { background-color: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; }
+    .badge-bronze { background-color: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+    .badge-chrys { background-color: #fce7f3; color: #9d174d; border: 1px solid #f472b6; }
+    .badge-forsythia { background-color: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+    .badge-beginner { background-color: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .badge-senior { background-color: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+  <!-- 모바일 프레임 컨테이너 -->
+  <div class="max-w-md mx-auto bg-gray-50 min-h-screen pb-24 shadow-2xl relative border-x border-slate-200">
+    
+    <!-- 상단 앱 헤더 (App.jsx 구조와 동일) -->
+    <header class="bg-white px-4 py-3 border-b flex justify-between items-center sticky top-0 z-40 shadow-xs">
+      <div>
+        <span class="text-xs text-gray-400 block font-medium">테니스 클럽 운영 앱</span>
+        <span id="appHeaderUserName" class="text-sm font-bold text-gray-800">
+          김철수님 (금배)
+        </span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button
+          onclick="toggleRole()"
+          id="btnToggleRole"
+          class="text-[10px] px-2 py-0.8 bg-amber-100 text-amber-800 rounded-lg font-bold hover:bg-amber-200 transition"
+        >
+          👑 Admin 모드
+        </button>
+        <button
+          onclick="mockLogout()"
+          class="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition"
+        >
+          로그아웃
+        </button>
+      </div>
+    </header>
+
+    <!-- 메인 콘텐츠 영역 -->
+    <main class="p-3">
+      <!-- ============================================================== -->
+      <!-- TAB 1: 실시간 코트 현황판 (TennisCourtBoard) -->
+      <!-- ============================================================== -->
+      <div id="tabContentCourts" class="space-y-4">
+        <div class="flex justify-between items-center mb-2 px-1">
+          <h2 class="text-lg font-bold text-green-800">🎾 실시간 코트 현황</h2>
+          <span class="px-2.5 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full animate-pulse">
+            LIVE 실시간 중계 중
+          </span>
+        </div>
+        <div id="courtsListContainer" class="space-y-3"></div>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- TAB 2: 대진표 및 토너먼트 (KDK / 락커) -->
+      <!-- ============================================================== -->
+      <div id="tabContentTournament" class="space-y-4 hidden">
+        <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-semibold">
+          <button id="btnSubKdk" onclick="switchTourSubTab('kdk')" class="flex-1 py-1.5 rounded-lg bg-white text-green-800 shadow-xs transition">
+            🎾 KDK 예선 리그
+          </button>
+          <button id="btnSubBracket" onclick="switchTourSubTab('bracket')" class="flex-1 py-1.5 rounded-lg text-gray-500 hover:text-gray-800 transition">
+            🏆 본선 토너먼트
+          </button>
+        </div>
+
+        <!-- KDK 서브 뷰 -->
+        <div id="tourSubKdk" class="space-y-4">
+          <div class="bg-white rounded-xl shadow-xs border border-gray-100 p-4 space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-gray-700">코트 수 & 라운드 설정</span>
+              <button onclick="runKdkGenerate()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs">
+                대진표 재배정
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="bg-slate-50 p-2 rounded-lg">코트 수: <strong>2면</strong> (8명 출전)</div>
+              <div class="bg-slate-50 p-2 rounded-lg">참가자: <strong>10명</strong> (2명 휴식)</div>
+            </div>
+          </div>
+          <div id="kdkRoundsContainer" class="space-y-3"></div>
+        </div>
+
+        <!-- 본선 브래킷 서브 뷰 -->
+        <div id="tourSubBracket" class="space-y-4 hidden">
+          <div class="bg-white rounded-xl shadow-xs border border-gray-100 p-4 flex justify-between items-center">
+            <div>
+              <span class="text-xs font-bold text-blue-900 block">본선 16강 토너먼트</span>
+              <span class="text-[11px] text-gray-400">상위 1~6위 부전승(BYE) 배정</span>
+            </div>
+            <button onclick="runTournamentGenerate()" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs">
+              브래킷 생성
+            </button>
+          </div>
+          <div id="bracketView" class="overflow-x-auto pb-4">
+            <div id="bracketColumns" class="flex gap-4 items-start min-w-[500px]"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- TAB 3: 마이페이지 (MyPage) -->
+      <!-- ============================================================== -->
+      <div id="tabContentMyPage" class="space-y-4 hidden">
+        <div class="flex justify-between items-center mb-1 px-1">
+          <h2 class="text-lg font-bold text-green-800">👤 마이페이지 & 전적</h2>
+          <select id="myPageUserSelect" onchange="renderMyPage()" class="text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 font-medium text-slate-700 outline-none">
+          </select>
+        </div>
+
+        <!-- 통산 성적 요약 카드 -->
+        <div class="bg-white rounded-2xl shadow-xs p-5 border border-gray-100">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-xs font-semibold text-gray-500">통산 누적 전적</h3>
+            <span id="myUserGradeBadge" class="text-[10px] px-2 py-0.5 rounded-full font-semibold badge-gold">금배</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2 text-center">
+            <div class="bg-gray-50 p-2 rounded-xl">
+              <p class="text-[11px] text-gray-500">총 경기</p>
+              <p id="statTotal" class="text-lg font-bold text-gray-800">18</p>
+            </div>
+            <div class="bg-green-50 p-2 rounded-xl">
+              <p class="text-[11px] text-green-600">승</p>
+              <p id="statWins" class="text-lg font-bold text-green-700">14</p>
+            </div>
+            <div class="bg-red-50 p-2 rounded-xl">
+              <p class="text-[11px] text-red-600">패</p>
+              <p id="statLosses" class="text-lg font-bold text-red-700">4</p>
+            </div>
+            <div class="bg-blue-50 p-2 rounded-xl">
+              <p class="text-[11px] text-blue-600">승률</p>
+              <p id="statWinRate" class="text-lg font-bold text-blue-700">77.78%</p>
+            </div>
+          </div>
+          <div class="mt-3 pt-3 border-t text-right text-xs text-gray-500 flex justify-between items-center">
+            <span class="text-[10px] text-slate-400">대회 자동 정산 연동</span>
+            <span>총 득실차: <strong id="statPointDiff" class="text-gray-700">+28</strong></span>
+          </div>
+        </div>
+
+        <h3 class="text-sm font-bold text-gray-800 pt-2 flex items-center gap-1.5 px-1">
+          <i class="fa-solid fa-list-check text-emerald-600"></i> 상세 경기 이력
+        </h3>
+        <div id="myMatchHistoryContainer" class="space-y-2.5 text-xs"></div>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- TAB 4: 운영자 관리 (AdminUserManagement) -->
+      <!-- ============================================================== -->
+      <div id="tabContentAdmin" class="space-y-4 hidden">
+        <div class="flex justify-between items-center mb-1 px-1">
+          <h2 class="text-lg font-bold text-green-800">⚙️ 회원 등급 및 권한 관리</h2>
+          <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
+            👑 관리자 전용
+          </span>
+        </div>
+        <p class="text-xs text-gray-500 px-1">
+          클럽원 등급을 수정하면 KDK 밸런싱 가중치에 즉시 반영됩니다.
+        </p>
+        <div id="adminUserListContainer" class="space-y-2.5"></div>
+      </div>
+    </main>
+
+    <!-- 하단 고정 네비게이션 탭 바 (Bottom Navigation Bar) -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 px-3 py-2 flex justify-around items-center z-50 shadow-lg">
+      <button
+        onclick="switchTab('courts')"
+        id="navBtnCourts"
+        class="flex flex-col items-center text-xs font-semibold text-green-600 transition"
+      >
+        <span class="text-base">🎾</span>
+        <span class="mt-0.5 text-[11px]">실시간 코트</span>
+      </button>
+
+      <button
+        onclick="switchTab('tournament')"
+        id="navBtnTournament"
+        class="flex flex-col items-center text-xs font-semibold text-gray-400 transition"
+      >
+        <span class="text-base">📊</span>
+        <span class="mt-0.5 text-[11px]">대진표</span>
+      </button>
+
+      <button
+        onclick="switchTab('mypage')"
+        id="navBtnMyPage"
+        class="flex flex-col items-center text-xs font-semibold text-gray-400 transition"
+      >
+        <span class="text-base">👤</span>
+        <span class="mt-0.5 text-[11px]">마이페이지</span>
+      </button>
+
+      <!-- 운영자(admin) 계정일 때만 하단 탭에 관리자 메뉴 노출 -->
+      <button
+        onclick="switchTab('admin')"
+        id="navBtnAdmin"
+        class="flex flex-col items-center text-xs font-semibold text-gray-400 transition"
+      >
+        <span class="text-base">⚙️</span>
+        <span class="mt-0.5 text-[11px]">관리자</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- 점수 입력 모달 -->
+  <div id="courtScoreModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4">
+      <h3 id="modalCourtTitle" class="text-base font-bold text-gray-900">코트 1번 점수 입력</h3>
+      <div class="space-y-3">
+        <div>
+          <label id="modalTeamALabel" class="block text-xs font-semibold text-gray-600 mb-1">Team A 스코어</label>
+          <input type="number" id="modalInputScoreA" class="w-full px-3 py-2 border rounded-lg text-center font-bold text-2xl focus:ring-2 focus:ring-green-500 outline-none" />
+        </div>
+        <div>
+          <label id="modalTeamBLabel" class="block text-xs font-semibold text-gray-600 mb-1">Team B 스코어</label>
+          <input type="number" id="modalInputScoreB" class="w-full px-3 py-2 border rounded-lg text-center font-bold text-2xl focus:ring-2 focus:ring-green-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">경기 상태</label>
+          <select id="modalInputStatus" class="w-full px-3 py-2 border rounded-lg text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none">
+            <option value="playing">🔴 경기 진행 중</option>
+            <option value="completed">🏁 경기 완료 (종료)</option>
+            <option value="waiting">⚪ 경기 대기 중</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex space-x-2 pt-1">
+        <button onclick="closeScoreModal()" class="flex-1 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg text-xs">취소</button>
+        <button onclick="saveCourtScore()" class="flex-1 py-2 bg-green-600 text-white font-semibold rounded-lg text-xs shadow">저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/kdk.js"></script>
+  <script src="../lib/tournament.js"></script>
+  <script>
+    let currentUserRole = 'admin'; // 'admin' | 'member'
+    let currentActiveTab = 'courts';
+
+    const DEFAULT_PLAYERS = [
+      { id: 'u1', name: '김철수', gender: 'M', grade: '금배', role: 'admin' },
+      { id: 'u2', name: '이영희', gender: 'F', grade: '국화', role: 'member' },
+      { id: 'u3', name: '박민수', gender: 'M', grade: '은배', role: 'member' },
+      { id: 'u4', name: '정지훈', gender: 'M', grade: '동배', role: 'member' },
+      { id: 'u5', name: '최수진', gender: 'F', grade: '개나리', role: 'member' },
+      { id: 'u6', name: '강동원', gender: 'M', grade: '금배', role: 'admin' },
+      { id: 'u7', name: '한지민', gender: 'F', grade: '은배', role: 'member' },
+      { id: 'u8', name: '송중기', gender: 'M', grade: '동배', role: 'member' },
+      { id: 'u9', name: '김태희', gender: 'F', grade: '테린이', role: 'member' },
+      { id: 'u10', name: '정우성', gender: 'M', grade: '은배', role: 'member' },
+    ];
+
+    let currentPlayers = JSON.parse(JSON.stringify(DEFAULT_PLAYERS));
+
+    let liveCourts = [
+      {
+        id: 1,
+        courtNumber: 1,
+        status: 'playing',
+        teamA: ['김철수', '강동원'],
+        teamB: ['이영희', '한지민'],
+        scoreA: 4,
+        scoreB: 3,
+        waitingNext: ['박민수', '정지훈', '최수진', '김태희']
+      },
+      {
+        id: 2,
+        courtNumber: 2,
+        status: 'playing',
+        teamA: ['송중기', '정우성'],
+        teamB: ['팀 알파', '팀 베타'],
+        scoreA: 5,
+        scoreB: 5,
+        waitingNext: ['정국', '뷔', '지민', '진']
+      }
+    ];
+
+    function getGradeBadgeClass(grade) {
+      switch(grade) {
+        case '금배': return 'badge-gold';
+        case '은배': return 'badge-silver';
+        case '동배': return 'badge-bronze';
+        case '국화': return 'badge-chrys';
+        case '개나리': return 'badge-forsythia';
+        case '테린이': return 'badge-beginner';
+        case '고령자부': return 'badge-senior';
+        default: return 'bg-slate-100 text-slate-700';
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 네비게이션 탭 전환
+    // -------------------------------------------------------------
+    function switchTab(tab) {
+      currentActiveTab = tab;
+
+      document.getElementById('tabContentCourts').classList.toggle('hidden', tab !== 'courts');
+      document.getElementById('tabContentTournament').classList.toggle('hidden', tab !== 'tournament');
+      document.getElementById('tabContentMyPage').classList.toggle('hidden', tab !== 'mypage');
+      document.getElementById('tabContentAdmin').classList.toggle('hidden', tab !== 'admin');
+
+      const tabs = ['courts', 'tournament', 'mypage', 'admin'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`navBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (!btn) return;
+        const isActive = t === tab;
+        btn.className = `flex flex-col items-center text-xs font-semibold transition ${
+          isActive 
+            ? (t === 'admin' ? 'text-red-600' : 'text-green-600') 
+            : 'text-gray-400'
+        }`;
+      });
+
+      if (tab === 'courts') renderCourts();
+      if (tab === 'tournament') runKdkGenerate();
+      if (tab === 'mypage') renderMyPage();
+      if (tab === 'admin') renderAdminUsers();
+    }
+
+    function switchTourSubTab(sub) {
+      document.getElementById('tourSubKdk').classList.toggle('hidden', sub !== 'kdk');
+      document.getElementById('tourSubBracket').classList.toggle('hidden', sub !== 'bracket');
+
+      document.getElementById('btnSubKdk').className = sub === 'kdk'
+        ? 'flex-1 py-1.5 rounded-lg bg-white text-green-800 shadow-xs transition'
+        : 'flex-1 py-1.5 rounded-lg text-gray-500 hover:text-gray-800 transition';
+
+      document.getElementById('btnSubBracket').className = sub === 'bracket'
+        ? 'flex-1 py-1.5 rounded-lg bg-white text-blue-800 shadow-xs transition'
+        : 'flex-1 py-1.5 rounded-lg text-gray-500 hover:text-gray-800 transition';
+
+      if (sub === 'bracket') runTournamentGenerate();
+    }
+
+    function toggleRole() {
+      currentUserRole = currentUserRole === 'admin' ? 'member' : 'admin';
+      const btn = document.getElementById('btnToggleRole');
+      const adminNavBtn = document.getElementById('navBtnAdmin');
+
+      if (currentUserRole === 'admin') {
+        btn.innerText = '👑 Admin 모드';
+        btn.className = 'text-[10px] px-2 py-0.8 bg-amber-100 text-amber-800 rounded-lg font-bold hover:bg-amber-200 transition';
+        adminNavBtn.classList.remove('hidden');
+      } else {
+        btn.innerText = '👤 Member 모드';
+        btn.className = 'text-[10px] px-2 py-0.8 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200 transition';
+        adminNavBtn.classList.add('hidden');
+        if (currentActiveTab === 'admin') switchTab('courts');
+      }
+    }
+
+    function mockLogout() {
+      alert('로그아웃 되었습니다. (Supabase Auth 연동 시 로그인 화면으로 이동)');
+    }
+
+    // -------------------------------------------------------------
+    // 탭 1: 코트 렌더링
+    // -------------------------------------------------------------
+    function renderCourts() {
+      const container = document.getElementById('courtsListContainer');
+      container.innerHTML = '';
+
+      liveCourts.forEach((court) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl shadow-xs p-4 border border-gray-100 transition-all';
+
+        const isPlaying = court.status === 'playing';
+        const isCompleted = court.status === 'completed';
+
+        card.innerHTML = `
+          <div class="flex justify-between items-center border-b pb-2 mb-3">
+            <span class="font-extrabold text-base text-gray-800">코트 ${court.courtNumber}번</span>
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${
+              isPlaying ? 'bg-red-100 text-red-600' : (isCompleted ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')
+            }">
+              ${isPlaying ? '🔴 진행 중' : (isCompleted ? '🏁 종료' : '⚪ 대기')}
+            </span>
+          </div>
+
+          <div class="grid grid-cols-7 gap-2 items-center bg-gray-50 p-2.5 rounded-lg text-center mb-3">
+            <div class="col-span-3">
+              <p class="text-[10px] text-gray-400 font-medium">Team A</p>
+              <p class="text-xs font-bold text-gray-900 truncate">${court.teamA.join(', ')}</p>
+            </div>
+            <div class="col-span-1 text-lg font-black text-green-700">
+              ${court.scoreA} : ${court.scoreB}
+            </div>
+            <div class="col-span-3">
+              <p class="text-[10px] text-gray-400 font-medium">Team B</p>
+              <p class="text-xs font-bold text-gray-900 truncate">${court.teamB.join(', ')}</p>
+            </div>
+          </div>
+
+          <div class="text-[11px] text-gray-500 mb-3 flex items-center">
+            <span class="font-semibold text-gray-700 mr-1.5">🔜 대기:</span>
+            <span class="truncate">${court.waitingNext.slice(0, 2).join(', ')} 등</span>
+          </div>
+
+          <button
+            onclick="openScoreModal(${court.id})"
+            class="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-xs transition-colors shadow-xs"
+          >
+            실시간 점수 입력 / 수정
+          </button>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    let currentEditingCourtId = null;
+    function openScoreModal(courtId) {
+      const court = liveCourts.find(c => c.id === courtId);
+      if (!court) return;
+      currentEditingCourtId = courtId;
+      document.getElementById('modalCourtTitle').innerText = `코트 ${court.courtNumber}번 점수 입력`;
+      document.getElementById('modalTeamALabel').innerText = `Team A (${court.teamA.join(', ')}) 스코어`;
+      document.getElementById('modalTeamBLabel').innerText = `Team B (${court.teamB.join(', ')}) 스코어`;
+      document.getElementById('modalInputScoreA').value = court.scoreA;
+      document.getElementById('modalInputScoreB').value = court.scoreB;
+      document.getElementById('modalInputStatus').value = court.status;
+      document.getElementById('courtScoreModal').classList.remove('hidden');
+    }
+
+    function closeScoreModal() {
+      document.getElementById('courtScoreModal').classList.add('hidden');
+      currentEditingCourtId = null;
+    }
+
+    function saveCourtScore() {
+      if (currentEditingCourtId === null) return;
+      const scoreA = Number(document.getElementById('modalInputScoreA').value);
+      const scoreB = Number(document.getElementById('modalInputScoreB').value);
+      const status = document.getElementById('modalInputStatus').value;
+
+      liveCourts = liveCourts.map(c => {
+        if (c.id === currentEditingCourtId) return { ...c, scoreA, scoreB, status };
+        return c;
+      });
+
+      closeScoreModal();
+      renderCourts();
+    }
+
+    // -------------------------------------------------------------
+    // 탭 2: 대진표 (KDK & 토너먼트)
+    // -------------------------------------------------------------
+    function runKdkGenerate() {
+      const schedule = generateKDKSchedule(currentPlayers, 2, 3);
+      const container = document.getElementById('kdkRoundsContainer');
+      container.innerHTML = '';
+
+      schedule.forEach((r) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl shadow-xs border border-gray-100 p-3';
+        let matchesHtml = '';
+        r.matches.forEach(m => {
+          matchesHtml += `
+            <div class="p-2.5 bg-gray-50 rounded-lg mb-1.5 text-xs flex justify-between items-center">
+              <span class="font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded text-[10px]">코트 ${m.courtNumber}</span>
+              <span class="font-semibold text-gray-800">${m.teamA[0].name}/${m.teamA[1].name}</span>
+              <span class="font-bold text-gray-400 text-[10px]">VS</span>
+              <span class="font-semibold text-gray-800">${m.teamB[0].name}/${m.teamB[1].name}</span>
+            </div>`;
+        });
+        const restHtml = r.resting && r.resting.length > 0
+          ? `<div class="mt-2 pt-1.5 border-t text-[11px] text-gray-500 flex gap-1.5 items-center">
+              <span class="bg-amber-100 text-amber-800 px-1 py-0.2 rounded text-[9px] font-bold">휴식</span>
+              <span>${r.resting.map(p => p.name).join(', ')}</span>
+            </div>` : '';
+
+        card.innerHTML = `
+          <div class="text-xs font-bold text-gray-800 pb-1.5 border-b mb-2 flex justify-between">
+            <span>제 ${r.round} 라운드</span>
+            <span class="text-gray-400 font-normal text-[10px]">${r.matches.length}개 코트 진행</span>
+          </div>
+          ${matchesHtml}${restHtml}`;
+        container.appendChild(card);
+      });
+    }
+
+    function runTournamentGenerate() {
+      const teams = [
+        { id: 't1', name: '김철수/강동원' },
+        { id: 't2', name: '이영희/한지민' },
+        { id: 't3', name: '박민수/정지훈' },
+        { id: 't4', name: '최수진/김태희' },
+        { id: 't5', name: '송중기/정우성' },
+        { id: 't6', name: '팀 알파' },
+      ];
+      const tree = generateFullTournamentTree(teams);
+      const container = document.getElementById('bracketColumns');
+      container.innerHTML = '';
+
+      tree.rounds.forEach((round, rIdx) => {
+        const col = document.createElement('div');
+        col.className = 'flex flex-col flex-1 min-w-[150px]';
+
+        const header = document.createElement('div');
+        header.className = 'text-center font-bold text-xs text-slate-700 bg-slate-200/70 py-1 rounded mb-2';
+        header.innerText = round.title;
+        col.appendChild(header);
+
+        const list = document.createElement('div');
+        list.className = 'space-y-2';
+
+        round.matches.forEach((m) => {
+          const box = document.createElement('div');
+          box.className = 'bg-white rounded-lg p-2 border border-slate-200 text-[11px] space-y-1';
+          box.innerHTML = `
+            <div class="flex justify-between ${m.teamA?.isBye ? 'text-amber-600' : 'text-gray-800'}">
+              <span>${m.teamA?.name || '대기'}</span>
+              ${m.winner?.id === m.teamA?.id ? '<span class="text-blue-600 font-bold">승</span>' : ''}
+            </div>
+            <div class="border-t pt-1 flex justify-between ${m.teamB?.isBye ? 'text-amber-600' : 'text-gray-800'}">
+              <span>${m.teamB?.name || '대기'}</span>
+              ${m.winner?.id === m.teamB?.id ? '<span class="text-blue-600 font-bold">승</span>' : ''}
+            </div>
+          `;
+          list.appendChild(box);
+        });
+
+        col.appendChild(list);
+        container.appendChild(col);
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 탭 3: 마이페이지
+    // -------------------------------------------------------------
+    const mockUserStats = {
+      u1: { total: 18, wins: 14, losses: 4, winRate: 77.78, pointDiff: 28 },
+      u2: { total: 15, wins: 11, losses: 4, winRate: 73.33, pointDiff: 21 },
+      u3: { total: 20, wins: 12, losses: 8, winRate: 60.00, pointDiff: 11 },
+      u4: { total: 16, wins: 9, losses: 7, winRate: 56.25, pointDiff: 5 },
+      u5: { total: 14, wins: 8, losses: 6, winRate: 57.14, pointDiff: 3 },
+      u6: { total: 22, wins: 17, losses: 5, winRate: 77.27, pointDiff: 35 },
+      u7: { total: 12, wins: 7, losses: 5, winRate: 58.33, pointDiff: 4 },
+      u8: { total: 19, wins: 10, losses: 9, winRate: 52.63, pointDiff: 2 },
+      u9: { total: 10, wins: 4, losses: 6, winRate: 40.00, pointDiff: -7 },
+      u10: { total: 21, wins: 13, losses: 8, winRate: 61.90, pointDiff: 14 },
+    };
+
+    const mockMatchHistory = [
+      { id: 'm1', tournament: '2026년 3월 정기 월례회', round: '결승전', court: 1, myTeam: 'Team A (내 팀)', oppTeam: 'Team B', myScore: 6, oppScore: 4, isWin: true },
+      { id: 'm2', tournament: '2026년 3월 정기 월례회', round: '준결승(4강)', court: 2, myTeam: 'Team A (내 팀)', oppTeam: 'Team B', myScore: 6, oppScore: 2, isWin: true },
+      { id: 'm3', tournament: '2026년 3월 정기 월례회', round: '8강전', court: 1, myTeam: 'Team B (내 팀)', oppTeam: 'Team A', myScore: 6, oppScore: 3, isWin: true },
+      { id: 'm4', tournament: '2026년 2월 설맞이 오픈대회', round: '예선 R3', court: 3, myTeam: 'Team A (내 팀)', oppTeam: 'Team B', myScore: 4, oppScore: 6, isWin: false },
+    ];
+
+    function updateMyPageSelectOptions() {
+      const select = document.getElementById('myPageUserSelect');
+      if (!select) return;
+      select.innerHTML = '';
+      currentPlayers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.innerText = `${p.name} (${p.grade})`;
+        select.appendChild(opt);
+      });
+    }
+
+    function renderMyPage() {
+      const select = document.getElementById('myPageUserSelect');
+      const userId = select.value || 'u1';
+      const player = currentPlayers.find(p => p.id === userId) || currentPlayers[0];
+      const stat = mockUserStats[userId] || { total: 0, wins: 0, losses: 0, winRate: 0, pointDiff: 0 };
+
+      document.getElementById('appHeaderUserName').innerText = `${player.name}님 (${player.grade})`;
+      const badge = document.getElementById('myUserGradeBadge');
+      badge.innerText = player.grade;
+      badge.className = `text-[10px] px-2 py-0.5 rounded-full font-semibold ${getGradeBadgeClass(player.grade)}`;
+
+      document.getElementById('statTotal').innerText = stat.total;
+      document.getElementById('statWins').innerText = stat.wins;
+      document.getElementById('statLosses').innerText = stat.losses;
+      document.getElementById('statWinRate').innerText = `${stat.winRate}%`;
+      document.getElementById('statPointDiff').innerText = stat.pointDiff >= 0 ? `+${stat.pointDiff}` : stat.pointDiff;
+
+      const historyContainer = document.getElementById('myMatchHistoryContainer');
+      historyContainer.innerHTML = '';
+
+      mockMatchHistory.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'bg-white rounded-xl shadow-xs p-3 border border-gray-100 flex items-center justify-between';
+        item.innerHTML = `
+          <div>
+            <span class="text-[10px] text-gray-400 block mb-0.5 font-medium">${m.tournament} • ${m.round} (코트 ${m.court})</span>
+            <p class="text-xs font-semibold text-gray-800">${m.myTeam} vs ${m.oppTeam}</p>
+          </div>
+          <div class="text-right">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.isWin ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${m.isWin ? '승리' : '패배'}</span>
+            <p class="text-xs font-bold text-gray-800 mt-0.5">${m.myScore} : ${m.oppScore}</p>
+          </div>
+        `;
+        historyContainer.appendChild(item);
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 탭 4: 관리자 관리
+    // -------------------------------------------------------------
+    function renderAdminUsers() {
+      const container = document.getElementById('adminUserListContainer');
+      container.innerHTML = '';
+
+      currentPlayers.forEach((user) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl shadow-xs p-3.5 border border-gray-100';
+
+        card.innerHTML = `
+          <div class="flex justify-between items-center mb-2.5">
+            <div>
+              <span class="font-bold text-gray-900 text-sm">${user.name}</span>
+              <span class="ml-1 text-xs text-gray-500">(${user.gender === 'M' ? '남' : '여'})</span>
+            </div>
+            
+            <select
+              onchange="changeAdminRole('${user.id}', this.value)"
+              class="text-xs font-bold px-2 py-1 rounded-lg border outline-none ${
+                user.role === 'admin' 
+                  ? 'bg-red-50 text-red-700 border-red-200' 
+                  : 'bg-gray-50 text-gray-700 border-gray-200'
+              }"
+            >
+              <option value="member" ${user.role === 'member' ? 'selected' : ''}>일반 회원</option>
+              <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>운영자 (Admin)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t text-xs text-gray-600">
+            <span class="font-semibold text-[11px]">실력 등급:</span>
+            <select
+              onchange="changeAdminGrade('${user.id}', this.value)"
+              class="px-2.5 py-0.8 bg-green-50 text-green-800 font-bold rounded-lg border border-green-200 text-xs outline-none"
+            >
+              <option value="금배" ${user.grade === '금배' ? 'selected' : ''}>금배 (10점)</option>
+              <option value="은배" ${user.grade === '은배' ? 'selected' : ''}>은배 (8점)</option>
+              <option value="동배" ${user.grade === '동배' ? 'selected' : ''}>동배 (6점)</option>
+              <option value="국화" ${user.grade === '국화' ? 'selected' : ''}>국화 (7점)</option>
+              <option value="개나리" ${user.grade === '개나리' ? 'selected' : ''}>개나리 (5점)</option>
+              <option value="테린이" ${user.grade === '테린이' ? 'selected' : ''}>테린이 (3점)</option>
+              <option value="고령자부" ${user.grade === '고령자부' ? 'selected' : ''}>고령자부 (5점)</option>
+            </select>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function changeAdminGrade(userId, newGrade) {
+      currentPlayers = currentPlayers.map(u => u.id === userId ? { ...u, grade: newGrade } : u);
+      renderAdminUsers();
+      updateMyPageSelectOptions();
+    }
+
+    function changeAdminRole(userId, newRole) {
+      currentPlayers = currentPlayers.map(u => u.id === userId ? { ...u, role: newRole } : u);
+      renderAdminUsers();
+    }
+
+    // 초기화
+    renderCourts();
+    updateMyPageSelectOptions();
+
+    // PWA Service Worker 등록
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('../public/sw.js')
+          .then((reg) => console.log('[PWA] Service Worker 등록 성공:', reg.scope))
+          .catch((err) => console.log('[PWA] Service Worker 등록 실패 (로컬 file:// 프로토콜에서는 웹서버 구동 시 작동):', err));
+      });
+    }
+  </script>
+</body>
+</html>
