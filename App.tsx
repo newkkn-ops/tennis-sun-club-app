@@ -82,7 +82,7 @@ export default function TennisApp() {
       </header>
 
       {/* PWA 서비스 워커 등록 및 알림 권한 요청 배너 */}
-      <ServiceWorkerRegister />
+      <ServiceWorkerRegister userId={session?.user?.id} />
 
       <main className="p-2">
         {activeTab === 'courts' && <TennisCourtBoardWithRealtime />}

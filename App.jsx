@@ -84,7 +84,7 @@ export default function TennisApp() {
       </header>
 
       {/* PWA 서비스 워커 등록 및 알림 권한 요청 배너 */}
-      <ServiceWorkerRegister />
+      <ServiceWorkerRegister userId={session?.user?.id} />
 
       {/* 메인 콘텐츠 영역 (선택된 탭에 따라 컴포넌트 렌더링) */}
       <main className="p-2">
