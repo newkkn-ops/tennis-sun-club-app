@@ -69,6 +69,19 @@
       </div>
     </header>
 
+    <!-- 알림 권한 요청 배너 (ServiceWorkerRegister) -->
+    <div id="notificationBanner" class="px-4 py-2 bg-green-50 border-b border-green-100 flex justify-between items-center">
+      <span class="text-xs text-green-800 font-medium">
+        🔔 내 차례가 되면 알림을 받아보세요
+      </span>
+      <button
+        onclick="requestNotificationPermission()"
+        class="text-xs px-2.5 py-1 bg-green-600 text-white rounded-md font-semibold hover:bg-green-700 transition shadow-xs"
+      >
+        알림 켜기
+      </button>
+    </div>
+
     <!-- 메인 콘텐츠 영역 -->
     <main class="p-3">
       <!-- 탭 1: 실시간 코트 현황판 -->
@@ -673,6 +686,21 @@
 
     function dismissInstallBanner() {
       document.getElementById('pwaInstallBanner').classList.add('hidden');
+    }
+
+    async function requestNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('이 브라우저는 푸시 알림을 지원하지 않습니다.');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        alert('코트 배정 알림이 설정되었습니다!');
+        const banner = document.getElementById('notificationBanner');
+        if (banner) banner.classList.add('hidden');
+      } else {
+        alert('알림 권한이 거부되었습니다.');
+      }
     }
 
     // 초기화

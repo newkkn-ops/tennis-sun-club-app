@@ -5,6 +5,7 @@ import TennisCourtBoardWithRealtime from './components/TennisCourtBoard';
 import MyPage from './components/MyPage';
 import AdminUserManagement from './components/AdminUserManagement';
 import TournamentScheduleView from './components/TournamentScheduleView';
+import ServiceWorkerRegister from './components/ServiceWorkerRegister';
 import { UserProfile } from './hooks/useAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
@@ -79,6 +80,9 @@ export default function TennisApp() {
           로그아웃
         </button>
       </header>
+
+      {/* PWA 서비스 워커 등록 및 알림 권한 요청 배너 */}
+      <ServiceWorkerRegister />
 
       <main className="p-2">
         {activeTab === 'courts' && <TennisCourtBoardWithRealtime />}

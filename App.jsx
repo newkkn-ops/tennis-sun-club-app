@@ -6,6 +6,7 @@ import TennisCourtBoardWithRealtime from './components/TennisCourtBoard';
 import MyPage from './components/MyPage';
 import AdminUserManagement from './components/AdminUserManagement';
 import TournamentScheduleView from './components/TournamentScheduleView';
+import ServiceWorkerRegister from './components/ServiceWorkerRegister';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -81,6 +82,9 @@ export default function TennisApp() {
           로그아웃
         </button>
       </header>
+
+      {/* PWA 서비스 워커 등록 및 알림 권한 요청 배너 */}
+      <ServiceWorkerRegister />
 
       {/* 메인 콘텐츠 영역 (선택된 탭에 따라 컴포넌트 렌더링) */}
       <main className="p-2">
