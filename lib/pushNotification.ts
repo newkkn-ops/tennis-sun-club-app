@@ -1,8 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // VAPID 키 Base64 변환 유틸리티 함수
-export function urlBase64ToUint8Array(base64String?: string): Uint8Array {
-  if (!base64String) return new Uint8Array(0);
+export function urlBase64ToUint8Array(base64String?: string): Uint8Array<ArrayBuffer> {
+  if (!base64String) return new Uint8Array(0) as unknown as Uint8Array<ArrayBuffer>;
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
@@ -10,7 +10,7 @@ export function urlBase64ToUint8Array(base64String?: string): Uint8Array {
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
-  return outputArray;
+  return outputArray as unknown as Uint8Array<ArrayBuffer>;
 }
 
 /**
@@ -36,10 +36,10 @@ export async function subscribeUserToPush(
     }
     const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
 
-    // 푸시 구독 생성
+    // 푸시 구독 생성 (타입 단언 추가)
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: convertedVapidKey,
+      applicationServerKey: convertedVapidKey as unknown as Uint8Array<ArrayBuffer>,
     });
 
     // Supabase의 users 테이블에 push_subscription 데이터 저장
