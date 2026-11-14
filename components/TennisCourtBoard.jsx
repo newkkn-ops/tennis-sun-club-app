@@ -78,6 +78,31 @@ export default function TennisCourtBoard() {
       console.error('점수 업데이트 실패:', error);
       alert('점수 저장에 실패했습니다.');
     } else {
+      // 코트 경기 배정/상태 변경 시 해당 선수들에게 푸시 알림 발송 시도
+      try {
+        const playerIds = [
+          selectedCourt.player_a1_id,
+          selectedCourt.player_a2_id,
+          selectedCourt.player_b1_id,
+          selectedCourt.player_b2_id,
+        ].filter(Boolean);
+
+        if (playerIds.length > 0) {
+          fetch('/api/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: playerIds,
+              title: `🎾 [코트 ${selectedCourt.court_number}번] 경기 스코어 업데이트`,
+              body: `코트 ${selectedCourt.court_number}번 스코어가 (${inputScoreA} : ${inputScoreB})로 갱신되었습니다.`,
+              url: '/',
+            }),
+          }).catch(() => {});
+        }
+      } catch (pushErr) {
+        console.warn('알림 전송 오류:', pushErr);
+      }
+
       setSelectedCourt(null); // 모달 닫기
     }
   };

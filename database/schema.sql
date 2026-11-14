@@ -13,6 +13,7 @@ create table users (
   gender text check (gender in ('M', 'F')) not null,
   grade user_grade not null default '테린이',
   role user_role not null default 'member',
+  push_subscription jsonb, -- 웹 푸시 알림 브라우저 구독 객체(PushSubscription JSON)
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -85,6 +86,11 @@ $$ language plpgsql;
 create trigger trg_user_create_stats
   after insert on users
   for each row execute function handle_new_user_stats();
+
+-- ===================================================
+-- [웹 푸시(Web Push) 알림 구독 컬럼 추가]
+-- ===================================================
+alter table users add column if not exists push_subscription jsonb;
 
 -- ===================================================
 -- [Supabase Realtime 활성화]
