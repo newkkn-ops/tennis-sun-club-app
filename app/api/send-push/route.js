@@ -2,30 +2,60 @@ import { NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 
-// VAPID 키 설정 (환경 변수에서 불러옴)
-webpush.setVapidDetails(
-  'mailto:admin@tennisclub.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
-
-// Supabase 서버사이드 클라이언트 (데이터 조회를 위해 Service Role Key 또는 권한이 부여된 키 사용)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+// Vercel 정적 평가 방지 (런타임에 동적 실행)
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
+    // 1. VAPID 키 설정 확인 및 초기화 (빌드 시 환경변수 누락 에러 방지)
+    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+    const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@tennisclub.com';
+
+    if (!vapidPublicKey || !vapidPrivateKey) {
+      console.warn('VAPID 환경 변수(NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)가 설정되지 않았습니다.');
+      return NextResponse.json(
+        { success: false, message: '서버에 VAPID 푸시 키가 설정되지 않았습니다.' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    } catch (vapidErr) {
+      console.error('VAPID 설정 오류:', vapidErr);
+      return NextResponse.json(
+        { success: false, error: '유효하지 않은 VAPID 키입니다.' },
+        { status: 500 }
+      );
+    }
+
+    // 2. Supabase 클라이언트 초기화 (런타임 동적 생성)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return NextResponse.json(
+        { success: false, message: 'Supabase 접속 정보가 설정되지 않았습니다.' },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const body = await request.json();
-    const { userIds, title, message, url } = body; 
+    const { userIds, title, message, url } = body;
     // userIds: 알림을 받을 사용자 UUID 배열 (예: 코트에 배정된 선수들)
 
     if (!userIds || userIds.length === 0) {
-      return NextResponse.json({ success: false, message: '알림을 받을 수신자가 없습니다.' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: '알림을 받을 수신자가 없습니다.' },
+        { status: 400 }
+      );
     }
 
-    // 1. Supabase의 users 테이블에서 대상 사용자들의 푸시 구독 정보 조회
+    // 3. Supabase의 users 테이블에서 대상 사용자들의 푸시 구독 정보 조회
     const { data: users, error } = await supabase
       .from('users')
       .select('id, push_subscription')
@@ -33,15 +63,15 @@ export async function POST(request) {
 
     if (error) throw error;
 
-    // 2. 보낼 푸시 메시지 페이로드 구성
+    // 4. 보낼 푸시 메시지 페이로드 구성
     const pushPayload = JSON.stringify({
       title: title || '🎾 테니스 클럽 코트 배정 안내',
       body: message || body.body || '다음 경기 순서입니다. 지정된 코트로 입장해 주세요!',
-      url: url || '/'
+      url: url || '/',
     });
 
-    // 3. 대상 사용자들에게 각각 웹 푸시 전송 실행
-    const notifications = users.map(async (user) => {
+    // 5. 대상 사용자들에게 각각 웹 푸시 전송 실행
+    const notifications = (users || []).map(async (user) => {
       // 구독 정보가 없는 회원은 패스
       if (!user.push_subscription) return { userId: user.id, status: 'no_subscription' };
 
