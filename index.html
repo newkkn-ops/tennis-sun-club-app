@@ -97,6 +97,24 @@
 
       <!-- 탭 2: 대진표 및 토너먼트 -->
       <div id="tabContentTournament" class="space-y-4 hidden">
+        {/* 대진표 화면 JSX 내부에 추가 */}
+        <div class="p-4 bg-white rounded shadow mb-4">
+          <h3 class="font-bold text-lg mb-2">참가자 명단 입력 (쉼표로 구분)</h3>
+          <textarea 
+            id="participantsInputArea"
+            class="w-full p-2 border rounded mb-2 text-sm"
+            rows="3"
+          >김철수, 박민수, 이영희, 최수진, 정지훈, 한지민, 송중기, 강동원</textarea>
+          <button 
+            onclick="generateBracket()"
+            class="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition"
+          >
+            🏓 실시간 대진표 자동 생성
+          </button>
+        </div>
+
+        <div id="quickBracketResult" class="space-y-3"></div>
+
         <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-semibold">
           <button id="btnSubKdk" onclick="switchTourSubTab('kdk')" class="flex-1 py-1.5 rounded-lg bg-white text-green-800 shadow-xs transition">
             🎾 KDK 예선 리그
@@ -443,6 +461,61 @@
 
       closeScoreModal();
       renderCourts();
+    }
+
+    function generateBracket() {
+      const inputEl = document.getElementById('participantsInputArea');
+      const names = (inputEl ? inputEl.value : '')
+        .split(',')
+        .map(n => n.trim())
+        .filter(n => n.length > 0);
+
+      if (names.length < 4) {
+        alert('최소 4명 이상의 참가자가 필요합니다.');
+        return;
+      }
+
+      // 간단한 예시: 입력된 순서대로 4명씩 묶어서 3라운드 매칭 생성
+      const generatedRounds = [];
+      for (let r = 1; r <= 3; r++) {
+        const shuffled = [...names].sort(() => Math.random() - 0.5);
+        const matches = [];
+        for (let i = 0; i < shuffled.length; i += 4) {
+          if (i + 3 < shuffled.length) {
+            matches.push({
+              court: matches.length + 1,
+              team1: [shuffled[i], shuffled[i+1]],
+              team2: [shuffled[i+2], shuffled[i+3]]
+            });
+          }
+        }
+        generatedRounds.push({ round: r, matches });
+      }
+
+      // 결과 화면 렌더링
+      const resContainer = document.getElementById('quickBracketResult');
+      if (resContainer) {
+        let html = '<div class="space-y-3 mb-4">';
+        html += '<div class="flex justify-between items-center px-1"><h4 class="text-xs font-bold text-blue-900">✨ 자동 생성된 대진표 (' + generatedRounds.length + '개 라운드)</h4><span class="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-bold">생성 완료</span></div>';
+        generatedRounds.forEach(gr => {
+          html += '<div class="bg-white rounded-xl shadow-xs border border-blue-100 p-3">';
+          html += '<div class="text-xs font-bold text-blue-800 mb-2 pb-1 border-b flex justify-between"><span>제 ' + gr.round + ' 라운드</span><span class="text-gray-400 font-normal">' + gr.matches.length + '개 코트 진행</span></div><div class="space-y-1.5">';
+          gr.matches.forEach(m => {
+            html += '<div class="bg-blue-50/60 p-2 rounded-lg text-xs flex justify-between items-center"><span class="font-bold text-blue-700 w-12 text-center bg-blue-100 rounded py-0.5">코트 ' + m.court + '</span><span class="font-semibold text-gray-800">' + m.team1[0] + '/' + m.team1[1] + '</span><span class="text-gray-400 font-bold text-[10px]">VS</span><span class="font-semibold text-gray-800">' + m.team2[0] + '/' + m.team2[1] + '</span></div>';
+          });
+          html += '</div></div>';
+        });
+        html += '</div>';
+        resContainer.innerHTML = html;
+      }
+
+      // KDK 엔진에도 명단 동기화
+      currentPlayers = names.map((name, idx) => ({
+        id: `p-${idx + 1}`,
+        name,
+        grade: '테린이'
+      }));
+      runKdkGenerate();
     }
 
     function runKdkGenerate() {
