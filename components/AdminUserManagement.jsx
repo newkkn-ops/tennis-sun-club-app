@@ -6,124 +6,121 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPAB
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function AdminUserManagement() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState([
+    { id: 'u1', name: '김철수', gender: 'M', grade: '금배', role: 'member' },
+    { id: 'u2', name: '이영희', gender: 'F', grade: '국화', role: 'member' },
+    { id: 'u3', name: '박민수', gender: 'M', grade: '은배', role: 'member' },
+    { id: 'u4', name: '정지훈', gender: 'M', grade: '동배', role: 'member' },
+    { id: 'u5', name: '최수진', gender: 'F', grade: '개나리', role: 'member' },
+    { id: 'u6', name: '강동원', gender: 'M', grade: '금배', role: 'member' },
+    { id: 'u7', name: '한지민', gender: 'F', grade: '은배', role: 'member' },
+    { id: 'u8', name: '송중기', gender: 'M', grade: '동배', role: 'member' },
+    { id: 'u9', name: '공유', gender: 'M', grade: '금배', role: 'admin' },
+  ]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  // 1. 전체 회원 목록 조회
   const fetchUsers = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('name', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('name', { ascending: true });
 
-    if (error) {
-      console.error('회원 목록 조회 실패:', error);
-    } else {
-      setUsers(data || []);
+      if (!error && data && data.length > 0) {
+        setUsers(data);
+      }
+    } catch (e) {
+      console.warn('유저 목록 조회 알림:', e);
     }
-    setLoading(false);
   };
 
-  // 2. 회원 실력 등급 변경 핸들러
   const handleGradeChange = async (userId, newGrade) => {
-    const { error } = await supabase
-      .from('users')
-      .update({ grade: newGrade })
-      .eq('id', userId);
-
-    if (error) {
-      alert('등급 변경 실패: ' + error.message);
-    } else {
-      // 로컬 상태 즉시 갱신
-      setUsers(users.map(u => u.id === userId ? { ...u, grade: newGrade } : u));
-    }
+    setUsers(users.map((u) => (u.id === userId ? { ...u, grade: newGrade } : u)));
+    try {
+      await supabase
+        .from('users')
+        .update({ grade: newGrade })
+        .eq('id', userId);
+    } catch (e) {}
   };
 
-  // 3. 회원 권한(Role) 변경 핸들러
   const handleRoleChange = async (userId, newRole) => {
-    const { error } = await supabase
-      .from('users')
-      .update({ role: newRole })
-      .eq('id', userId);
-
-    if (error) {
-      alert('권한 변경 실패: ' + error.message);
-    } else {
-      // 로컬 상태 즉시 갱신
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    }
+    setUsers(users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+    try {
+      await supabase
+        .from('users')
+        .update({ role: newRole })
+        .eq('id', userId);
+    } catch (e) {}
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-gray-500 font-medium">회원 목록을 불러오는 중...</div>;
-  }
+  const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-gray-50 min-h-screen font-sans">
-      {/* 상단 헤더 */}
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-bold text-green-800">⚙️ 회원 등급 및 권한 관리</h1>
-        <span className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
-          관리자 전용
-        </span>
-      </div>
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+          <h2 className="text-sm font-black text-red-400 flex items-center gap-1.5">
+            <span>👑</span> 썬 클럽 회원 등급 & 권한 관리
+          </h2>
+          <span className="text-[11px] text-slate-400 font-bold">
+            총 {users.length}명 회원
+          </span>
+        </div>
 
-      <p className="text-xs text-gray-500 mb-4">
-        클럽원들의 등급을 수정하면 KDK 밸런싱 알고리즘에 즉시 반영됩니다.
-      </p>
-
-      {/* 회원 카드 리스트 */}
-      <div className="space-y-3">
-        {users.map((user) => (
-          <div key={user.id} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-            {/* 회원 이름 및 권한 설정 */}
-            <div className="flex justify-between items-center mb-3">
+        <div className="space-y-2.5">
+          {users.map((u) => (
+            <div
+              key={u.id}
+              className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center text-xs"
+            >
               <div>
-                <span className="font-bold text-gray-900 text-base">{user.name}</span>
-                <span className="ml-2 text-xs text-gray-500">
-                  ({user.gender === 'M' ? '남성' : '여성'})
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span>{u.name}</span>
+                  <span className="text-[10px] text-slate-400">
+                    ({u.gender === 'M' ? '남' : '여'})
+                  </span>
+                </div>
+                <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
+                  {u.role === 'admin' ? '👑 클럽 운영자' : '일반 회원'}
                 </span>
               </div>
-              
-              {/* 운영자 / 일반 회원 권한 드롭다운 */}
-              <select
-                value={user.role}
-                onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                className={`text-xs font-bold px-2 py-1 rounded-lg border outline-none ${
-                  user.role === 'admin' 
-                    ? 'bg-red-50 text-red-700 border-red-200' 
-                    : 'bg-gray-50 text-gray-700 border-gray-200'
-                }`}
-              >
-                <option value="member">일반 회원</option>
-                <option value="admin">운영자 (Admin)</option>
-              </select>
-            </div>
 
-            {/* 실력 등급 선택 드롭다운 */}
-            <div className="flex items-center justify-between pt-3 border-t text-xs text-gray-600">
-              <span className="font-semibold">실력 등급 설정:</span>
-              <select
-                value={user.grade}
-                onChange={(e) => handleGradeChange(user.id, e.target.value)}
-                className="px-3 py-1 bg-green-50 text-green-800 font-bold rounded-lg border border-green-200 outline-none focus:ring-2 focus:ring-green-500"
-              >
-                <option value="금배">금배</option>
-                <option value="은배">은배</option>
-                <option value="동배">동배</option>
-                <option value="국화">국화</option>
-                <option value="개나리">개나리</option>
-                <option value="테린이">테린이</option>
-                <option value="고령자부">고령자부</option>
-              </select>
+              <div className="flex gap-1.5 items-center">
+                {/* 실력 등급 선택 */}
+                <select
+                  value={u.grade}
+                  onChange={(e) => handleGradeChange(u.id, e.target.value)}
+                  className="bg-slate-900 border border-slate-700 text-amber-300 text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none"
+                >
+                  {GRADE_OPTIONS.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+
+                {/* 운영자 권한 토글 */}
+                <select
+                  value={u.role}
+                  onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                  className={`border text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none ${
+                    u.role === 'admin'
+                      ? 'bg-red-950/80 text-red-300 border-red-500/40'
+                      : 'bg-slate-900 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  <option value="member">회원</option>
+                  <option value="admin">관리자</option>
+                </select>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

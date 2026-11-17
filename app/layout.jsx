@@ -1,18 +1,45 @@
 import React from 'react';
 
 export const metadata = {
-  title: '테니스 클럽 운영 앱',
-  description: '테니스 월례회, KDK 대진표, 실시간 코트 스코어보드 및 전적 관리',
+  title: '☀️ 썬 테니스 클럽 (SUN TENNIS CLUB) | 공식 운영 시스템',
+  description: '태양처럼 뜨거운 열정! 썬(SUN) 테니스 클럽 실시간 코트 현황판, KDK 파트너 로테이션 대진표, 토너먼트 및 마이페이지 전적 관리 시스템',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/icon-192.png',
+    shortcut: '/icon-192.png',
+    apple: '/icon-192.png',
+  },
+  openGraph: {
+    title: '☀️ 썬 테니스 클럽 (SUN TENNIS CLUB)',
+    description: '🎾 실시간 코트 현황판 & 스코어보드 라이브 · KDK 파트너 순환 대진표 · 토너먼트 · 마이페이지 전적',
+    url: 'https://tennis-sun-club-app.vercel.app',
+    siteName: '썬 테니스 클럽 (SUN TENNIS CLUB)',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: '썬 테니스 클럽 공식 운영 시스템',
+      },
+    ],
+    locale: 'ko_KR',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '☀️ 썬 테니스 클럽 (SUN TENNIS CLUB)',
+    description: '🎾 실시간 코트 현황판 · KDK 복식 대진표 자동 생성 · 내 차례 스마트폰 PWA 실시간 알림',
+    images: ['/og-image.png'],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: '테니스클럽',
+    title: '썬테니스클럽',
   },
 };
 
 export const viewport = {
-  themeColor: '#16a34a',
+  themeColor: '#059669',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -24,9 +51,18 @@ export default function RootLayout({ children }) {
     <html lang="ko">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#16a34a" />
+        <link rel="icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="theme-color" content="#059669" />
+        {/* Open Graph 메타 태그 (카카오톡, 페이스북, 슬랙 링크 공유 미리보기 확연한 노출) */}
+        <meta property="og:title" content="☀️ 썬 테니스 클럽 (SUN TENNIS CLUB)" />
+        <meta property="og:description" content="🎾 실시간 코트 현황판 · KDK 복식 대진표 · 토너먼트 브래킷 · 마이페이지 랭킹" />
+        <meta property="og:image" content="/og-image.png" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content="/og-image.png" />
       </head>
-      <body className="bg-slate-100 antialiased min-h-screen">
+      <body className="bg-slate-900 text-slate-100 antialiased min-h-screen selection:bg-amber-400 selection:text-slate-900">
         {children}
       </body>
     </html>
