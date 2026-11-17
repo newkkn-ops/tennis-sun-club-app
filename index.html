@@ -1,65 +1,78 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>☀️ 썬 테니스 클럽 (SUN TENNIS CLUB) | 공식 운영 시스템</title>
-
-  <!-- PWA 매니페스트 및 테마 메타 태그 -->
+  <meta name="description" content="태양처럼 뜨거운 열정! 썬(SUN) 테니스 클럽 실시간 코트 현황판, KDK 파트너 순환 진행, 예선 및 본선 토너먼트 브래킷 운영 시스템" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icon-192.png" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <meta name="theme-color" content="#059669" />
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="썬테니스">
 
-  <!-- Open Graph 메타 태그 (카카오톡, 페이스북, 슬랙 링크 공유 시 확연히 테니스 어플로 표시) -->
+  <!-- Open Graph 소셜 미리보기 -->
   <meta property="og:title" content="☀️ 썬 테니스 클럽 (SUN TENNIS CLUB)" />
-  <meta property="og:description" content="🎾 실시간 코트 스코어 중계 · KDK 파트너 순환 대진표 · 토너먼트 브래킷 · 마이페이지 전적 관리" />
+  <meta property="og:description" content="🎾 실시간 코트 현황판 · KDK 파트너 순환 진행 · 예선 및 본선 토너먼트 시스템" />
   <meta property="og:image" content="/og-image.png" />
-  <meta property="og:url" content="https://tennis-sun-club-app.vercel.app" />
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="썬 테니스 클럽" />
-
-  <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="☀️ 썬 테니스 클럽 (SUN TENNIS CLUB)" />
-  <meta name="twitter:description" content="🎾 실시간 코트 현황판 · KDK 복식 대진표 자동 생성 · 내 차례 스마트폰 PWA 실시간 알림" />
   <meta name="twitter:image" content="/og-image.png" />
 
-  <!-- Tailwind CSS & FontAwesome -->
+  <!-- Tailwind CSS CDN 및 폰트 -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              750: '#293548',
+              850: '#172033',
+              950: '#020617'
+            },
+            tennis: {
+              ball: '#ccff00',
+              clay: '#c2410c',
+              court: '#059669',
+              hard: '#0284c7'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
   <style>
-    body { font-family: 'Pretendard', sans-serif; }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+      overflow-x: hidden;
+    }
     .badge-gold { background: linear-gradient(135deg, #fef08a, #facc15); color: #713f12; border: 1px solid #eab308; }
     .badge-silver { background: linear-gradient(135deg, #f1f5f9, #cbd5e1); color: #334155; border: 1px solid #94a3b8; }
     .badge-bronze { background: linear-gradient(135deg, #ffedd5, #fdba74); color: #7c2d12; border: 1px solid #f97316; }
     .badge-chrys { background: linear-gradient(135deg, #fce7f3, #f472b6); color: #831843; border: 1px solid #ec4899; }
-    .badge-forsythia { background: linear-gradient(135deg, #fef9c3, #fde047); color: #713f12; border: 1px solid #eab308; }
     .badge-beginner { background: linear-gradient(135deg, #dcfce7, #86efac); color: #14532d; border: 1px solid #22c55e; }
-    .badge-senior { background: linear-gradient(135deg, #ede9fe, #c4b5fd); color: #4c1d95; border: 1px solid #a855f7; }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-amber-400 selection:text-slate-900">
+<body class="selection:bg-amber-400 selection:text-slate-900">
 
-  <!-- ======================================================== -->
-  <!-- [데스크톱 와이드 / 모바일 하이브리드 통합 레이아웃] -->
-  <!-- ======================================================== -->
+  <!-- 전체 레이아웃 컨테이너 -->
   <div class="w-full max-w-7xl mx-auto flex flex-col lg:flex-row justify-center items-start lg:gap-8 lg:p-6 min-h-screen">
-
-    <!-- [PC 화면 전용 사이드바]: 썬(SUN) 클럽 브랜딩 & 실시간 코트 대시보드 -->
+    
+    <!-- ======================================================== -->
+    <!-- [PC 전용 사이드바 대시보드] -->
+    <!-- ======================================================== -->
     <aside class="hidden lg:flex flex-col w-[380px] shrink-0 sticky top-6 space-y-4">
-      <!-- 썬 클럽 공식 히어로 비주얼 카드 -->
       <div class="relative rounded-3xl overflow-hidden shadow-2xl border border-amber-500/20 group">
         <img
           src="/sun-tennis-hero.jpg"
           alt="썬 테니스 클럽"
           class="w-full h-56 object-cover object-center group-hover:scale-105 transition-transform duration-700"
-          onerror="this.src='/sun-banner.png'"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent flex flex-col justify-end p-5">
           <div class="flex items-center gap-2 mb-1.5">
@@ -68,119 +81,100 @@
             </span>
             <span class="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
               <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              라이브 운영 중
+              실시간 가동 중
             </span>
           </div>
-          <h1 class="text-2xl font-black text-white flex items-center gap-2">
-            <span class="text-amber-400 text-3xl">☀️</span>
-            <span class="bg-gradient-to-r from-amber-200 via-amber-400 to-orange-400 bg-clip-text text-transparent">
-              썬 테니스 클럽
-            </span>
+          <h1 class="text-2xl font-black tracking-tight text-white flex items-center gap-2 drop-shadow-md">
+            <span class="text-amber-400">☀️</span> 썬 테니스 클럽
           </h1>
-          <p class="text-xs text-slate-300 font-medium mt-1 leading-relaxed">
-            태양처럼 뜨거운 열정과 페어플레이! 회원들의 실시간 코트 대진 및 경기 통합 시스템
+          <p class="text-xs text-slate-300 mt-1 line-clamp-2">
+            태양처럼 뜨거운 열정! KDK 파트너 순환 리그와 정규 예선/본선 토너먼트를 스마트하게 운영합니다.
           </p>
         </div>
       </div>
 
-      <!-- 오늘의 코트 가동 상태 위젯 -->
-      <div class="bg-slate-900/90 backdrop-blur-md rounded-2xl p-4 border border-slate-800 shadow-xl space-y-3">
-        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-          <span class="text-xs font-bold text-slate-400 flex items-center gap-1.5">
-            <i class="fa-solid fa-location-dot text-amber-400"></i> 코트 가동 현황
-          </span>
-          <span class="text-xs font-extrabold text-amber-400">총 4면 (하드/클레이)</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-xs">
-          <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50">
-            <span class="text-slate-400 block text-[11px]">진행 중인 경기</span>
-            <span class="text-lg font-black text-emerald-400" id="liveMatchCount">2 코트 🔴</span>
-          </div>
-          <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50">
-            <span class="text-slate-400 block text-[11px]">대기 중인 매치</span>
-            <span class="text-lg font-black text-amber-400">3 게임 ⏳</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 스마트폰 PWA 연동 카드 -->
-      <div class="bg-gradient-to-br from-emerald-950/40 via-slate-900 to-amber-950/30 rounded-2xl p-4 border border-emerald-500/20 shadow-xl">
-        <div class="flex items-center gap-3">
-          <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-500 to-emerald-500 p-0.5 shrink-0 shadow-md">
-            <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center text-xl">
-              📱
+      <!-- PC 메뉴 바로가기 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-2">
+        <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2">시스템 메뉴 바로가기</p>
+        <div class="grid grid-cols-1 gap-1.5">
+          <button onclick="switchTab('courts')" class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left text-slate-300 hover:bg-slate-800 hover:text-white">
+            <span class="text-base">🎾</span>
+            <div class="flex-1">
+              <p class="leading-tight">실시간 코트 현황</p>
+              <p class="text-[10px] text-slate-500 font-normal">1~3번 코트 라이브 스코어</p>
             </div>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-white">스마트폰 앱(PWA) 연동</h4>
-            <p class="text-[11px] text-slate-400 mt-0.5">
-              스마트폰 브라우저에서 접속 시 <strong>[홈 화면에 추가]</strong>를 누르면 실제 앱처럼 설치되어 동작합니다.
-            </p>
-          </div>
+          </button>
+
+          <button onclick="switchTab('kdk')" class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-xs">
+            <span class="text-base">🔄</span>
+            <div class="flex-1">
+              <p class="leading-tight">KDK 파트너 순환 진행</p>
+              <p class="text-[10px] text-slate-500 font-normal">개인 승점제 월례회 대진표</p>
+            </div>
+            <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-md font-extrabold">인기</span>
+          </button>
+
+          <button onclick="switchTab('tournament')" class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left bg-amber-500/15 text-amber-300 border border-amber-400/30 shadow-xs">
+            <span class="text-base">🏆</span>
+            <div class="flex-1">
+              <p class="leading-tight">예선 & 본선 토너먼트</p>
+              <p class="text-[10px] text-slate-500 font-normal">조별 풀리그 & 4강/결승 브래킷</p>
+            </div>
+            <span class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-md font-extrabold">대회용</span>
+          </button>
+
+          <button onclick="switchTab('mypage')" class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left text-slate-300 hover:bg-slate-800 hover:text-white">
+            <span class="text-base">👤</span>
+            <div class="flex-1">
+              <p class="leading-tight">VIP 마이페이지</p>
+              <p class="text-[10px] text-slate-500 font-normal">개인 전적 & 승률 랭킹</p>
+            </div>
+          </button>
+
+          <button onclick="switchTab('admin')" class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left text-slate-300 hover:bg-slate-800 hover:text-white">
+            <span class="text-base">⚙️</span>
+            <div class="flex-1">
+              <p class="leading-tight">운영자 관리 센터</p>
+              <p class="text-[10px] text-slate-500 font-normal">회원 등급 및 권한 설정</p>
+            </div>
+          </button>
         </div>
       </div>
     </aside>
 
-    <!-- [메인 모바일 프레임 컨테이너] -->
-    <div class="w-full max-w-md mx-auto bg-slate-900/95 lg:rounded-3xl border-x lg:border border-slate-800/80 shadow-2xl min-h-screen lg:min-h-[840px] pb-24 relative overflow-hidden backdrop-blur-xl">
+    <!-- ======================================================== -->
+    <!-- [모바일 프레임 / 메인 네이티브 레이아웃] -->
+    <!-- ======================================================== -->
+    <main class="w-full max-w-md bg-slate-950 min-h-screen lg:min-h-[900px] lg:rounded-[42px] lg:border-[8px] lg:border-slate-800/80 shadow-2xl overflow-hidden flex flex-col relative pb-24">
       
-      <!-- 상단 앱 헤더 (썬 테니스 클럽 엠블럼 & 프로필) -->
-      <header class="bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950/80 px-4 py-3.5 border-b border-amber-500/20 sticky top-0 z-40 backdrop-blur-md flex justify-between items-center shadow-lg">
+      <!-- 상단 모바일 헤더 -->
+      <header class="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex justify-between items-center shadow-lg">
         <div class="flex items-center gap-2.5">
-          <div class="relative">
-            <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-500 via-orange-500 to-lime-400 p-0.5 shadow-md shadow-amber-500/20">
-              <div class="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-lg">
-                ☀️
-              </div>
-            </div>
-            <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-slate-950 rounded-full"></span>
+          <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 text-lg">
+            ☀️
           </div>
           <div>
-            <div class="flex items-center gap-1.5">
-              <span class="text-[10px] font-black uppercase tracking-widest text-amber-400">
-                SUN TENNIS
+            <h2 class="text-sm font-black text-white tracking-tight flex items-center gap-1.5">
+              썬 테니스 클럽
+              <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                SUN
               </span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                LIVE
-              </span>
-            </div>
-            <div class="text-sm font-extrabold text-white flex items-center gap-1.5">
-              <span id="appHeaderUserName">김철수 회원님</span>
-              <span id="appHeaderUserGrade" class="text-xs px-2 py-0.5 rounded-full font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                금배
-              </span>
-            </div>
+            </h2>
+            <p class="text-[10px] text-slate-400 font-medium">태양처럼 뜨거운 코트의 열정</p>
           </div>
         </div>
-        <div class="flex items-center gap-1.5">
-          <button
-            onclick="toggleRole()"
-            id="btnToggleRole"
-            class="text-[10px] px-2.5 py-1 bg-slate-800 text-slate-300 hover:text-white rounded-xl font-bold border border-slate-700 transition"
-          >
-            👤 회원 모드
-          </button>
-        </div>
+
+        <button onclick="toggleUserRole()" id="roleToggleBtn" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 transition">
+          👤 회원 모드
+        </button>
       </header>
 
-      <!-- PWA 서비스 워커 및 알림 권한 배너 -->
-      <div id="swNotificationBanner" class="px-4 py-2.5 bg-gradient-to-r from-emerald-950/90 via-slate-900 to-slate-950 border-b border-emerald-500/30 flex justify-between items-center text-xs">
-        <div class="flex items-center gap-2 text-emerald-300 font-medium">
-          <i class="fa-solid fa-bell text-amber-400"></i>
-          <span>내 출전 차례 시 실시간 알림 받기</span>
-        </div>
-        <button
-          onclick="requestPushPermission()"
-          id="btnPushToggle"
-          class="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-slate-950 font-black rounded-lg text-[11px] shadow-sm hover:from-emerald-500 hover:to-teal-500 transition"
-        >
-          알림 켜기
-        </button>
-      </div>
-
-      <!-- 메인 탭 콘텐츠 영역 -->
-      <main class="p-3">
-        <!-- 탭 1: 실시간 코트 현황판 -->
+      <!-- 메인 컨텐츠 영역 -->
+      <div class="p-4 space-y-4 flex-1">
+        
+        <!-- ---------------------------------------------------- -->
+        <!-- [탭 1]: 실시간 코트 현황판 -->
+        <!-- ---------------------------------------------------- -->
         <div id="tabContentCourts" class="space-y-3.5">
           <div class="flex justify-between items-center bg-gradient-to-r from-emerald-950/80 via-slate-900 to-amber-950/60 p-3 rounded-2xl border border-emerald-500/20 shadow-md">
             <div class="flex items-center gap-2">
@@ -188,81 +182,361 @@
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
               </span>
-              <h2 class="text-sm font-extrabold text-white">썬 클럽 실시간 코트 현황</h2>
+              <span class="text-xs font-bold text-white">실시간 코트 가동 중</span>
             </div>
-            <span class="text-[11px] font-bold text-amber-300 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">
-              ☀️ LIVE 중계 중
+            <span class="text-[11px] text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-500/30 font-extrabold">
+              총 3개 코트
             </span>
           </div>
 
+          <!-- 별도 대진 모드 빠른 스위치 버튼 2개 -->
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="switchTab('kdk')" class="p-3 bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-2xl text-left transition group shadow-md">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-base">🔄</span>
+                <span class="text-[10px] font-black bg-emerald-500 text-slate-950 px-1.5 py-0.2 rounded-md">바로가기</span>
+              </div>
+              <p class="text-xs font-black text-white group-hover:text-emerald-300">KDK 파트너 순환 진행</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">매 라운드 파트너 자동 변경</p>
+            </button>
+
+            <button onclick="switchTab('tournament')" class="p-3 bg-gradient-to-br from-amber-950/60 to-slate-900 border border-amber-500/30 hover:border-amber-400 rounded-2xl text-left transition group shadow-md">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-base">🏆</span>
+                <span class="text-[10px] font-black bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded-md">바로가기</span>
+              </div>
+              <p class="text-xs font-black text-white group-hover:text-amber-300">예선 & 본선 토너먼트</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">조별리그 & 결승 브래킷</p>
+            </button>
+          </div>
+
+          <!-- 코트 리스트 -->
           <div id="courtsListContainer" class="space-y-3.5"></div>
         </div>
 
-        <!-- 탭 2: 대진표 및 토너먼트 -->
-        <div id="tabContentTournament" class="space-y-4 hidden">
-          <!-- 참가자 명단 입력 폼 및 생성 버튼 -->
+        <!-- ---------------------------------------------------- -->
+        <!-- [탭 2]: KDK 파트너 순환 진행 전용 화면 -->
+        <!-- ---------------------------------------------------- -->
+        <div id="tabContentKdk" class="space-y-4 hidden">
+          <!-- 상단 헤더 & 토너먼트 전환 버튼 -->
+          <div class="flex justify-between items-center bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 p-3 rounded-2xl border border-emerald-500/30 shadow-md">
+            <div>
+              <h3 class="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                <span>🔄</span> KDK 파트너 순환 리그
+              </h3>
+              <p class="text-[10px] text-slate-400">월례회 전용! 매 라운드 파트너 교체 및 개인 승점제</p>
+            </div>
+            <button onclick="switchTab('tournament')" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs">
+              <span>🏆</span>
+              <span>토너먼트로</span>
+            </button>
+          </div>
+
+          <!-- KDK 참가자 명단 입력 폼 -->
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center">
-              <h3 class="font-extrabold text-sm text-white flex items-center gap-1.5">
-                <span class="text-amber-400">☀️</span> 참가자 명단 입력 (쉼표 구분)
-              </h3>
+              <span class="font-extrabold text-xs text-white flex items-center gap-1.5">
+                <span class="text-amber-400">🎾</span> KDK 참가자 명단 (쉼표 구분)
+              </span>
               <div class="flex gap-1.5">
-                <button onclick="setQuickNames(8)" class="text-[10px] px-2 py-0.8 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700">8명</button>
-                <button onclick="setQuickNames(12)" class="text-[10px] px-2 py-0.8 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700">12명</button>
+                <button onclick="setQuickKdkNames(8)" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700">8명</button>
+                <button onclick="setQuickKdkNames(12)" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700">12명</button>
               </div>
             </div>
 
-            <textarea 
-              id="participantsInputArea"
-              class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400 font-mono leading-relaxed"
-              rows="3"
-            >김철수, 박민수, 이영희, 최수진, 정지훈, 한지민, 송중기, 강동원</textarea>
+            <textarea
+              id="kdkNamesInput"
+              class="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono leading-relaxed"
+              rows="2"
+            >김철수, 강동원, 박민수, 정지훈, 이영희, 한지민, 최수진, 송중기</textarea>
 
-            <button 
-              onclick="generateBracket()"
-              class="w-full py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+            <button
+              onclick="generateKdkTournament()"
+              class="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>🏓</span>
-              <span>썬 클럽 실시간 대진표 자동 생성</span>
+              <span>KDK 대진표 자동 편성 & 랭킹 초기화</span>
             </button>
           </div>
 
-          <!-- 자동 생성된 실시간 대진표 결과 -->
-          <div id="quickBracketResult" class="space-y-3"></div>
-
-          <!-- 서브 탭 (KDK / 본선 토너먼트) -->
-          <div class="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs font-bold">
-            <button id="btnSubKdk" onclick="switchTourSubTab('kdk')" class="flex-1 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md transition">
-              🎾 KDK 예선 리그
-            </button>
-            <button id="btnSubBracket" onclick="switchTourSubTab('bracket')" class="flex-1 py-2 rounded-xl text-slate-400 hover:text-white transition">
-              🏆 본선 토너먼트
-            </button>
-          </div>
-
-          <div id="tourSubKdk" class="space-y-4">
-            <div id="kdkRoundsContainer" class="space-y-3"></div>
-          </div>
-
-          <div id="tourSubBracket" class="space-y-4 hidden">
-            <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 flex justify-between items-center">
-              <div>
-                <span class="text-xs font-black text-amber-400 block">본선 토너먼트 브래킷 (16강)</span>
-                <span class="text-[11px] text-slate-400">상위 1~6위 부전승(BYE) 자동 배정</span>
-              </div>
-              <button onclick="runTournamentGenerate()" class="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-xs font-black shadow-xs">
-                브래킷 생성
-              </button>
+          <!-- KDK 실시간 개인 순위표 -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2.5">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+              <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                <span>🥇</span> KDK 실시간 개인 순위표
+              </span>
+              <span class="text-[10px] text-slate-400">승수 &gt; 득실차 &gt; 승점 순</span>
             </div>
-            <div id="bracketView" class="overflow-x-auto pb-4">
-              <div id="bracketColumns" class="flex gap-4 items-start min-w-[500px]"></div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-center text-xs">
+                <thead>
+                  <tr class="text-slate-400 border-b border-slate-800/80 text-[10px]">
+                    <th class="py-1">순위</th>
+                    <th class="py-1 text-left px-2">선수(등급)</th>
+                    <th class="py-1">경기</th>
+                    <th class="py-1">승-패</th>
+                    <th class="py-1">득실</th>
+                    <th class="py-1 font-bold text-amber-400">승점</th>
+                  </tr>
+                </thead>
+                <tbody id="kdkRankingsTable" class="divide-y divide-slate-800/50"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- KDK 라운드별 매칭 카드 -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-extrabold text-slate-300 px-1 flex items-center gap-1">
+              <span>🎾</span> KDK 라운드별 경기 진행 & 스코어 조절
+            </h4>
+            <div id="kdkRoundsList" class="space-y-3"></div>
+          </div>
+        </div>
+
+        <!-- ---------------------------------------------------- -->
+        <!-- [탭 3]: 예선전 & 본선 토너먼트 진행 전용 화면 -->
+        <!-- ---------------------------------------------------- -->
+        <div id="tabContentTournament" class="space-y-4 hidden">
+          <!-- 상단 헤더 & KDK 전환 버튼 -->
+          <div class="flex justify-between items-center bg-gradient-to-r from-amber-950 via-slate-900 to-slate-900 p-3 rounded-2xl border border-amber-500/30 shadow-md">
+            <div>
+              <h3 class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                <span>🏆</span> 정규 대회 토너먼트 시스템
+              </h3>
+              <p class="text-[10px] text-slate-400">1단계 예선 조별리그 ➔ 2단계 본선 4강/결승 토너먼트</p>
+            </div>
+            <button onclick="switchTab('kdk')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs">
+              <span>🔄</span>
+              <span>KDK 진행으로</span>
+            </button>
+          </div>
+
+          <!-- 서브 탭: 예선 조별리그 vs 본선 토너먼트 버튼 2개 -->
+          <div class="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 text-xs font-bold gap-1">
+            <button id="btnTourPhaseQual" onclick="switchTourPhase('qualifying')" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5">
+              <span>🥇</span>
+              <span>1단계: 예선 조별리그</span>
+            </button>
+            <button id="btnTourPhaseMain" onclick="switchTourPhase('main')" class="flex-1 py-2.5 rounded-xl text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
+              <span>🏅</span>
+              <span>2단계: 본선 토너먼트 (4강/결승)</span>
+            </button>
+          </div>
+
+          <!-- 1단계: 예선 조별리그 화면 -->
+          <div id="tourPhaseQualifyingWrap" class="space-y-4">
+            <!-- A조 & B조 순위표 -->
+            <div class="grid grid-cols-1 gap-3">
+              <!-- A조 -->
+              <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                  <span class="text-xs font-black text-amber-400 flex items-center gap-1">
+                    <span>🅰️</span> 예선 A조 순위표 (상위 2팀 본선 진출)
+                  </span>
+                  <span class="text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                    풀리그
+                  </span>
+                </div>
+                <table class="w-full text-center text-xs">
+                  <thead>
+                    <tr class="text-slate-400 text-[10px] border-b border-slate-800/80">
+                      <th class="py-1">순위</th>
+                      <th class="py-1 text-left px-2">팀명</th>
+                      <th class="py-1">승-패</th>
+                      <th class="py-1">득실</th>
+                      <th class="py-1 font-bold text-amber-400">승점</th>
+                      <th class="py-1">진출</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/50">
+                    <tr class="bg-amber-400/5">
+                      <td class="py-2 font-bold">1</td>
+                      <td class="py-2 text-left px-2 font-bold text-white">김철수 / 강동원</td>
+                      <td class="py-2 text-emerald-400 font-bold">2승 0패</td>
+                      <td class="py-2 text-slate-300">+7</td>
+                      <td class="py-2 font-black text-amber-400">6</td>
+                      <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">본선진출</span></td>
+                    </tr>
+                    <tr class="bg-amber-400/5">
+                      <td class="py-2 font-bold">2</td>
+                      <td class="py-2 text-left px-2 font-bold text-white">이영희 / 한지민</td>
+                      <td class="py-2 text-emerald-400 font-bold">1승 1패</td>
+                      <td class="py-2 text-slate-300">+1</td>
+                      <td class="py-2 font-black text-amber-400">3</td>
+                      <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">본선진출</span></td>
+                    </tr>
+                    <tr>
+                      <td class="py-2 font-bold text-slate-500">3</td>
+                      <td class="py-2 text-left px-2 text-slate-400">정지훈 / 조인성</td>
+                      <td class="py-2 text-slate-500">0승 2패</td>
+                      <td class="py-2 text-slate-400">-8</td>
+                      <td class="py-2 font-bold text-slate-500">0</td>
+                      <td class="py-2"><span class="text-[10px] text-slate-500">탈락</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- B조 -->
+              <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                  <span class="text-xs font-black text-emerald-400 flex items-center gap-1">
+                    <span>🅱️</span> 예선 B조 순위표 (상위 2팀 본선 진출)
+                  </span>
+                  <span class="text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                    풀리그
+                  </span>
+                </div>
+                <table class="w-full text-center text-xs">
+                  <thead>
+                    <tr class="text-slate-400 text-[10px] border-b border-slate-800/80">
+                      <th class="py-1">순위</th>
+                      <th class="py-1 text-left px-2">팀명</th>
+                      <th class="py-1">승-패</th>
+                      <th class="py-1">득실</th>
+                      <th class="py-1 font-bold text-amber-400">승점</th>
+                      <th class="py-1">진출</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/50">
+                    <tr class="bg-emerald-400/5">
+                      <td class="py-2 font-bold">1</td>
+                      <td class="py-2 text-left px-2 font-bold text-white">박민수 / 송중기</td>
+                      <td class="py-2 text-emerald-400 font-bold">2승 0패</td>
+                      <td class="py-2 text-slate-300">+6</td>
+                      <td class="py-2 font-black text-amber-400">6</td>
+                      <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">본선진출</span></td>
+                    </tr>
+                    <tr class="bg-emerald-400/5">
+                      <td class="py-2 font-bold">2</td>
+                      <td class="py-2 text-left px-2 font-bold text-white">최수진 / 김태희</td>
+                      <td class="py-2 text-emerald-400 font-bold">1승 1패</td>
+                      <td class="py-2 text-slate-300">+2</td>
+                      <td class="py-2 font-black text-amber-400">3</td>
+                      <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">본선진출</span></td>
+                    </tr>
+                    <tr>
+                      <td class="py-2 font-bold text-slate-500">3</td>
+                      <td class="py-2 text-left px-2 text-slate-400">공유 / 정우성</td>
+                      <td class="py-2 text-slate-500">0승 2패</td>
+                      <td class="py-2 text-slate-400">-8</td>
+                      <td class="py-2 font-bold text-slate-500">0</td>
+                      <td class="py-2"><span class="text-[10px] text-slate-500">탈락</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 본선 진출 확정 액션 버튼 -->
+            <button
+              onclick="advanceGroupToMain()"
+              class="w-full py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-2xl text-xs transition-all shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span class="text-base">🚀</span>
+              <span>조별 1, 2위 본선 진출 확정 & 본선 토너먼트 브래킷 생성</span>
+            </button>
+          </div>
+
+          <!-- 2단계: 본선 토너먼트 브래킷 화면 -->
+          <div id="tourPhaseMainWrap" class="space-y-4 hidden">
+            <!-- 우승자 알림 배너 -->
+            <div id="championBanner" class="hidden bg-gradient-to-r from-amber-500 via-yellow-400 to-orange-500 text-slate-950 p-4 rounded-3xl shadow-2xl text-center space-y-1 animate-bounce">
+              <p class="text-[11px] font-black uppercase tracking-widest text-slate-900/80">🏆 2026 SUN TENNIS TOURNAMENT CHAMPION</p>
+              <h3 id="championName" class="text-xl font-black">김철수 / 강동원</h3>
+              <p class="text-xs font-extrabold text-slate-900">영예의 썬 테니스 클럽 챔피언십 우승을 축하합니다!</p>
+            </div>
+
+            <!-- 토너먼트 브래킷 카드 -->
+            <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-4">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <div>
+                  <span class="text-xs font-black text-amber-400 block">🏆 본선 녹아웃 브래킷 (Knockout Bracket)</span>
+                  <span class="text-[10px] text-slate-400">4강 준결승 및 결승전</span>
+                </div>
+                <span class="text-[10px] font-bold bg-amber-400/10 text-amber-300 px-2 py-0.5 rounded-full border border-amber-400/20">
+                  정규 6게임 세트
+                </span>
+              </div>
+
+              <!-- 4강 준결승 -->
+              <div class="space-y-3">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">1. 준결승전 (Semi-Finals)</span>
+                
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <div class="flex justify-between text-[10px] text-slate-400 font-bold">
+                    <span>4강 1경기 (코트 1)</span>
+                    <span class="text-emerald-400">승자 결승 진출</span>
+                  </div>
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="font-bold text-amber-400">김철수 / 강동원 (A1)</span>
+                    <span class="text-sm font-black text-white px-2 py-0.5 bg-slate-900 rounded border border-slate-800">6 : 3</span>
+                    <span class="font-bold text-slate-400">최수진 / 김태희 (B2)</span>
+                  </div>
+                </div>
+
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <div class="flex justify-between text-[10px] text-slate-400 font-bold">
+                    <span>4강 2경기 (코트 2)</span>
+                    <span class="text-emerald-400">승자 결승 진출</span>
+                  </div>
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="font-bold text-slate-400">박민수 / 송중기 (B1)</span>
+                    <span class="text-sm font-black text-white px-2 py-0.5 bg-slate-900 rounded border border-slate-800">4 : 6</span>
+                    <span class="font-bold text-amber-400">이영희 / 한지민 (A2)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 결승전 FINAL -->
+              <div class="bg-gradient-to-br from-amber-950/80 via-slate-950 to-slate-950 p-4 rounded-2xl border-2 border-amber-500/50 shadow-2xl space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                    <span>👑</span> 🏆 결승전 (FINAL)
+                  </span>
+                  <span class="text-[10px] font-extrabold text-amber-400 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/40 animate-pulse">
+                    CHAMPIONSHIP
+                  </span>
+                </div>
+
+                <div class="flex justify-between items-center text-xs">
+                  <div class="text-center flex-1">
+                    <p class="font-black text-white text-sm">김철수 / 강동원</p>
+                    <span class="text-[10px] text-amber-400 font-bold">(A조 1위)</span>
+                  </div>
+
+                  <div class="flex flex-col items-center mx-2 bg-slate-900 p-2 rounded-2xl border border-amber-500/30">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xl font-black text-amber-400" id="finalScoreA">6</span>
+                      <span class="font-black text-slate-500 text-xs">:</span>
+                      <span class="text-xl font-black text-amber-400" id="finalScoreB">5</span>
+                    </div>
+                    <span class="text-[9px] text-slate-400 font-bold mt-0.5">매치포인트</span>
+                  </div>
+
+                  <div class="text-center flex-1">
+                    <p class="font-black text-white text-sm">이영희 / 한지민</p>
+                    <span class="text-[10px] text-amber-400 font-bold">(A조 2위)</span>
+                  </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800/80 flex gap-2">
+                  <button onclick="declareChampion('김철수 / 강동원')" class="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md">
+                    🥇 김철수/강동원 우승 확정
+                  </button>
+                  <button onclick="declareChampion('이영희 / 한지민')" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black rounded-xl text-xs transition border border-amber-500/30">
+                    🥇 이영희/한지민 우승 확정
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 탭 3: 마이페이지 -->
-        <div id="tabContentMyPage" class="space-y-4 hidden">
-          <!-- VIP 프로필 배너 -->
+        <!-- ---------------------------------------------------- -->
+        <!-- [탭 4]: VIP 마이페이지 -->
+        <!-- ---------------------------------------------------- -->
+        <div id="tabContentMypage" class="space-y-4 hidden">
           <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-5 text-slate-950 shadow-2xl">
             <div class="flex justify-between items-start">
               <div class="space-y-1">
@@ -288,7 +562,6 @@
             </div>
           </div>
 
-          <!-- 통산 4대 지표 -->
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center border-b border-slate-800 pb-2">
               <span class="text-xs font-bold text-slate-300 flex items-center gap-1">
@@ -301,472 +574,346 @@
             </div>
             <div class="grid grid-cols-4 gap-2 pt-1 text-center text-xs">
               <div class="bg-slate-950 p-2 rounded-xl border border-slate-800">
-                <p class="text-[10px] text-slate-400">총 경기</p>
-                <p class="text-base font-black text-white" id="myTotalMatches">12</p>
+                <p className="text-[10px] text-slate-400">총 경기</p>
+                <p class="text-base font-black text-white">12</p>
               </div>
               <div class="bg-emerald-950/40 p-2 rounded-xl border border-emerald-500/20">
                 <p class="text-[10px] text-emerald-400 font-bold">승리</p>
-                <p class="text-base font-black text-emerald-300" id="myWins">9</p>
+                <p class="text-base font-black text-emerald-300">9</p>
               </div>
               <div class="bg-red-950/40 p-2 rounded-xl border border-red-500/20">
                 <p class="text-[10px] text-red-400 font-bold">패배</p>
-                <p class="text-base font-black text-red-300" id="myLosses">3</p>
+                <p class="text-base font-black text-red-300">3</p>
               </div>
               <div class="bg-amber-950/40 p-2 rounded-xl border border-amber-500/20">
                 <p class="text-[10px] text-amber-400 font-bold">득실차</p>
-                <p class="text-base font-black text-amber-300" id="myPointDiff">+21</p>
+                <p class="text-base font-black text-amber-300">+21</p>
               </div>
             </div>
           </div>
-
-          <!-- 최근 경기 이력 -->
-          <div class="space-y-2">
-            <h3 class="text-xs font-extrabold text-slate-300 px-1">🎾 최근 경기 상세 이력</h3>
-            <div class="space-y-2" id="myMatchHistoryContainer"></div>
-          </div>
         </div>
 
-        <!-- 탭 4: 관리자 페이지 -->
+        <!-- ---------------------------------------------------- -->
+        <!-- [탭 5]: 운영자 관리 센터 -->
+        <!-- ---------------------------------------------------- -->
         <div id="tabContentAdmin" class="space-y-4 hidden">
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center border-b border-slate-800 pb-2">
               <h3 class="text-sm font-black text-red-400 flex items-center gap-1.5">
                 <span>👑</span> 썬 클럽 회원 등급 & 권한 관리
               </h3>
-              <span class="text-[11px] text-slate-400" id="adminUserCount">총 10명 회원</span>
+              <span class="text-[11px] text-slate-400">총 10명</span>
             </div>
-            <div class="space-y-2.5" id="adminUserListContainer"></div>
+            <div id="adminUserListContainer" class="divide-y divide-slate-800/80"></div>
           </div>
         </div>
-      </main>
+      </div>
 
-      <!-- 하단 고정 글래스 네비게이션 탭바 -->
-      <nav class="fixed lg:absolute bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-950/90 backdrop-blur-md border-t border-slate-800/80 px-3 py-2 flex justify-around items-center z-50 shadow-2xl">
-        <button onclick="switchTab('courts')" id="navBtnCourts" class="flex flex-col items-center py-1 px-3 rounded-2xl transition-all text-amber-400 font-bold scale-105 bg-amber-400/10">
-          <span class="text-lg">🎾</span>
-          <span class="text-[10px] mt-0.5">실시간 코트</span>
+      <!-- ======================================================== -->
+      <!-- [하단 5대 고정 네비게이션 탭바] -->
+      <!-- ======================================================== -->
+      <nav class="fixed lg:absolute bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-2 py-2 flex justify-around items-center z-50 shadow-2xl">
+        <button onclick="switchTab('courts')" id="navBtnCourts" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-amber-400 font-bold scale-105 bg-amber-400/10">
+          <span class="text-base">🎾</span>
+          <span class="text-[10px] mt-0.5">코트현황</span>
         </button>
-        <button onclick="switchTab('tournament')" id="navBtnTournament" class="flex flex-col items-center py-1 px-3 rounded-2xl transition-all text-slate-400 font-medium">
-          <span class="text-lg">📊</span>
-          <span class="text-[10px] mt-0.5">대진표</span>
+
+        <button onclick="switchTab('kdk')" id="navBtnKdk" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium">
+          <span class="text-base">🔄</span>
+          <span class="text-[10px] mt-0.5">KDK진행</span>
         </button>
-        <button onclick="switchTab('mypage')" id="navBtnMyPage" class="flex flex-col items-center py-1 px-3 rounded-2xl transition-all text-slate-400 font-medium">
-          <span class="text-lg">👤</span>
+
+        <button onclick="switchTab('tournament')" id="navBtnTournament" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium">
+          <span class="text-base">🏆</span>
+          <span class="text-[10px] mt-0.5">토너먼트</span>
+        </button>
+
+        <button onclick="switchTab('mypage')" id="navBtnMypage" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium">
+          <span class="text-base">👤</span>
           <span class="text-[10px] mt-0.5">마이페이지</span>
         </button>
-        <button onclick="switchTab('admin')" id="navBtnAdmin" class="flex flex-col items-center py-1 px-3 rounded-2xl transition-all text-slate-400 font-medium">
-          <span class="text-lg">⚙️</span>
+
+        <button onclick="switchTab('admin')" id="navBtnAdmin" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium">
+          <span class="text-base">⚙️</span>
           <span class="text-[10px] mt-0.5">운영관리</span>
         </button>
       </nav>
-    </div>
-
+    </main>
   </div>
 
-  <!-- 스코어 수정 모달 -->
-  <div id="courtScoreModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-    <div class="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-sm p-5 shadow-2xl text-white space-y-4">
+  <!-- 점수 수정 모달 -->
+  <div id="scoreModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-750 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 id="modalCourtTitle" class="text-base font-black text-amber-400 flex items-center gap-1.5">
-          <span>🎾</span> 코트 스코어 입력
+        <h3 id="modalCourtTitle" class="text-sm font-black text-amber-400 flex items-center gap-1.5">
+          <span>🎾</span> 코트 스코어 실시간 조절
         </h3>
-        <button onclick="closeScoreModal()" class="w-7 h-7 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm">✕</button>
+        <button onclick="closeScoreModal()" class="w-7 h-7 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center font-bold text-xs">✕</button>
       </div>
 
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-2 gap-3 py-2">
         <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800 text-center space-y-2">
-          <span class="text-xs font-bold text-emerald-400 block">Team A 게임 스코어</span>
-          <div class="flex items-center justify-center gap-2">
-            <button onclick="adjustScore('A', -1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-bold text-base">-</button>
-            <input type="number" id="modalInputScoreA" class="w-14 text-center font-black text-2xl bg-transparent text-amber-300 focus:outline-none" value="0" />
-            <button onclick="adjustScore('A', 1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-bold text-base">+</button>
+          <span class="text-[11px] font-black text-amber-400 block">TEAM A</span>
+          <span id="modalScoreA" class="text-3xl font-black text-white block">0</span>
+          <div class="flex justify-center gap-2">
+            <button onclick="changeModalScore('A', -1)" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold">-</button>
+            <button onclick="changeModalScore('A', 1)" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold">+</button>
           </div>
         </div>
 
         <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800 text-center space-y-2">
-          <span class="text-xs font-bold text-amber-400 block">Team B 게임 스코어</span>
-          <div class="flex items-center justify-center gap-2">
-            <button onclick="adjustScore('B', -1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-bold text-base">-</button>
-            <input type="number" id="modalInputScoreB" class="w-14 text-center font-black text-2xl bg-transparent text-amber-300 focus:outline-none" value="0" />
-            <button onclick="adjustScore('B', 1)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-bold text-base">+</button>
+          <span class="text-[11px] font-black text-emerald-400 block">TEAM B</span>
+          <span id="modalScoreB" class="text-3xl font-black text-white block">0</span>
+          <div class="flex justify-center gap-2">
+            <button onclick="changeModalScore('B', -1)" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold">-</button>
+            <button onclick="changeModalScore('B', 1)" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold">+</button>
           </div>
         </div>
-      </div>
-
-      <div class="space-y-1">
-        <label class="text-[11px] font-bold text-slate-400 block">경기 상태</label>
-        <select id="modalInputStatus" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none">
-          <option value="playing">🔴 경기 진행 중</option>
-          <option value="completed">🏁 경기 완료 (전적 자동 집계)</option>
-          <option value="waiting">⚪ 대기 중</option>
-        </select>
       </div>
 
       <div class="flex gap-2 pt-2">
-        <button onclick="closeScoreModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition">취소</button>
-        <button onclick="saveCourtScore()" class="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-amber-500/20">저장 완료</button>
+        <button onclick="closeScoreModal()" class="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">닫기</button>
+        <button onclick="saveModalScore()" class="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-lg">저장 완료</button>
       </div>
     </div>
   </div>
 
-  <!-- 통합 자바스크립트 엔진 -->
   <script>
-    // 1. 회원 데이터 & 등급 정의
-    const GRADE_WEIGHTS = {
-      '금배': 5,
-      '은배': 4,
-      '동배': 3,
-      '국화': 4,
-      '개나리': 2,
-      '테린이': 1,
-      '고령자부': 2
-    };
+    // 전역 상태
+    let activeTab = 'courts';
+    let tourPhase = 'qualifying';
+    let currentRole = 'member';
 
-    let currentUser = {
-      name: '김철수',
-      grade: '금배',
-      role: 'member' // 'admin' | 'member'
-    };
-
-    let currentPlayers = [
-      { id: 'u1', name: '김철수', gender: 'M', grade: '금배', role: 'member' },
-      { id: 'u2', name: '이영희', gender: 'F', grade: '국화', role: 'member' },
-      { id: 'u3', name: '박민수', gender: 'M', grade: '은배', role: 'member' },
-      { id: 'u4', name: '정지훈', gender: 'M', grade: '동배', role: 'member' },
-      { id: 'u5', name: '최수진', gender: 'F', grade: '개나리', role: 'member' },
-      { id: 'u6', name: '강동원', gender: 'M', grade: '금배', role: 'member' },
-      { id: 'u7', name: '한지민', gender: 'F', grade: '은배', role: 'member' },
-      { id: 'u8', name: '송중기', gender: 'M', grade: '동배', role: 'member' },
-      { id: 'u9', name: '조인성', gender: 'M', grade: '은배', role: 'member' },
-      { id: 'u10', name: '공유', gender: 'M', grade: '금배', role: 'admin' },
+    let courtsData = [
+      { id: 1, courtNumber: 1, status: 'playing', teamA: ['김철수 (금배)', '강동원 (금배)'], teamB: ['이영희 (국화)', '한지민 (은배)'], scoreA: 5, scoreB: 5 },
+      { id: 2, courtNumber: 2, status: 'playing', teamA: ['박민수 (은배)', '송중기 (동배)'], teamB: ['최수진 (개나리)', '김태희 (테린이)'], scoreA: 6, scoreB: 4 },
+      { id: 3, courtNumber: 3, status: 'waiting', teamA: ['정지훈 (동배)', '조인성 (은배)'], teamB: ['공유 (금배)', '정우성 (은배)'], scoreA: 0, scoreB: 0 },
     ];
 
-    // 실시간 코트 현황 데이터
-    let liveCourts = [
+    let currentEditingCourt = null;
+
+    // KDK 데이터
+    let kdkRounds = [
       {
-        id: 1,
-        courtNumber: 1,
-        status: 'playing',
-        teamA: ['김철수 (금배)', '강동원 (금배)'],
-        teamB: ['박민수 (은배)', '정지훈 (동배)'],
-        scoreA: 5,
-        scoreB: 3
+        round: 1,
+        name: '제 1 라운드 (오프닝 로테이션)',
+        matches: [
+          { court: 1, teamA: '김철수 / 강동원', teamB: '박민수 / 정지훈', scoreA: 6, scoreB: 3, completed: true },
+          { court: 2, teamA: '이영희 / 한지민', teamB: '최수진 / 송중기', scoreA: 4, scoreB: 6, completed: true },
+        ]
       },
       {
-        id: 2,
-        courtNumber: 2,
-        status: 'playing',
-        teamA: ['이영희 (국화)', '한지민 (은배)'],
-        teamB: ['최수진 (개나리)', '김태희 (테린이)'],
-        scoreA: 2,
-        scoreB: 4
+        round: 2,
+        name: '제 2 라운드 (크로스 파트너 순환)',
+        matches: [
+          { court: 1, teamA: '김철수 / 정지훈', teamB: '강동원 / 박민수', scoreA: 5, scoreB: 6, completed: true },
+          { court: 2, teamA: '이영희 / 최수진', teamB: '한지민 / 송중기', scoreA: 6, scoreB: 2, completed: true },
+        ]
       },
       {
-        id: 3,
-        courtNumber: 3,
-        status: 'waiting',
-        teamA: ['송중기 (동배)', '조인성 (은배)'],
-        teamB: ['공유 (금배)', '정우성 (은배)'],
-        scoreA: 0,
-        scoreB: 0
+        round: 3,
+        name: '제 3 라운드 (승부 라운드)',
+        matches: [
+          { court: 1, teamA: '김철수 / 박민수', teamB: '강동원 / 정지훈', scoreA: 6, scoreB: 4, completed: false },
+          { court: 2, teamA: '이영희 / 송중기', teamB: '한지민 / 최수진', scoreA: 3, scoreB: 5, completed: false },
+        ]
       }
     ];
 
-    let currentEditingCourtId = null;
+    let kdkStandings = [
+      { rank: 1, name: '강동원', grade: '금배', matches: 2, wins: 2, losses: 0, diff: '+4', pts: 12 },
+      { rank: 2, name: '김철수', grade: '금배', matches: 2, wins: 1, losses: 1, diff: '+2', pts: 11 },
+      { rank: 3, name: '이영희', grade: '국화', matches: 2, wins: 1, losses: 1, diff: '+2', pts: 10 },
+      { rank: 4, name: '송중기', grade: '동배', matches: 2, wins: 1, losses: 1, diff: '-2', pts: 8 },
+      { rank: 5, name: '박민수', grade: '은배', matches: 2, wins: 1, losses: 1, diff: '-2', pts: 9 },
+      { rank: 6, name: '정지훈', grade: '동배', matches: 2, wins: 0, losses: 2, diff: '-4', pts: 8 },
+    ];
 
-    // 네비게이션 탭 전환
+    // 탭 전환 함수
     function switchTab(tabId) {
-      const tabs = ['courts', 'tournament', 'mypage', 'admin'];
+      activeTab = tabId;
+      const tabs = ['courts', 'kdk', 'tournament', 'mypage', 'admin'];
       tabs.forEach(t => {
-        const el = document.getElementById(`tabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        const navBtn = document.getElementById(`navBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (el) el.classList.toggle('hidden', t !== tabId);
-        if (navBtn) {
+        const wrap = document.getElementById(`tabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        const btn = document.getElementById(`navBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (wrap) wrap.classList.toggle('hidden', t !== tabId);
+        if (btn) {
           if (t === tabId) {
-            navBtn.className = 'flex flex-col items-center py-1 px-3 rounded-2xl transition-all text-amber-400 font-bold scale-105 bg-amber-400/10';
+            btn.className = `flex flex-col items-center py-1 px-2 rounded-xl transition-all font-bold scale-105 ${
+              t === 'kdk' ? 'text-emerald-400 bg-emerald-400/10' :
+              t === 'admin' ? 'text-red-400 bg-red-400/10' :
+              'text-amber-400 bg-amber-400/10'
+            }`;
           } else {
-            navBtn.className = 'flex flex-col items-center py-1 px-3 rounded-2xl transition-all text-slate-400 font-medium';
+            btn.className = 'flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium';
           }
         }
       });
 
       if (tabId === 'courts') renderCourts();
-      if (tabId === 'tournament') runKdkGenerate();
-      if (tabId === 'mypage') renderMyPage();
+      if (tabId === 'kdk') renderKdk();
       if (tabId === 'admin') renderAdminUsers();
     }
 
-    function switchTourSubTab(sub) {
-      document.getElementById('tourSubKdk').classList.toggle('hidden', sub !== 'kdk');
-      document.getElementById('tourSubBracket').classList.toggle('hidden', sub !== 'bracket');
+    // 토너먼트 단계 전환
+    function switchTourPhase(phase) {
+      tourPhase = phase;
+      document.getElementById('tourPhaseQualifyingWrap').classList.toggle('hidden', phase !== 'qualifying');
+      document.getElementById('tourPhaseMainWrap').classList.toggle('hidden', phase !== 'main');
 
-      document.getElementById('btnSubKdk').className = sub === 'kdk'
-        ? 'flex-1 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md transition'
-        : 'flex-1 py-2 rounded-xl text-slate-400 hover:text-white transition';
+      document.getElementById('btnTourPhaseQual').className = phase === 'qualifying'
+        ? 'flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5'
+        : 'flex-1 py-2.5 rounded-xl text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5';
 
-      document.getElementById('btnSubBracket').className = sub === 'bracket'
-        ? 'flex-1 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-md transition'
-        : 'flex-1 py-2 rounded-xl text-slate-400 hover:text-white transition';
+      document.getElementById('btnTourPhaseMain').className = phase === 'main'
+        ? 'flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5'
+        : 'flex-1 py-2.5 rounded-xl text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5';
+    }
+
+    function advanceGroupToMain() {
+      switchTourPhase('main');
+      alert('🏆 예선 조별 1, 2위가 확정되어 본선 4강 토너먼트 브래킷에 자동 배치되었습니다!');
+    }
+
+    function declareChampion(team) {
+      document.getElementById('championName').innerText = team;
+      document.getElementById('championBanner').classList.remove('hidden');
+      alert(`🎉 축하합니다! [${team}] 조가 썬 테니스 클럽 공식 챔피언에 등극했습니다! 🏆`);
     }
 
     // 코트 렌더링
     function renderCourts() {
-      const container = document.getElementById('courtsListContainer');
-      if (!container) return;
-      container.innerHTML = '';
-
-      liveCourts.forEach(c => {
-        const isPlaying = c.status === 'playing';
-        const card = document.createElement('div');
-        card.className = 'relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-slate-750 p-4 shadow-xl hover:border-amber-500/30 transition-all group';
-        
-        card.innerHTML = `
-          <div class="flex justify-between items-center mb-3">
+      const c = document.getElementById('courtsListContainer');
+      c.innerHTML = courtsData.map(court => `
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-2">
             <div class="flex items-center gap-2">
-              <span class="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-slate-950 font-black text-xs flex items-center justify-center shadow-md">
-                ${c.courtNumber}
+              <span class="px-2 py-0.5 rounded-lg text-xs font-black bg-amber-400 text-slate-950">${court.courtNumber}번 코트</span>
+              <span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full ${court.status === 'playing' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-800 text-slate-400'}">
+                ${court.status === 'playing' ? '🔴 LIVE 경기 중' : '⚪ 대기 중'}
               </span>
-              <span class="font-extrabold text-sm text-white">${c.courtNumber}번 코트</span>
-              <span class="text-[10px] text-slate-400 hidden sm:inline">(클럽 공식 코트)</span>
             </div>
-            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${
-              isPlaying ? 'bg-red-950/80 text-red-300 border-red-500/40 animate-pulse' : 'bg-slate-800 text-slate-400 border-slate-700'
-            }">
-              ${isPlaying ? '🔴 경기 진행 중' : '⚪ 다음 경기 대기'}
-            </span>
+            <button onclick="openScoreModal(${court.id})" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 text-amber-300 font-bold border border-slate-700">점수 수정 ✎</button>
           </div>
-
-          <div class="grid grid-cols-7 gap-2 items-center bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/80 mb-3 shadow-inner">
-            <div class="col-span-3 text-center">
-              <span class="text-[10px] uppercase font-extrabold text-emerald-400 block mb-0.5">TEAM SUN</span>
-              <p class="text-sm font-bold text-white truncate">${c.teamA.join(' / ')}</p>
+          <div class="grid grid-cols-2 gap-3 items-center">
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+              <div class="flex justify-between items-center"><span class="text-[10px] font-black text-amber-400">TEAM A</span><span class="text-xl font-black text-white">${court.scoreA}</span></div>
+              <p class="text-xs font-bold text-slate-200 mt-1">${court.teamA.join('<br>')}</p>
             </div>
-            <div class="col-span-1 flex flex-col items-center justify-center">
-              <div class="px-2 py-1 rounded-lg bg-slate-950 border border-amber-500/30 shadow-md">
-                <span class="text-xl font-black text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-                  ${c.scoreA} : ${c.scoreB}
-                </span>
-              </div>
-              <span class="text-[9px] text-slate-500 font-bold mt-0.5">GAME</span>
-            </div>
-            <div class="col-span-3 text-center">
-              <span class="text-[10px] uppercase font-extrabold text-amber-400 block mb-0.5">TEAM ACE</span>
-              <p class="text-sm font-bold text-white truncate">${c.teamB.join(' / ')}</p>
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+              <div class="flex justify-between items-center"><span class="text-[10px] font-black text-emerald-400">TEAM B</span><span class="text-xl font-black text-white">${court.scoreB}</span></div>
+              <p class="text-xs font-bold text-slate-200 mt-1">${court.teamB.join('<br>')}</p>
             </div>
           </div>
-
-          <button onclick="openScoreModal(${c.id})" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer">
-            <span>⚡</span>
-            <span>실시간 스코어 입력 / 결과 저장</span>
-          </button>
-        `;
-        container.appendChild(card);
-      });
+        </div>
+      `).join('');
     }
 
-    function openScoreModal(courtId) {
-      const court = liveCourts.find(c => c.id === courtId);
-      if (!court) return;
-      currentEditingCourtId = courtId;
-      document.getElementById('modalCourtTitle').innerHTML = `<span>🎾</span> 코트 ${court.courtNumber}번 스코어 입력`;
-      document.getElementById('modalInputScoreA').value = court.scoreA;
-      document.getElementById('modalInputScoreB').value = court.scoreB;
-      document.getElementById('modalInputStatus').value = court.status;
-      document.getElementById('courtScoreModal').classList.remove('hidden');
-    }
+    // KDK 렌더링
+    function renderKdk() {
+      const table = document.getElementById('kdkRankingsTable');
+      table.innerHTML = kdkStandings.map(s => `
+        <tr class="${s.rank <= 3 ? 'bg-amber-400/5 font-bold' : ''}">
+          <td class="py-2">${s.rank === 1 ? '🥇 1' : s.rank === 2 ? '🥈 2' : s.rank === 3 ? '🥉 3' : s.rank}</td>
+          <td class="py-2 text-left px-2 text-white">${s.name} <span class="text-[10px] text-slate-400 font-normal">(${s.grade})</span></td>
+          <td class="py-2 text-slate-300">${s.matches}</td>
+          <td class="py-2 text-emerald-400">${s.wins}승 ${s.losses}패</td>
+          <td class="py-2 text-slate-300">${s.diff}</td>
+          <td class="py-2 font-black text-amber-400">${s.pts}점</td>
+        </tr>
+      `).join('');
 
-    function closeScoreModal() {
-      document.getElementById('courtScoreModal').classList.add('hidden');
-      currentEditingCourtId = null;
-    }
-
-    function adjustScore(team, delta) {
-      const input = document.getElementById(`modalInputScore${team}`);
-      input.value = Math.max(0, Number(input.value) + delta);
-    }
-
-    function saveCourtScore() {
-      if (currentEditingCourtId === null) return;
-      const scoreA = Number(document.getElementById('modalInputScoreA').value);
-      const scoreB = Number(document.getElementById('modalInputScoreB').value);
-      const status = document.getElementById('modalInputStatus').value;
-
-      liveCourts = liveCourts.map(c => {
-        if (c.id === currentEditingCourtId) return { ...c, scoreA, scoreB, status };
-        return c;
-      });
-
-      closeScoreModal();
-      renderCourts();
-    }
-
-    // 대진표 자동 생성 함수 (KDK / 복식 매칭)
-    function generateBracket() {
-      const inputEl = document.getElementById('participantsInputArea');
-      const names = (inputEl ? inputEl.value : '')
-        .split(',')
-        .map(n => n.trim())
-        .filter(n => n.length > 0);
-
-      if (names.length < 4) {
-        alert('최소 4명 이상의 참가자가 필요합니다.');
-        return;
-      }
-
-      const generatedRounds = [];
-      for (let r = 1; r <= 3; r++) {
-        const shuffled = [...names].sort(() => Math.random() - 0.5);
-        const matches = [];
-        for (let i = 0; i < shuffled.length; i += 4) {
-          if (i + 3 < shuffled.length) {
-            matches.push({
-              court: matches.length + 1,
-              team1: [shuffled[i], shuffled[i+1]],
-              team2: [shuffled[i+2], shuffled[i+3]]
-            });
-          }
-        }
-        generatedRounds.push({ round: r, matches });
-      }
-
-      const resContainer = document.getElementById('quickBracketResult');
-      if (resContainer) {
-        let html = '<div class="space-y-3 mb-4">';
-        html += '<div class="flex justify-between items-center px-1"><h4 class="text-xs font-extrabold text-amber-300">✨ 자동 생성된 실시간 대진표 (' + generatedRounds.length + '개 라운드)</h4><span class="text-[10px] text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">생성 완료</span></div>';
-        generatedRounds.forEach(gr => {
-          html += '<div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2">';
-          html += '<div class="text-xs font-black text-amber-400 border-b border-slate-800 pb-1.5 flex justify-between"><span>제 ' + gr.round + ' 라운드</span><span class="text-slate-400 font-normal text-[11px]">' + gr.matches.length + '개 코트 진행</span></div><div class="space-y-1.5">';
-          gr.matches.forEach(m => {
-            html += '<div class="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center text-xs"><span class="font-extrabold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-lg border border-amber-400/20 text-[10px]">코트 ' + m.court + '</span><span class="font-bold text-white">' + m.team1[0] + '/' + m.team1[1] + '</span><span class="font-black text-slate-500 text-[10px]">VS</span><span class="font-bold text-white">' + m.team2[0] + '/' + m.team2[1] + '</span></div>';
-          });
-          html += '</div></div>';
-        });
-        html += '</div>';
-        resContainer.innerHTML = html;
-      }
-    }
-
-    function setQuickNames(count) {
-      if (count === 8) {
-        document.getElementById('participantsInputArea').value = '김철수, 박민수, 이영희, 최수진, 정지훈, 한지민, 송중기, 강동원';
-      } else {
-        document.getElementById('participantsInputArea').value = '김철수, 박민수, 이영희, 최수진, 정지훈, 한지민, 송중기, 강동원, 조인성, 공유, 김태희, 전지현';
-      }
-    }
-
-    function runKdkGenerate() {
-      const container = document.getElementById('kdkRoundsContainer');
-      if (!container) return;
-      container.innerHTML = `
-        <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2">
+      const list = document.getElementById('kdkRoundsList');
+      list.innerHTML = kdkRounds.map((r, rIdx) => `
+        <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2.5">
           <div class="text-xs font-black text-emerald-400 border-b border-slate-800 pb-1.5 flex justify-between">
-            <span>제 1 라운드</span>
-            <span class="text-slate-400 font-normal text-[11px]">2개 코트 진행</span>
+            <span>${r.name}</span>
+            <span class="text-[10px] text-slate-400">${r.matches.length}개 코트 가동</span>
           </div>
-          <div class="space-y-1.5 text-xs">
-            <div class="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center">
-              <span class="font-extrabold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-lg border border-emerald-400/20 text-[10px]">코트 1</span>
-              <span class="font-bold text-white">김철수 / 강동원</span>
-              <span class="font-black text-slate-500 text-[10px]">VS</span>
-              <span class="font-bold text-white">박민수 / 정지훈</span>
-            </div>
-            <div class="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center">
-              <span class="font-extrabold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-lg border border-emerald-400/20 text-[10px]">코트 2</span>
-              <span class="font-bold text-white">이영희 / 한지민</span>
-              <span class="font-black text-slate-500 text-[10px]">VS</span>
-              <span class="font-bold text-white">최수진 / 송중기</span>
-            </div>
+          <div class="space-y-2">
+            ${r.matches.map((m, mIdx) => `
+              <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+                <span class="font-extrabold text-amber-400 text-[10px]">코트 ${m.court}</span>
+                <span class="font-bold text-white truncate max-w-[90px]">${m.teamA}</span>
+                <span class="text-sm font-black text-white px-2 py-0.5 bg-slate-900 rounded border border-slate-800">${m.scoreA} : ${m.scoreB}</span>
+                <span class="font-bold text-white truncate max-w-[90px]">${m.teamB}</span>
+                <span class="text-[10px] font-bold ${m.completed ? 'text-emerald-400' : 'text-slate-500'}">${m.completed ? '완료' : '진행'}</span>
+              </div>
+            `).join('')}
           </div>
         </div>
-      `;
+      `).join('');
     }
 
-    function runTournamentGenerate() {
-      alert('본선 16강 토너먼트 브래킷이 자동 편성되었습니다!');
+    function setQuickKdkNames(n) {
+      document.getElementById('kdkNamesInput').value = n === 8
+        ? '김철수, 강동원, 박민수, 정지훈, 이영희, 한지민, 최수진, 송중기'
+        : '김철수, 강동원, 박민수, 정지훈, 이영희, 한지민, 최수진, 송중기, 조인성, 공유, 김태희, 정우성';
     }
 
-    function renderMyPage() {
-      const container = document.getElementById('myMatchHistoryContainer');
-      if (!container) return;
-      container.innerHTML = `
-        <div class="bg-slate-900 border border-slate-750 p-3 rounded-2xl shadow-md flex items-center justify-between text-xs">
-          <div>
-            <div class="font-bold text-white">월례회 KDK 결승전 <span class="text-[10px] text-slate-400">코트 1번</span></div>
-            <p class="text-[11px] text-slate-400">파트너: 강동원 (금배) vs 박민수 / 정지훈</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-black text-white">6 : 4</span>
-            <span class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">WIN</span>
-          </div>
-        </div>
-        <div class="bg-slate-900 border border-slate-750 p-3 rounded-2xl shadow-md flex items-center justify-between text-xs">
-          <div>
-            <div class="font-bold text-white">월례회 KDK 예선 R3 <span class="text-[10px] text-slate-400">코트 2번</span></div>
-            <p class="text-[11px] text-slate-400">파트너: 이영희 (국화) vs 최수진 / 한지민</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-black text-white">6 : 3</span>
-            <span class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">WIN</span>
-          </div>
-        </div>
-      `;
+    function generateKdkTournament() {
+      alert('🎉 입력된 명단으로 3개 라운드 KDK 파트너 순환 대진표가 새로 편성되었습니다!');
+      renderKdk();
+    }
+
+    function toggleUserRole() {
+      currentRole = currentRole === 'member' ? 'admin' : 'member';
+      const btn = document.getElementById('roleToggleBtn');
+      btn.innerText = currentRole === 'admin' ? '👑 운영자 모드' : '👤 회원 모드';
+      btn.className = currentRole === 'admin'
+        ? 'px-2.5 py-1 rounded-xl text-[11px] font-extrabold border bg-red-500/20 text-red-300 border-red-500/40'
+        : 'px-2.5 py-1 rounded-xl text-[11px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
     }
 
     function renderAdminUsers() {
-      const container = document.getElementById('adminUserListContainer');
-      if (!container) return;
-      container.innerHTML = '';
-      currentPlayers.forEach(u => {
-        const row = document.createElement('div');
-        row.className = 'bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center text-xs';
-        row.innerHTML = `
-          <div>
-            <div class="font-bold text-white">${u.name} <span class="text-[10px] text-slate-400">(${u.gender})</span></div>
-            <span class="text-[10px] text-amber-400 font-bold">${u.role === 'admin' ? '👑 운영자' : '일반회원'}</span>
+      const c = document.getElementById('adminUserListContainer');
+      const users = [
+        { name: '김철수', grade: '금배', role: 'member' },
+        { name: '강동원', grade: '금배', role: 'member' },
+        { name: '이영희', grade: '국화', role: 'member' },
+        { name: '박민수', grade: '은배', role: 'member' },
+        { name: '공유', grade: '금배', role: 'admin' },
+      ];
+      c.innerHTML = users.map(u => `
+        <div class="py-2.5 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-white">${u.name}</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
           </div>
-          <div class="flex gap-1.5 items-center">
-            <select onchange="updateUserGrade('${u.id}', this.value)" class="bg-slate-900 border border-slate-700 text-amber-300 text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none">
-              ${['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'].map(g => `<option value="${g}" ${u.grade === g ? 'selected' : ''}>${g}</option>`).join('')}
-            </select>
-          </div>
-        `;
-        container.appendChild(row);
-      });
+          <span class="text-[10px] text-slate-400">${u.role === 'admin' ? '운영진' : '정회원'}</span>
+        </div>
+      `).join('');
     }
 
-    function updateUserGrade(userId, newGrade) {
-      const user = currentPlayers.find(u => u.id === userId);
-      if (user) {
-        user.grade = newGrade;
-        alert(`${user.name} 님의 등급이 [${newGrade}]로 변경되었습니다.`);
+    // 모달 관리
+    function openScoreModal(courtId) {
+      currentEditingCourt = courtsData.find(c => c.id === courtId);
+      if (!currentEditingCourt) return;
+      document.getElementById('modalCourtTitle').innerHTML = `<span>🎾</span> ${currentEditingCourt.courtNumber}번 코트 스코어 실시간 조절`;
+      document.getElementById('modalScoreA').innerText = currentEditingCourt.scoreA;
+      document.getElementById('modalScoreB').innerText = currentEditingCourt.scoreB;
+      document.getElementById('scoreModal').classList.remove('hidden');
+    }
+
+    function closeScoreModal() {
+      document.getElementById('scoreModal').classList.add('hidden');
+    }
+
+    function changeModalScore(team, delta) {
+      const el = team === 'A' ? document.getElementById('modalScoreA') : document.getElementById('modalScoreB');
+      el.innerText = Math.max(0, parseInt(el.innerText, 10) + delta);
+    }
+
+    function saveModalScore() {
+      if (currentEditingCourt) {
+        currentEditingCourt.scoreA = parseInt(document.getElementById('modalScoreA').innerText, 10);
+        currentEditingCourt.scoreB = parseInt(document.getElementById('modalScoreB').innerText, 10);
+        renderCourts();
       }
+      closeScoreModal();
     }
 
-    function toggleRole() {
-      currentUser.role = currentUser.role === 'admin' ? 'member' : 'admin';
-      const btn = document.getElementById('btnToggleRole');
-      if (currentUser.role === 'admin') {
-        btn.innerText = '👑 관리자 모드';
-        btn.className = 'text-[10px] px-2.5 py-1 bg-red-950/80 text-red-300 rounded-xl font-bold border border-red-500/40 transition';
-      } else {
-        btn.innerText = '👤 회원 모드';
-        btn.className = 'text-[10px] px-2.5 py-1 bg-slate-800 text-slate-300 rounded-xl font-bold border border-slate-700 transition';
-      }
-    }
-
-    function requestPushPermission() {
-      if ('Notification' in window) {
-        Notification.requestPermission().then(perm => {
-          if (perm === 'granted') {
-            document.getElementById('btnPushToggle').innerText = '알림 켜짐 ✓';
-            document.getElementById('btnPushToggle').className = 'px-2.5 py-1 bg-slate-800 text-emerald-400 font-bold rounded-lg text-[11px]';
-            alert('🔔 썬 테니스 클럽 코트 출전 알림이 활성화되었습니다!');
-          }
-        });
-      }
-    }
-
-    // 초기 렌더링
+    // 초기 실행
     renderCourts();
   </script>
 </body>

@@ -4,12 +4,38 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const isSupabaseConfigured =
+  Boolean(supabaseUrl) &&
+  supabaseUrl !== 'YOUR_SUPABASE_URL' &&
+  !supabaseUrl.includes('your-project');
+
+const supabase = createClient(
+  isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
+  isSupabaseConfigured ? supabaseAnonKey : 'placeholder-anon-key'
+);
+
+const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
 
 export default function TennisApp() {
-  const [activeTab, setActiveTab] = useState('courts'); // 'courts' | 'tournament' | 'mypage' | 'admin'
-  const [role, setRole] = useState('member'); // 'member' | 'admin'
-  const [subTourTab, setSubTourTab] = useState('kdk'); // 'kdk' | 'bracket'
+  // 로그인 / 회원가입 인증 상태
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authMessage, setAuthMessage] = useState(null);
+
+  // 로그인/회원가입 입력 폼 상태
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [signUpName, setSignUpName] = useState('');
+  const [signUpGender, setSignUpGender] = useState('M');
+  const [signUpGrade, setSignUpGrade] = useState('테린이');
+  const [signUpPhone, setSignUpPhone] = useState('');
+
+  // 메인 앱 탭 및 상태
+  const [activeTab, setActiveTab] = useState('courts');
+  const [role, setRole] = useState('member');
+  const [subTourTab, setSubTourTab] = useState('kdk');
 
   // 참가자 명단 입력 및 대진표 생성 상태
   const [participantsInput, setParticipantsInput] = useState(
@@ -50,16 +76,16 @@ export default function TennisApp() {
 
   // 회원 목록 데이터
   const [users, setUsers] = useState([
-    { id: 'u1', name: '김철수', gender: '남', grade: '금배', role: 'member' },
-    { id: 'u2', name: '이영희', gender: '여', grade: '국화', role: 'member' },
-    { id: 'u3', name: '박민수', gender: '남', grade: '은배', role: 'member' },
-    { id: 'u4', name: '정지훈', gender: '남', grade: '동배', role: 'member' },
-    { id: 'u5', name: '최수진', gender: '여', grade: '개나리', role: 'member' },
-    { id: 'u6', name: '강동원', gender: '남', grade: '금배', role: 'member' },
-    { id: 'u7', name: '한지민', gender: '여', grade: '은배', role: 'member' },
-    { id: 'u8', name: '송중기', gender: '남', grade: '동배', role: 'member' },
-    { id: 'u9', name: '조인성', gender: '남', grade: '은배', role: 'member' },
-    { id: 'u10', name: '공유', gender: '남', grade: '금배', role: 'admin' },
+    { id: 'u1', name: '김철수', email: 'chulsoo@suntc.kr', gender: '남', grade: '금배', role: 'member' },
+    { id: 'u2', name: '이영희', email: 'younghee@suntc.kr', gender: '여', grade: '국화', role: 'member' },
+    { id: 'u3', name: '박민수', email: 'minsoo@suntc.kr', gender: '남', grade: '은배', role: 'member' },
+    { id: 'u4', name: '정지훈', email: 'jihoon@suntc.kr', gender: '남', grade: '동배', role: 'member' },
+    { id: 'u5', name: '최수진', email: 'sujin@suntc.kr', gender: '여', grade: '개나리', role: 'member' },
+    { id: 'u6', name: '강동원', email: 'dongwon@suntc.kr', gender: '남', grade: '금배', role: 'member' },
+    { id: 'u7', name: '한지민', email: 'jimin@suntc.kr', gender: '여', grade: '은배', role: 'member' },
+    { id: 'u8', name: '송중기', email: 'joongki@suntc.kr', gender: '남', grade: '동배', role: 'member' },
+    { id: 'u9', name: '조인성', email: 'insung@suntc.kr', gender: '남', grade: '은배', role: 'member' },
+    { id: 'u10', name: '공유', email: 'admin@suntc.kr', gender: '남', grade: '금배', role: 'admin' },
   ]);
 
   // 스코어 수정 모달 상태
@@ -71,18 +97,235 @@ export default function TennisApp() {
   // 알림 권한 상태
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
+  // 초기 세션 및 로컬 저장된 가입 회원 불러오기
   useEffect(() => {
-    // Supabase 연동 시도 (실제 환경 변수가 있을 경우 실시간 동기화)
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
-      supabase.from('matches').select('*').then(({ data }) => {
-        if (data && data.length > 0) {
-          // 필요 시 DB 데이터 병합
+    try {
+      const savedUsersRaw = localStorage.getItem('sun_tennis_registered_users');
+      if (savedUsersRaw) {
+        const savedUsers = JSON.parse(savedUsersRaw);
+        if (Array.isArray(savedUsers) && savedUsers.length > 0) {
+          setUsers((prev) => {
+            const existingIds = new Set(prev.map((u) => u.id));
+            const merged = [...prev];
+            savedUsers.forEach((su) => {
+              if (!existingIds.has(su.id)) merged.push(su);
+            });
+            return merged;
+          });
+        }
+      }
+
+      const savedSessionRaw = localStorage.getItem('sun_tennis_current_user');
+      if (savedSessionRaw) {
+        const savedUser = JSON.parse(savedSessionRaw);
+        if (savedUser && savedUser.name) {
+          setCurrentUser(savedUser);
+          setRole(savedUser.role || 'member');
+        }
+      }
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          const meta = session.user.user_metadata || {};
+          const loggedIn = {
+            id: session.user.id,
+            name: meta.name || session.user.email?.split('@')[0] || '클럽회원',
+            email: session.user.email,
+            gender: meta.gender === 'F' ? '여' : '남',
+            grade: meta.grade || '테린이',
+            role: 'member',
+          };
+          setCurrentUser(loggedIn);
         }
       });
     }
   }, []);
 
-  // 대진표 자동 생성 함수
+  // 로그인 & 회원가입 제출 핸들러
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthMessage(null);
+
+    if (isSignUp) {
+      if (!signUpName.trim()) {
+        setAuthMessage({ type: 'error', text: '이름을 입력해 주세요.' });
+        return;
+      }
+      if (password.length < 6) {
+        setAuthMessage({ type: 'error', text: '비밀번호는 최소 6자 이상 입력해 주세요.' });
+        return;
+      }
+      if (password !== confirmPassword) {
+        setAuthMessage({ type: 'error', text: '비밀번호와 비밀번호 확인이 일치하지 않습니다.' });
+        return;
+      }
+
+      setAuthLoading(true);
+      try {
+        let userId = `u_${Date.now()}`;
+
+        if (isSupabaseConfigured) {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                name: signUpName.trim(),
+                gender: signUpGender,
+                grade: signUpGrade,
+                phone: signUpPhone.trim(),
+              },
+            },
+          });
+          if (error) {
+            setAuthMessage({ type: 'error', text: `회원가입 실패: ${error.message}` });
+            setAuthLoading(false);
+            return;
+          }
+          if (data?.user?.id) {
+            userId = data.user.id;
+          }
+        }
+
+        const newMember = {
+          id: userId,
+          name: signUpName.trim(),
+          email: email.trim(),
+          gender: signUpGender === 'F' ? '여' : '남',
+          grade: signUpGrade,
+          role: 'member',
+        };
+
+        setUsers((prev) => [newMember, ...prev.filter((u) => u.email !== newMember.email)]);
+        try {
+          const prevSaved = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
+          const updatedSaved = [
+            { ...newMember, password },
+            ...prevSaved.filter((u) => u.email !== newMember.email),
+          ];
+          localStorage.setItem('sun_tennis_registered_users', JSON.stringify(updatedSaved));
+          localStorage.setItem('sun_tennis_current_user', JSON.stringify(newMember));
+        } catch {}
+
+        if (!participantsInput.includes(newMember.name)) {
+          setParticipantsInput((prev) => `${newMember.name}, ${prev}`);
+        }
+
+        setCurrentUser(newMember);
+        setRole('member');
+        alert(`🎉 환영합니다, ${newMember.name} 회원님! [${newMember.grade}] 등급으로 회원가입 및 로그인이 완료되었습니다.`);
+      } finally {
+        setAuthLoading(false);
+      }
+    } else {
+      if (!email.trim() || !password) {
+        setAuthMessage({ type: 'error', text: '이메일과 비밀번호를 입력해 주세요.' });
+        return;
+      }
+
+      setAuthLoading(true);
+      try {
+        if (isSupabaseConfigured) {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
+          if (error) {
+            setAuthMessage({ type: 'error', text: `로그인 실패: ${error.message}` });
+            setAuthLoading(false);
+            return;
+          }
+          if (data?.user) {
+            const meta = data.user.user_metadata || {};
+            const loggedUser = {
+              id: data.user.id,
+              name: meta.name || email.split('@')[0],
+              email: data.user.email,
+              gender: meta.gender === 'F' ? '여' : '남',
+              grade: meta.grade || '금배',
+              role: 'member',
+            };
+            setCurrentUser(loggedUser);
+            try {
+              localStorage.setItem('sun_tennis_current_user', JSON.stringify(loggedUser));
+            } catch {}
+            return;
+          }
+        }
+
+        let matchedUser;
+        try {
+          const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
+          const foundLocal = savedList.find(
+            (u) => u.email?.toLowerCase() === email.trim().toLowerCase()
+          );
+          if (foundLocal) {
+            if (foundLocal.password && foundLocal.password !== password) {
+              setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
+              setAuthLoading(false);
+              return;
+            }
+            matchedUser = foundLocal;
+          }
+        } catch {}
+
+        if (!matchedUser) {
+          matchedUser = users.find(
+            (u) => u.email?.toLowerCase() === email.trim().toLowerCase() || u.name === email.trim()
+          );
+        }
+
+        const loggedUser = matchedUser || {
+          id: `u_${Date.now()}`,
+          name: email.split('@')[0] || '김철수',
+          email: email.trim(),
+          gender: '남',
+          grade: '금배',
+          role: 'member',
+        };
+
+        setCurrentUser(loggedUser);
+        setRole(loggedUser.role);
+        try {
+          localStorage.setItem('sun_tennis_current_user', JSON.stringify(loggedUser));
+        } catch {}
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+  };
+
+  const handleQuickDemoLogin = () => {
+    const demoUser = {
+      id: 'u1',
+      name: '김철수',
+      email: 'chulsoo@suntc.kr',
+      gender: '남',
+      grade: '금배',
+      role: 'member',
+    };
+    setCurrentUser(demoUser);
+    setRole('member');
+    try {
+      localStorage.setItem('sun_tennis_current_user', JSON.stringify(demoUser));
+    } catch {}
+  };
+
+  const handleLogout = async () => {
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
+    try {
+      localStorage.removeItem('sun_tennis_current_user');
+    } catch {}
+    setCurrentUser(null);
+    setPassword('');
+    setConfirmPassword('');
+    setAuthMessage(null);
+  };
+
   const handleGenerateBracket = () => {
     const names = participantsInput
       .split(',')
@@ -146,6 +389,13 @@ export default function TennisApp() {
 
   const handleUserGradeChange = (userId, newGrade) => {
     setUsers(users.map((u) => (u.id === userId ? { ...u, grade: newGrade } : u)));
+    if (currentUser && currentUser.id === userId) {
+      const updated = { ...currentUser, grade: newGrade };
+      setCurrentUser(updated);
+      try {
+        localStorage.setItem('sun_tennis_current_user', JSON.stringify(updated));
+      } catch {}
+    }
   };
 
   const toggleRole = () => {
@@ -162,19 +412,292 @@ export default function TennisApp() {
     }
   };
 
-  const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
+  // ============================================================================
+  // [로그인 & 회원가입 화면]: 로그인하지 않은 경우 표시
+  // ============================================================================
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-400 selection:text-slate-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+          
+          {/* 좌측 클럽 브랜딩 배너 */}
+          <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-amber-500/20 bg-slate-900">
+            <img
+              src="/sun-tennis-hero.jpg"
+              alt="썬 테니스 클럽"
+              className="w-full h-48 lg:h-[520px] object-cover object-center"
+              onError={(e) => {
+                e.target.src = '/sun-banner.png';
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent flex flex-col justify-end p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 uppercase tracking-wider">
+                  Official Club
+                </span>
+                <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  실시간 코트 연동
+                </span>
+              </div>
+              <h1 className="text-2xl lg:text-3xl font-black text-white flex items-center gap-2">
+                <span className="text-amber-400 text-3xl">☀️</span>
+                <span className="bg-gradient-to-r from-amber-200 via-amber-400 to-orange-400 bg-clip-text text-transparent">
+                  썬 테니스 클럽
+                </span>
+              </h1>
+              <p className="text-xs lg:text-sm text-slate-300 font-medium mt-2 leading-relaxed">
+                실시간 코트 스코어 중계 · KDK 복식 대진표 자동 생성 · 개인 승률 및 랭킹 통합 관리 시스템
+              </p>
+              <div className="hidden lg:grid grid-cols-3 gap-2 mt-5 pt-4 border-t border-slate-800/80 text-center text-xs">
+                <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-amber-400 font-black block text-sm">실시간 코트</span>
+                  <span className="text-[11px] text-slate-400">라이브 스코어</span>
+                </div>
+                <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-emerald-400 font-black block text-sm">KDK 대진표</span>
+                  <span className="text-[11px] text-slate-400">자동 파트너 매칭</span>
+                </div>
+                <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-orange-400 font-black block text-sm">공식 전적</span>
+                  <span className="text-[11px] text-slate-400">승률/득실 랭킹</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 우측 로그인 / 회원가입 카드 폼 */}
+          <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 backdrop-blur-xl">
+            <div className="text-center space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-extrabold mb-1">
+                <span>🎾</span>
+                <span>SUN TENNIS CLUB MEMBERSHIP</span>
+              </div>
+              <h2 className="text-xl font-black text-white">
+                {isSignUp ? '신규 클럽 회원가입' : '클럽 회원 로그인'}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {isSignUp
+                  ? '아래 가입 폼을 작성하면 즉시 클럽 회원으로 등록됩니다.'
+                  : '로그인하거나 회원가입 버튼을 눌러 새 계정을 만드세요.'}
+              </p>
+            </div>
+
+            {/* 상단 로그인 / 회원가입 탭 전환 버튼 */}
+            <div className="grid grid-cols-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-extrabold">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(false);
+                  setAuthMessage(null);
+                }}
+                className={`py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  !isSignUp
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>🔑</span>
+                <span>로그인</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(true);
+                  setAuthMessage(null);
+                }}
+                className={`py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  isSignUp
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>✨</span>
+                <span>회원가입</span>
+              </button>
+            </div>
+
+            {authMessage && (
+              <div
+                className={`p-3 rounded-xl text-xs font-bold border ${
+                  authMessage.type === 'error'
+                    ? 'bg-red-950/60 border-red-500/40 text-red-300'
+                    : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                }`}
+              >
+                {authMessage.text}
+              </div>
+            )}
+
+            {/* 로그인 & 회원가입 통합 폼 */}
+            <form onSubmit={handleAuthSubmit} className="space-y-3.5">
+              {isSignUp && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      이름 (실명) <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 홍길동"
+                      value={signUpName}
+                      onChange={(e) => setSignUpName(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        성별 <span className="text-amber-400">*</span>
+                      </label>
+                      <select
+                        value={signUpGender}
+                        onChange={(e) => setSignUpGender(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      >
+                        <option value="M">남성 (남)</option>
+                        <option value="F">여성 (여)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        테니스 등급(부수) <span className="text-amber-400">*</span>
+                      </label>
+                      <select
+                        value={signUpGrade}
+                        onChange={(e) => setSignUpGrade(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-amber-300 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      >
+                        {GRADE_OPTIONS.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      휴대폰 번호 <span className="text-slate-500 font-normal">(선택)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="010-1234-5678"
+                      value={signUpPhone}
+                      onChange={(e) => setSignUpPhone(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  이메일 주소 <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  placeholder="example@suntc.kr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  비밀번호 <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="비밀번호 입력 (6자 이상)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={6}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  required
+                />
+              </div>
+
+              {isSignUp && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    비밀번호 확인 <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="비밀번호 다시 입력"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    minLength={6}
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    required
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className={`w-full py-3 font-black rounded-xl text-sm shadow-lg transition flex items-center justify-center gap-2 cursor-pointer ${
+                  isSignUp
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 shadow-emerald-500/20'
+                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 shadow-amber-500/20'
+                }`}
+              >
+                <span>{isSignUp ? '✨' : '🎾'}</span>
+                <span>
+                  {authLoading
+                    ? '처리 중...'
+                    : isSignUp
+                    ? '회원가입 완료 및 시작하기'
+                    : '로그인하기'}
+                </span>
+              </button>
+            </form>
+
+            {/* 하단 회원가입 전환 버튼 & 빠른 체험 입장 버튼 */}
+            <div className="pt-3 border-t border-slate-800 space-y-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setAuthMessage(null);
+                }}
+                className="w-full py-2.5 bg-emerald-950/40 hover:bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 font-extrabold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>{isSignUp ? '🔑' : '📝'}</span>
+                <span>
+                  {isSignUp
+                    ? '이미 계정이 있으신가요? 로그인 화면으로 이동'
+                    : '아직 회원이 아니신가요? 회원가입 하기'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleQuickDemoLogin}
+                className="w-full py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>⚡</span>
+                <span>체험 계정(김철수 · 금배)으로 바로 입장</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-400 selection:text-slate-900">
-      
-      {/* 와이드 PC & 모바일 하이브리드 컨테이너 */}
       <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row justify-center items-start lg:gap-8 lg:p-6 min-h-screen">
-
-        {/* ======================================================== */}
-        {/* [PC 전용 사이드 패널]: 썬(SUN) 테니스 클럽 공식 브랜딩 & 코트 요약 */}
-        {/* ======================================================== */}
         <aside className="hidden lg:flex flex-col w-[380px] shrink-0 sticky top-6 space-y-4">
-          {/* 썬 클럽 공식 히어로 비주얼 카드 */}
           <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-amber-500/20 group">
             <img
               src="/sun-tennis-hero.jpg"
@@ -206,7 +729,6 @@ export default function TennisApp() {
             </div>
           </div>
 
-          {/* 오늘의 코트 가동 상태 위젯 */}
           <div className="bg-slate-900/90 backdrop-blur-md rounded-2xl p-4 border border-slate-800 shadow-xl space-y-3">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
               <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
@@ -226,7 +748,6 @@ export default function TennisApp() {
             </div>
           </div>
 
-          {/* 스마트폰 PWA 연동 카드 */}
           <div className="bg-gradient-to-br from-emerald-950/40 via-slate-900 to-amber-950/30 rounded-2xl p-4 border border-emerald-500/20 shadow-xl">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-500 to-emerald-500 p-0.5 shrink-0 shadow-md">
@@ -244,12 +765,7 @@ export default function TennisApp() {
           </div>
         </aside>
 
-        {/* ======================================================== */}
-        {/* [메인 모바일 프레임]: 스마트폰 크기 모바일 뷰 (터치 최적화) */}
-        {/* ======================================================== */}
         <div className="w-full max-w-md mx-auto bg-slate-900/95 lg:rounded-3xl border-x lg:border border-slate-800/80 shadow-2xl min-h-screen lg:min-h-[840px] pb-24 relative overflow-hidden backdrop-blur-xl">
-          
-          {/* 상단 앱 헤더 (썬 테니스 클럽 엠블럼 & 프로필) */}
           <header className="bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950/80 px-4 py-3.5 border-b border-amber-500/20 sticky top-0 z-40 backdrop-blur-md flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-2.5">
               <div className="relative">
@@ -271,9 +787,9 @@ export default function TennisApp() {
                   </span>
                 </div>
                 <div className="text-sm font-extrabold text-white flex items-center gap-1.5">
-                  <span>김철수 회원님</span>
+                  <span>{currentUser.name} 회원님</span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                    금배
+                    {currentUser.grade}
                   </span>
                 </div>
               </div>
@@ -282,18 +798,23 @@ export default function TennisApp() {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={toggleRole}
-                className={`text-[10px] px-2.5 py-1 rounded-xl font-bold transition border ${
+                className={`text-[10px] px-2 py-1 rounded-xl font-bold transition border cursor-pointer ${
                   role === 'admin'
                     ? 'bg-red-950/80 text-red-300 border-red-500/40'
                     : 'bg-slate-800 text-slate-300 hover:text-white border-slate-700'
                 }`}
               >
-                {role === 'admin' ? '👑 관리자 모드' : '👤 회원 모드'}
+                {role === 'admin' ? '👑 관리자' : '👤 회원'}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="text-[10px] px-2 py-1 rounded-xl font-bold bg-slate-800/90 hover:bg-red-950/80 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 transition cursor-pointer"
+              >
+                로그아웃
               </button>
             </div>
           </header>
 
-          {/* 알림 권한 요청 배너 */}
           <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-950/90 via-slate-900 to-slate-950 border-b border-emerald-500/30 flex justify-between items-center text-xs">
             <div className="flex items-center gap-2 text-emerald-300 font-medium">
               <i className="fa-solid fa-bell text-amber-400" />
@@ -311,12 +832,7 @@ export default function TennisApp() {
             </button>
           </div>
 
-          {/* 메인 탭 콘텐츠 영역 */}
           <main className="p-3">
-            
-            {/* ---------------------------------------------------- */}
-            {/* [탭 1]: 실시간 코트 현황판 */}
-            {/* ---------------------------------------------------- */}
             {activeTab === 'courts' && (
               <div className="space-y-3.5">
                 <div className="flex justify-between items-center bg-gradient-to-r from-emerald-950/80 via-slate-900 to-amber-950/60 p-3 rounded-2xl border border-emerald-500/20 shadow-md">
@@ -392,12 +908,8 @@ export default function TennisApp() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* [탭 2]: 대진표 및 토너먼트 */}
-            {/* ---------------------------------------------------- */}
             {activeTab === 'tournament' && (
               <div className="space-y-4">
-                {/* 참가자 명단 입력 폼 및 생성 버튼 */}
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
                   <div className="flex justify-between items-center">
                     <h3 className="font-extrabold text-sm text-white flex items-center gap-1.5">
@@ -435,7 +947,6 @@ export default function TennisApp() {
                   </button>
                 </div>
 
-                {/* 생성된 대진표 결과 */}
                 {generatedRounds.length > 0 && (
                   <div className="space-y-3 animate-fade-in">
                     <div className="flex justify-between items-center px-1">
@@ -470,7 +981,6 @@ export default function TennisApp() {
                   </div>
                 )}
 
-                {/* 서브 탭 (KDK 예선 리그 / 본선 토너먼트) */}
                 <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs font-bold">
                   <button
                     onClick={() => setSubTourTab('kdk')}
@@ -536,12 +1046,8 @@ export default function TennisApp() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* [탭 3]: 마이페이지 */}
-            {/* ---------------------------------------------------- */}
             {activeTab === 'mypage' && (
               <div className="space-y-4">
-                {/* VIP 멤버십 배너 */}
                 <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-5 text-slate-950 shadow-2xl">
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
@@ -549,14 +1055,14 @@ export default function TennisApp() {
                         SUN TENNIS VIP CLUB
                       </span>
                       <h2 className="text-xl font-black text-slate-950 flex items-center gap-1.5">
-                        <span>☀️</span> 김철수 회원님
+                        <span>☀️</span> {currentUser.name} 회원님
                       </h2>
                       <div className="flex gap-1.5 pt-1">
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">
-                          금배 (Lv.5)
+                          {currentUser.grade}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/40 text-slate-950">
-                          정회원
+                          정회원 ({currentUser.gender})
                         </span>
                       </div>
                     </div>
@@ -567,7 +1073,6 @@ export default function TennisApp() {
                   </div>
                 </div>
 
-                {/* 통산 4대 지표 */}
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
                   <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                     <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
@@ -598,7 +1103,6 @@ export default function TennisApp() {
                   </div>
                 </div>
 
-                {/* 최근 경기 이력 타임라인 */}
                 <div className="space-y-2">
                   <h3 className="text-xs font-extrabold text-slate-300 px-1">🎾 최근 경기 상세 이력</h3>
                   <div className="space-y-2">
@@ -627,9 +1131,6 @@ export default function TennisApp() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* [탭 4]: 운영자 관리 센터 */}
-            {/* ---------------------------------------------------- */}
             {activeTab === 'admin' && (
               <div className="space-y-4">
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
@@ -663,10 +1164,8 @@ export default function TennisApp() {
                 </div>
               </div>
             )}
-
           </main>
 
-          {/* 하단 고정 네비게이션 바텀 탭바 */}
           <nav className="fixed lg:absolute bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-950/90 backdrop-blur-md border-t border-slate-800/80 px-3 py-2 flex justify-around items-center z-50 shadow-2xl">
             <button
               onClick={() => setActiveTab('courts')}
@@ -717,10 +1216,8 @@ export default function TennisApp() {
             </button>
           </nav>
         </div>
-
       </div>
 
-      {/* 실시간 스코어 수정 모달 다이얼로그 */}
       {selectedCourt && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-sm p-5 shadow-2xl text-white space-y-4">

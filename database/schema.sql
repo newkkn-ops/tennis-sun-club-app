@@ -114,7 +114,7 @@ begin
     new.id, 
     coalesce(new.raw_user_meta_data ->> 'name', '클럽회원'), 
     coalesce(new.raw_user_meta_data ->> 'gender', 'M'),
-    '테린이',
+    coalesce((new.raw_user_meta_data ->> 'grade')::public.user_grade, '테린이'::public.user_grade),
     'member'
   );
   return new;
