@@ -1,4 +1,5 @@
 import React from 'react';
+import './globals.css';
 
 export const metadata = {
   title: '☀️ 썬 테니스 클럽 (SUN TENNIS CLUB) | 공식 운영 시스템',
@@ -48,21 +49,26 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ko">
+    <html lang="ko" className="dark">
       <head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon-192.png" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="theme-color" content="#059669" />
-        {/* Open Graph 메타 태그 (카카오톡, 페이스북, 슬랙 링크 공유 미리보기 확연한 노출) */}
+        {/* Open Graph 메타 태그 */}
         <meta property="og:title" content="☀️ 썬 테니스 클럽 (SUN TENNIS CLUB)" />
         <meta property="og:description" content="🎾 실시간 코트 현황판 · KDK 복식 대진표 · 토너먼트 브래킷 · 마이페이지 랭킹" />
         <meta property="og:image" content="/og-image.png" />
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:image" content="/og-image.png" />
+        {/* FontAwesome & Pretendard */}
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        />
       </head>
-      <body className="bg-slate-900 text-slate-100 antialiased min-h-screen selection:bg-amber-400 selection:text-slate-900">
+      <body className="bg-slate-950 text-slate-100 antialiased min-h-screen selection:bg-amber-400 selection:text-slate-900">
         {children}
       </body>
     </html>

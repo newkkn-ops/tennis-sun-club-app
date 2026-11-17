@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Metadata, Viewport } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
   title: '☀️ 썬 테니스 클럽 (SUN TENNIS CLUB) | 공식 운영 시스템',
@@ -49,7 +50,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko">
+    <html lang="ko" className="dark">
       <head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon-192.png" />
@@ -61,8 +62,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:image" content="/og-image.png" />
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        />
       </head>
-      <body className="bg-slate-900 text-slate-100 antialiased min-h-screen selection:bg-amber-400 selection:text-slate-900">
+      <body className="bg-slate-950 text-slate-100 antialiased min-h-screen selection:bg-amber-400 selection:text-slate-900">
         {children}
       </body>
     </html>

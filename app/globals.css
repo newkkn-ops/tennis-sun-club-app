@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
+:root {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}
+
+body {
+  background-color: #020617;
+  color: #f8fafc;
+  overflow-x: hidden;
+}
+
+/* 썬 테니스 클럽 등급별 뱃지 스타일 */
+.badge-gold { background: linear-gradient(135deg, #fef08a, #facc15); color: #713f12; border: 1px solid #eab308; }
+.badge-silver { background: linear-gradient(135deg, #f1f5f9, #cbd5e1); color: #334155; border: 1px solid #94a3b8; }
+.badge-bronze { background: linear-gradient(135deg, #ffedd5, #fdba74); color: #7c2d12; border: 1px solid #f97316; }
+.badge-chrys { background: linear-gradient(135deg, #fce7f3, #f472b6); color: #831843; border: 1px solid #ec4899; }
+.badge-forsythia { background: linear-gradient(135deg, #fef9c3, #fde047); color: #713f12; border: 1px solid #eab308; }
+.badge-beginner { background: linear-gradient(135deg, #dcfce7, #86efac); color: #14532d; border: 1px solid #22c55e; }
+.badge-senior { background: linear-gradient(135deg, #ede9fe, #c4b5fd); color: #4c1d95; border: 1px solid #a855f7; }
+
+/* 커스텀 스크롤바 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b;
+}
