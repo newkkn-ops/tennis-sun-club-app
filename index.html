@@ -863,46 +863,48 @@
   </div>
 
   <!-- ======================================================== -->
-  <!-- [모달 1]: 새 대회 개설 모달 (진행날짜 자동 생성 & 방식 선택) -->
+  <!-- [모달 1]: 새 대회 개설 모달 (참여선수 선택/임의등록 & 실력균형 자동/수동 배정) -->
   <!-- ======================================================== -->
-  <div id="newTourModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-900 border border-slate-750 w-full max-w-md rounded-3xl p-5 shadow-2xl space-y-4">
+  <div id="newTourModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 hidden overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-750 w-full max-w-lg rounded-3xl p-5 shadow-2xl space-y-4 my-auto max-h-[92vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-        <h3 class="text-sm font-black text-amber-400 flex items-center gap-1.5">
-          <span>🏆</span> 새 공식 테니스 대회 개설
-        </h3>
+        <div>
+          <h3 class="text-sm font-black text-amber-400 flex items-center gap-1.5">
+            <span>🏆</span> 새로운 대회 개설 & 참여선수/코트 배정
+          </h3>
+          <p class="text-[10px] text-slate-400 mt-0.5">가입회원·미가입회원 선택 및 임의 선수 등록, KDK 실력균형 자동/수동 배정</p>
+        </div>
         <button onclick="closeNewTourModal()" class="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs">✕</button>
       </div>
 
       <form onsubmit="submitNewTournament(event)" class="space-y-3.5">
-        <div>
-          <label class="text-xs font-bold text-slate-300 block mb-1">
-            대회명 입력 <span class="text-amber-400">*</span>
-          </label>
-          <input
-            type="text"
-            id="modalInputTourName"
-            required
-            placeholder="예: 2026 썬 테니스 12월 윈터 챔피언십"
-            class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-          />
-        </div>
-
-        <div>
-          <div class="flex justify-between items-center mb-1">
-            <label class="text-xs font-bold text-slate-300 block">
-              진행 날짜 <span class="text-emerald-400 font-normal">(자동 생성됨)</span>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div class="sm:col-span-2">
+            <label class="text-xs font-bold text-slate-300 block mb-1">
+              대회명 입력 <span class="text-amber-400">*</span>
             </label>
-            <span class="text-[10px] text-amber-400">오늘 일자 자동 기록</span>
+            <input
+              type="text"
+              id="modalInputTourName"
+              required
+              placeholder="예: 2026 썬 테니스 12월 윈터 챔피언십"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
           </div>
-          <input
-            type="date"
-            id="modalInputTourDate"
-            required
-            class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 font-mono"
-          />
+          <div>
+            <label class="text-xs font-bold text-slate-300 block mb-1">
+              진행 날짜 <span class="text-emerald-400 font-normal">(자동)</span>
+            </label>
+            <input
+              type="date"
+              id="modalInputTourDate"
+              required
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 font-mono"
+            />
+          </div>
         </div>
 
+        <!-- 대회 진행 방식 선택 -->
         <div>
           <label class="text-xs font-bold text-slate-300 block mb-1.5">
             대회 진행 방식 선택 <span class="text-amber-400">*</span>
@@ -915,9 +917,9 @@
             >
               <div class="flex items-center gap-1.5 font-black text-xs text-emerald-400">
                 <span>🔄</span>
-                <span>KDK 순환 리그</span>
+                <span>KDK 실력균형 순환 리그</span>
               </div>
-              <p class="text-[10px] text-slate-400 mt-1 leading-snug">매 라운드 파트너 자동 교체 & 승점 집계</p>
+              <p class="text-[10px] text-slate-300 mt-1 leading-snug">경기 실력 차이가 없도록 팀 밸런스 자동/수동 배정</p>
             </div>
 
             <div
@@ -931,6 +933,83 @@
               </div>
               <p class="text-[10px] text-slate-400 mt-1 leading-snug">조별 풀리그 ➔ 4강/결승 토너먼트</p>
             </div>
+          </div>
+        </div>
+
+        <!-- 참여선수 선택 (가입회원 & 미가입회원) + 임의 선수 이름 직접 등록 -->
+        <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-black text-white flex items-center gap-1.5">
+              <span>👥</span> 참여선수 선택 (가입회원 & 미가입회원)
+            </span>
+            <div class="flex items-center gap-1.5">
+              <span id="modalSelectedPlayerCountBadge" class="text-[10px] font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
+                참여 8명
+              </span>
+              <button type="button" onclick="toggleSelectAllAdminPlayers(); renderModalPlayersList();" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer">
+                전체선택/해제
+              </button>
+            </div>
+          </div>
+
+          <!-- 가입회원 / 미가입회원 선택 그리드 -->
+          <div id="modalPlayersSelectionGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-0.5"></div>
+
+          <!-- 미가입 회원 / 임의 선수 이름 직접 등록 입력창 -->
+          <div class="pt-2 border-t border-slate-800/80 space-y-1.5">
+            <label class="text-[11px] font-extrabold text-amber-300 block">
+              ✍️ 미가입 회원 또는 임의 선수 이름 직접 등록 (쉼표로 복수 입력 가능)
+            </label>
+            <div class="grid grid-cols-12 gap-1.5">
+              <input
+                type="text"
+                id="modalGuestNameInput"
+                placeholder="예: 홍길동 또는 홍길동, 이순신"
+                class="col-span-6 px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+              />
+              <select id="modalGuestGradeSelect" class="col-span-3 px-2 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300 font-bold">
+                <option value="금배">금배(10점)</option>
+                <option value="은배" selected>은배(8점)</option>
+                <option value="국화">국화(7점)</option>
+                <option value="동배">동배(6점)</option>
+                <option value="개나리">개나리(5점)</option>
+                <option value="테린이">테린이(3점)</option>
+              </select>
+              <button
+                type="button"
+                onclick="addModalGuestPlayer()"
+                class="col-span-3 py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-[11px] cursor-pointer"
+              >
+                + 선수 등록
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 배정 방식 선택: 자동 방식(실력차 제로 밸런싱) vs 수동 방식 -->
+        <div>
+          <label class="text-xs font-bold text-slate-300 block mb-1.5">
+            코트 및 선수 배정 방식 선택 <span class="text-amber-400">*</span>
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              id="modalBtnAssignAuto"
+              onclick="selectModalAssignMode('AUTO')"
+              class="p-2.5 rounded-xl border text-left transition cursor-pointer bg-emerald-950/70 border-emerald-400 text-white"
+            >
+              <div class="font-black text-xs text-emerald-300">⚖️ 자동 배정 (실력균형)</div>
+              <p class="text-[10px] text-slate-300 mt-0.5">두 팀의 경기 실력 차이가 0이 되도록 자동 매칭</p>
+            </button>
+            <button
+              type="button"
+              id="modalBtnAssignManual"
+              onclick="selectModalAssignMode('MANUAL')"
+              class="p-2.5 rounded-xl border text-left transition cursor-pointer bg-slate-950 border-slate-800 text-slate-400"
+            >
+              <div class="font-black text-xs text-amber-300">🖐️ 수동 배정 (직접배치)</div>
+              <p class="text-[10px] text-slate-400 mt-0.5">관리자가 코트별 출전 선수를 직접 선택/수정</p>
+            </button>
           </div>
         </div>
 
@@ -969,11 +1048,11 @@
         </div>
 
         <div class="flex gap-2 pt-2">
-          <button type="button" onclick="closeNewTourModal()" class="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs transition">
+          <button type="button" onclick="closeNewTourModal()" class="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer">
             취소
           </button>
-          <button type="submit" class="flex-1 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-amber-500/20">
-            대회 개설 및 코트 배정 ➔
+          <button type="submit" class="flex-1 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-amber-500/20 cursor-pointer">
+            대회 개설 및 앱 자동 연동 ➔
           </button>
         </div>
       </form>
@@ -1191,23 +1270,141 @@
 
   <!-- 통합 자바스크립트 엔진 -->
   <script>
-    // 1. 등록된 공식 선수 명부
+    // 1. 등록된 공식 선수 명부 (가입회원 + 미가입회원/임의등록 선수 통합)
+    const GRADE_WEIGHTS = {
+      '금배': 10,
+      '은배': 8,
+      '국화': 7,
+      '동배': 6,
+      '개나리': 5,
+      '고령자부': 5,
+      '테린이': 3
+    };
+
+    function getPlayerSkillWeight(p) {
+      return p && GRADE_WEIGHTS[p.grade] ? GRADE_WEIGHTS[p.grade] : 6;
+    }
+
     let registeredPlayers = [
-      { id: 'p1', name: '김철수', grade: '금배', gender: 'M', role: 'member' },
-      { id: 'p2', name: '강동원', grade: '금배', gender: 'M', role: 'member' },
-      { id: 'p3', name: '박민수', grade: '은배', gender: 'M', role: 'member' },
-      { id: 'p4', name: '정지훈', grade: '동배', gender: 'M', role: 'member' },
-      { id: 'p5', name: '이영희', grade: '국화', gender: 'F', role: 'member' },
-      { id: 'p6', name: '한지민', grade: '은배', gender: 'F', role: 'member' },
-      { id: 'p7', name: '최수진', grade: '개나리', gender: 'F', role: 'member' },
-      { id: 'p8', name: '송중기', grade: '동배', gender: 'M', role: 'member' },
-      { id: 'p9', name: '조인성', grade: '은배', gender: 'M', role: 'member' },
-      { id: 'p10', name: '공유', grade: '금배', gender: 'M', role: 'admin' },
-      { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member' },
-      { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member' },
-      { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member' },
-      { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member' },
+      { id: 'p1', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p2', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p3', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p4', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p5', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false },
+      { id: 'p6', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false },
+      { id: 'p7', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false },
+      { id: 'p8', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p9', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p10', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false },
+      { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', isGuest: true },
+      { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', isGuest: true },
+      { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', isGuest: true },
+      { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', isGuest: true },
     ];
+
+    // KDK 경기 실력 차이 최소화(Skill Gap Zero) 밸런싱 핵심 알고리즘
+    function buildBalancedKdkSchedule(players, numCourts, totalRounds = 3) {
+      const stats = {};
+      players.forEach(p => {
+        stats[p.id] = {
+          playCount: 0,
+          partners: new Set(),
+          opponents: new Set(),
+          weight: getPlayerSkillWeight(p)
+        };
+      });
+
+      const maxPlayersPerRound = Math.min(players.length, numCourts * 4);
+      const activeCount = Math.floor(maxPlayersPerRound / 4) * 4;
+      const roundsResult = [];
+
+      for (let round = 1; round <= totalRounds; round++) {
+        const sorted = [...players].sort((a, b) => {
+          if (stats[a.id].playCount !== stats[b.id].playCount) {
+            return stats[a.id].playCount - stats[b.id].playCount;
+          }
+          return Math.random() - 0.5;
+        });
+
+        const activePlayers = sorted.slice(0, activeCount);
+        let bestMatches = null;
+        let lowestPenalty = Infinity;
+
+        for (let attempt = 0; attempt < 400; attempt++) {
+          let pool;
+          if (attempt === 0) {
+            pool = [...activePlayers].sort((a, b) => stats[b.id].weight - stats[a.id].weight);
+          } else {
+            pool = [...activePlayers].sort(() => Math.random() - 0.5);
+          }
+
+          const currentMatches = [];
+          let penalty = 0;
+
+          for (let i = 0; i < pool.length; i += 4) {
+            const g = pool.slice(i, i + 4);
+            const pairings = [
+              [[g[0], g[3]], [g[1], g[2]]],
+              [[g[0], g[2]], [g[1], g[3]]],
+              [[g[0], g[1]], [g[2], g[3]]],
+            ];
+
+            let bestPair = pairings[0];
+            let bestPairPenalty = Infinity;
+            let bestWA = 0;
+            let bestWB = 0;
+
+            for (const [teamA, teamB] of pairings) {
+              let pPen = 0;
+              const wA = stats[teamA[0].id].weight + stats[teamA[1].id].weight;
+              const wB = stats[teamB[0].id].weight + stats[teamB[1].id].weight;
+              const diff = Math.abs(wA - wB);
+
+              // 경기 실력 차이 최소화 가중치 최우선 반영
+              pPen += diff * 45 + diff * diff * 20;
+
+              if (stats[teamA[0].id].partners.has(teamA[1].id)) pPen += 150;
+              if (stats[teamB[0].id].partners.has(teamB[1].id)) pPen += 150;
+
+              if (pPen < bestPairPenalty) {
+                bestPairPenalty = pPen;
+                bestPair = [teamA, teamB];
+                bestWA = wA;
+                bestWB = wB;
+              }
+            }
+
+            penalty += bestPairPenalty;
+            currentMatches.push({
+              courtNumber: i / 4 + 1,
+              teamA: bestPair[0],
+              teamB: bestPair[1],
+              teamAWeight: bestWA,
+              teamBWeight: bestWB,
+              skillDiff: Math.abs(bestWA - bestWB)
+            });
+          }
+
+          if (penalty < lowestPenalty) {
+            lowestPenalty = penalty;
+            bestMatches = currentMatches;
+          }
+          if (lowestPenalty === 0) break;
+        }
+
+        if (bestMatches) {
+          bestMatches.forEach(({ teamA, teamB }) => {
+            [...teamA, ...teamB].forEach(p => stats[p.id].playCount++);
+            stats[teamA[0].id].partners.add(teamA[1].id);
+            stats[teamA[1].id].partners.add(teamA[0].id);
+            stats[teamB[0].id].partners.add(teamB[1].id);
+            stats[teamB[1].id].partners.add(teamB[0].id);
+          });
+          roundsResult.push({ round, matches: bestMatches });
+        }
+      }
+      return roundsResult;
+    }
 
     // 2. 대회 히스토리 및 현재 대회
     let tournamentHistory = [
@@ -1995,15 +2192,50 @@
       const c = document.getElementById('adminUserListContainer');
       if (!c) return;
       c.innerHTML = registeredPlayers.map(u => `
-        <div class="py-2.5 flex items-center justify-between text-xs">
-          <div class="flex items-center gap-2">
-            <span class="font-bold text-white">${u.name}</span>
-            <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
-            <span class="text-[10px] text-slate-400">${u.isGuest ? '[임의추가 선수]' : '(정회원)'}</span>
+        <div class="py-3 flex flex-col gap-2 text-xs">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-white">${u.name}</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
+              <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) ${u.isGuest ? '[임의추가]' : ''}</span>
+            </div>
+            <span class="text-[10px] text-amber-300 font-bold">${u.role === 'admin' ? '👑 관리자' : '일반회원'}</span>
           </div>
-          <span class="text-[10px] text-slate-400">${u.role === 'admin' ? '운영진' : '출전선수'}</span>
+          <div class="flex gap-2">
+            <button type="button" onclick="editHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] cursor-pointer">
+              ✎ 회원정보 수정
+            </button>
+            <button type="button" onclick="cancelHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-500/30 font-bold text-[11px] cursor-pointer">
+              🗑️ 회원가입 취소(탈퇴)
+            </button>
+          </div>
         </div>
       `).join('');
+    }
+
+    function editHtmlMember(userId) {
+      const user = registeredPlayers.find(u => u.id === userId);
+      if (!user) return;
+      const newName = prompt('수정할 회원 이름을 입력하세요:', user.name);
+      if (newName === null || !newName.trim()) return;
+      const newGrade = prompt('수정할 테니스 등급(금배/은배/동배/국화/개나리/테린이/고령자부)을 입력하세요:', user.grade);
+      if (newGrade === null || !newGrade.trim()) return;
+      const newGender = prompt('성별(M 또는 F)을 입력하세요:', user.gender || 'M');
+      user.name = newName.trim();
+      user.grade = newGrade.trim();
+      if (newGender) user.gender = newGender.trim().toUpperCase() === 'F' ? 'F' : 'M';
+      renderAdminUsers();
+      alert(`✅ [${user.name} (${user.grade})] 회원의 정보가 수정되었습니다.`);
+    }
+
+    function cancelHtmlMember(userId) {
+      const user = registeredPlayers.find(u => u.id === userId);
+      if (!user) return;
+      if (!confirm(`⚠️ 정말 [${user.name} (${user.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?`)) return;
+      registeredPlayers = registeredPlayers.filter(u => u.id !== userId);
+      adminSelectedPlayerIds = adminSelectedPlayerIds.filter(id => id !== userId);
+      renderAdminUsers();
+      alert(`🗑️ [${user.name}] 회원의 회원가입 취소(탈퇴) 처리가 완료되었습니다.`);
     }
 
     // 스코어 모달

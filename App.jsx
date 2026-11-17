@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import AdminTournamentManager from './components/AdminTournamentManager';
+import AdminUserManagement from './components/AdminUserManagement';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -1178,13 +1179,44 @@ export default function TennisApp() {
             )}
 
             {activeTab === 'admin' && (
-              <AdminTournamentManager
-                registeredUsers={users}
-                currentUser={currentUser}
-                activeTournament={activeTournament}
-                onApplyTournament={(config) => applyTournamentToAppState(config, true)}
-                onAddCustomUserToClub={handleAddCustomUserToClub}
-              />
+              <div className="space-y-4">
+                <AdminUserManagement
+                  externalUsers={users}
+                  currentUserId={currentUser?.id}
+                  onUpdateMember={(updated) => {
+                    setUsers((prev) =>
+                      prev.map((u) => (String(u.id) === String(updated.id) ? { ...u, ...updated } : u))
+                    );
+                    if (currentUser && String(currentUser.id) === String(updated.id)) {
+                      setCurrentUser({ ...currentUser, ...updated });
+                    }
+                  }}
+                  onCancelMembership={(cancelledId, cancelledName) => {
+                    setUsers((prev) => prev.filter((u) => String(u.id) !== String(cancelledId)));
+                    setParticipantsInput((prev) =>
+                      prev
+                        .split(',')
+                        .map((n) => n.trim())
+                        .filter((n) => n.length > 0 && n !== cancelledName)
+                        .join(', ')
+                    );
+                    if (currentUser && String(currentUser.id) === String(cancelledId)) {
+                      handleLogout();
+                    }
+                  }}
+                  onAddMember={(newMember) => {
+                    setUsers((prev) => [newMember, ...prev]);
+                  }}
+                />
+
+                <AdminTournamentManager
+                  registeredUsers={users}
+                  currentUser={currentUser}
+                  activeTournament={activeTournament}
+                  onApplyTournament={(config) => applyTournamentToAppState(config, true)}
+                  onAddCustomUserToClub={handleAddCustomUserToClub}
+                />
+              </div>
             )}
           </div>
 

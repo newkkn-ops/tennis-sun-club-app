@@ -155,6 +155,15 @@ create policy "Allow admin to update any user" on users for update to authentica
     )
   );
 
+-- 삭제: 관리자(Admin)는 가입회원의 회원가입 취소(탈퇴/삭제) 처리 가능
+create policy "Allow admin to delete any user" on users for delete to authenticated
+  using (
+    exists (
+      select 1 from public.users
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
 -- ===================================================
 -- [3단계: 관리자 대회 생성 및 자동/수동 코트·비로그인 임의 선수 배치 확장 스키마]
 -- ===================================================

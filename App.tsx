@@ -5,6 +5,7 @@ import AdminTournamentManager, {
   TournamentConfig,
   ParticipantPlayer,
 } from './components/AdminTournamentManager';
+import AdminUserManagement, { ManagedMember } from './components/AdminUserManagement';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -1787,10 +1788,73 @@ export default function TennisApp() {
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 5]: 운영자 관리 센터 (대회 생성 & 코트/선수 배치 콘솔 + 선수 명부) */}
+            {/* [탭 5]: 운영자 관리 센터 (가입회원 정보 수정 & 가입취소 + 대회 생성 콘솔) */}
             {/* ---------------------------------------------------- */}
             {activeTab === 'admin' && (
               <div className="space-y-4">
+                {/* 1. 가입회원 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
+                <AdminUserManagement
+                  externalUsers={registeredPlayers}
+                  currentUserId={currentUser?.id}
+                  onUpdateMember={(updated: ManagedMember) => {
+                    setRegisteredPlayers((prev) =>
+                      prev.map((p) =>
+                        p.id === updated.id
+                          ? {
+                              ...p,
+                              name: updated.name,
+                              email: updated.email,
+                              phone: updated.phone,
+                              gender: updated.gender === 'F' || updated.gender === '여' ? 'F' : 'M',
+                              grade: updated.grade,
+                              role: updated.role,
+                            }
+                          : p
+                      )
+                    );
+                    if (currentUser && currentUser.id === updated.id) {
+                      setCurrentUser({
+                        ...currentUser,
+                        name: updated.name,
+                        email: updated.email,
+                        phone: updated.phone,
+                        gender: updated.gender === 'F' || updated.gender === '여' ? 'F' : 'M',
+                        grade: updated.grade,
+                        role: updated.role,
+                      });
+                    }
+                  }}
+                  onCancelMembership={(cancelledId: string, cancelledName: string) => {
+                    setRegisteredPlayers((prev) => prev.filter((p) => p.id !== cancelledId));
+                    setParticipantsInput((prev) =>
+                      prev
+                        .split(',')
+                        .map((n) => n.trim())
+                        .filter((n) => n.length > 0 && n !== cancelledName)
+                        .join(', ')
+                    );
+                    if (currentUser && currentUser.id === cancelledId) {
+                      handleLogout();
+                    }
+                  }}
+                  onAddMember={(newMember: ManagedMember) => {
+                    const added: RegisteredPlayer = {
+                      id: newMember.id,
+                      name: newMember.name,
+                      email: newMember.email,
+                      phone: newMember.phone,
+                      gender: newMember.gender === 'F' || newMember.gender === '여' ? 'F' : 'M',
+                      grade: newMember.grade,
+                      role: newMember.role,
+                    };
+                    setRegisteredPlayers((prev) => [added, ...prev]);
+                    if (!participantsInput.includes(added.name)) {
+                      setParticipantsInput((prev) => `${added.name}, ${prev}`);
+                    }
+                  }}
+                />
+
+                {/* 2. 관리자 대회 생성 & 코트/선수 배치 콘솔 */}
                 <AdminTournamentManager
                   registeredUsers={registeredPlayers}
                   currentUser={currentUser}
@@ -1844,30 +1908,6 @@ export default function TennisApp() {
                     ]);
                   }}
                 />
-
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                    <h3 className="text-sm font-black text-red-400 flex items-center gap-1.5">
-                      <span>👑</span> 썬 클럽 등록 공식 선수 명부
-                    </h3>
-                    <span className="text-[11px] text-slate-400">총 {registeredPlayers.length}명 등록</span>
-                  </div>
-
-                  <div className="divide-y divide-slate-800/80">
-                    {registeredPlayers.map((u) => (
-                      <div key={u.id} className="py-2.5 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-white">{u.name}</span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded font-extrabold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                            {u.grade}
-                          </span>
-                          <span className="text-[10px] text-slate-400">({u.gender === 'M' ? '남' : '여'})</span>
-                        </div>
-                        <span className="text-[10px] text-slate-400">{u.role === 'admin' ? '운영진' : '정회원'}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             )}
           </div>
