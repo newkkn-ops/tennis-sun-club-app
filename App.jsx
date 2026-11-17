@@ -377,15 +377,6 @@ export default function TennisApp() {
           applyTournamentToAppState(parsedTour, false);
         }
       }
-
-      const savedSessionRaw = localStorage.getItem('sun_tennis_current_user');
-      if (savedSessionRaw) {
-        const savedUser = JSON.parse(savedSessionRaw);
-        if (savedUser && savedUser.name) {
-          setCurrentUser(savedUser);
-          setRole(savedUser.role === 'admin' ? 'admin' : 'member');
-        }
-      }
     } catch {}
   }, []);
 

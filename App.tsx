@@ -1,6 +1,10 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import AdminTournamentManager, {
+  TournamentConfig,
+  ParticipantPlayer,
+} from './components/AdminTournamentManager';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -650,6 +654,43 @@ export default function TennisApp() {
                   ? '아래 가입 폼을 작성하면 즉시 클럽 공식 선수로 등록됩니다.'
                   : '로그인하거나 회원가입 버튼을 눌러 새 계정을 만드세요.'}
               </p>
+            </div>
+
+            {/* 빠른 접속 버튼 (관리자 / 일반회원 즉시 로그인) */}
+            <div className="bg-slate-950 p-3 rounded-2xl border border-amber-500/30 space-y-2">
+              <p className="text-[11px] font-extrabold text-amber-300 text-center">
+                ⚡ 빠른 접속 (관리자 로그인 시 대회 생성 화면으로 즉시 이동)
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const adminUser: RegisteredPlayer = {
+                      id: 'p10',
+                      name: '공유',
+                      email: 'admin@suntc.kr',
+                      grade: '금배',
+                      gender: 'M',
+                      role: 'admin',
+                    };
+                    setCurrentUser(adminUser);
+                    setRole('admin');
+                    setActiveTab('admin');
+                  }}
+                  className="py-2.5 px-3 bg-gradient-to-r from-red-500 via-amber-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>👑</span>
+                  <span>관리자 즉시 로그인</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickDemoLogin}
+                  className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>👤</span>
+                  <span>일반회원 로그인</span>
+                </button>
+              </div>
             </div>
 
             {/* 상단 로그인 / 회원가입 탭 전환 버튼 */}
@@ -1746,10 +1787,64 @@ export default function TennisApp() {
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 5]: 운영자 관리 센터 */}
+            {/* [탭 5]: 운영자 관리 센터 (대회 생성 & 코트/선수 배치 콘솔 + 선수 명부) */}
             {/* ---------------------------------------------------- */}
             {activeTab === 'admin' && (
               <div className="space-y-4">
+                <AdminTournamentManager
+                  registeredUsers={registeredPlayers}
+                  currentUser={currentUser}
+                  activeTournament={null}
+                  onApplyTournament={(config: TournamentConfig) => {
+                    const autoDate = new Date().toISOString().split('T')[0];
+                    const newTour: TournamentRecord = {
+                      id: config.id || `tour-${Date.now()}`,
+                      name: config.title,
+                      date: autoDate,
+                      format: config.mode === 'KDK' ? 'kdk' : 'tournament',
+                      courtCount: config.selectedCourts.length || 3,
+                      status: 'in_progress',
+                    };
+                    setTournamentHistory((prev) => [newTour, ...prev]);
+                    setCurrentTournament(newTour);
+
+                    const mappedCourts: CourtMatch[] = config.matches.map((m, idx) => ({
+                      id: idx + 1,
+                      courtNumber: m.courtNumber,
+                      status: m.status || 'playing',
+                      teamA: [
+                        `${m.teamA[0].name} (${m.teamA[0].grade})`,
+                        `${m.teamA[1].name} (${m.teamA[1].grade})`,
+                      ],
+                      teamB: [
+                        `${m.teamB[0].name} (${m.teamB[0].grade})`,
+                        `${m.teamB[1].name} (${m.teamB[1].grade})`,
+                      ],
+                      scoreA: m.scoreA ?? 0,
+                      scoreB: m.scoreB ?? 0,
+                    }));
+                    if (mappedCourts.length > 0) {
+                      setCourts(mappedCourts);
+                    }
+                    setActiveTab('courts');
+                    alert(
+                      `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${config.matches.length}경기)와 대진표에 즉시 연동되었습니다!`
+                    );
+                  }}
+                  onAddCustomUserToClub={(newGuest: ParticipantPlayer) => {
+                    setRegisteredPlayers((prev) => [
+                      ...prev,
+                      {
+                        id: newGuest.id,
+                        name: newGuest.name,
+                        grade: newGuest.grade,
+                        gender: newGuest.gender === '여' ? 'F' : 'M',
+                        role: 'member',
+                      },
+                    ]);
+                  }}
+                />
+
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
                   <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                     <h3 className="text-sm font-black text-red-400 flex items-center gap-1.5">
