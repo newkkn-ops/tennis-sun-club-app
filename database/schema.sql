@@ -155,5 +155,32 @@ create policy "Allow admin to update any user" on users for update to authentica
     )
   );
 
+-- ===================================================
+-- [3단계: 관리자 대회 생성 및 자동/수동 코트·비로그인 임의 선수 배치 확장 스키마]
+-- ===================================================
+
+-- 대회 배정 방식(자동/수동) 및 가용 코트 목록 컬럼 추가
+alter table tournaments add column if not exists assignment_type text check (assignment_type in ('AUTO', 'MANUAL')) default 'AUTO';
+alter table tournaments add column if not exists selected_courts int[] default '{1,2,3}';
+
+-- 로그인하지 못하는 임의(비회원/게스트) 선수 참가 지원 컬럼 추가
+alter table tournament_participants alter column user_id drop not null;
+alter table tournament_participants add column if not exists guest_name text;
+alter table tournament_participants add column if not exists guest_grade user_grade default '은배';
+alter table tournament_participants add column if not exists is_guest boolean default false;
+
+-- 경기(matches) 테이블에 비로그인 임의 선수 이름 배열 표시 지원 컬럼 추가
+alter table matches add column if not exists team_a_names text[] default '{}';
+alter table matches add column if not exists team_b_names text[] default '{}';
+
+-- 관리자(Admin) 대회 및 경기 생성/수정/삭제 RLS 정책
+create policy "Allow admin full access on tournaments" on tournaments for all to authenticated
+  using (exists (select 1 from public.users where id = auth.uid() and role = 'admin'));
+create policy "Allow admin full access on tournament_participants" on tournament_participants for all to authenticated
+  using (exists (select 1 from public.users where id = auth.uid() and role = 'admin'));
+create policy "Allow admin full access on matches" on matches for all to authenticated
+  using (exists (select 1 from public.users where id = auth.uid() and role = 'admin'));
+
+
 
 

@@ -1,63 +1,89 @@
+'use client';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const isSupabaseConfigured =
+  Boolean(supabaseUrl) &&
+  supabaseUrl !== 'YOUR_SUPABASE_URL' &&
+  !supabaseUrl.includes('your-project');
 
-export default function MyPage({ userId }) {
-  const [stats, setStats] = useState({
-    total_matches: 12,
-    wins: 9,
-    losses: 3,
-    win_rate: 75.0,
-    point_diff: 21,
-  });
-  const [matchHistory, setMatchHistory] = useState([
-    {
-      id: 'm1',
-      round_name: '월례회 KDK 결승',
-      court_number: 1,
-      score_a: 6,
-      score_b: 4,
-      is_win: true,
-      partner: '강동원 (금배)',
-      opponent: '박민수 / 정지훈',
-      date: '2026.03.15',
-    },
-    {
-      id: 'm2',
-      round_name: '월례회 KDK 예선 R3',
-      court_number: 2,
-      score_a: 6,
-      score_b: 3,
-      is_win: true,
-      partner: '이영희 (국화)',
-      opponent: '최수진 / 한지민',
-      date: '2026.03.15',
-    },
-    {
-      id: 'm3',
-      round_name: '월례회 KDK 예선 R2',
-      court_number: 1,
-      score_a: 4,
-      score_b: 6,
-      is_win: false,
-      partner: '송중기 (동배)',
-      opponent: '조인성 / 공유',
-      date: '2026.03.15',
-    },
-  ]);
-  const [loading, setLoading] = useState(false);
+const supabase = createClient(
+  isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
+  isSupabaseConfigured ? supabaseAnonKey : 'placeholder-anon-key'
+);
+
+export default function MyPage({
+  userId,
+  userName = '김철수',
+  userGrade = '금배',
+  userGender = '남',
+  customStats,
+  customHistory,
+}) {
+  const [stats, setStats] = useState(
+    customStats || {
+      total_matches: 12,
+      wins: 9,
+      losses: 3,
+      win_rate: 75.0,
+      point_diff: 21,
+    }
+  );
+  const [matchHistory, setMatchHistory] = useState(
+    customHistory || [
+      {
+        id: 'm1',
+        round_name: '월례회 KDK 결승',
+        court_number: 1,
+        score_a: 6,
+        score_b: 4,
+        is_win: true,
+        partner: '강동원 (금배)',
+        opponent: '박민수 / 정지훈',
+        date: '2026.03.15',
+      },
+      {
+        id: 'm2',
+        round_name: '월례회 KDK 예선 R3',
+        court_number: 2,
+        score_a: 6,
+        score_b: 3,
+        is_win: true,
+        partner: '이영희 (국화)',
+        opponent: '최수진 / 한지민',
+        date: '2026.03.15',
+      },
+      {
+        id: 'm3',
+        round_name: '월례회 KDK 예선 R2',
+        court_number: 1,
+        score_a: 4,
+        score_b: 6,
+        is_win: false,
+        partner: '송중기 (동배)',
+        opponent: '조인성 / 공유',
+        date: '2026.03.15',
+      },
+    ]
+  );
 
   useEffect(() => {
-    if (userId && !userId.startsWith('demo')) {
+    if (customStats) setStats(customStats);
+  }, [customStats]);
+
+  useEffect(() => {
+    if (customHistory) setMatchHistory(customHistory);
+  }, [customHistory]);
+
+  useEffect(() => {
+    if (isSupabaseConfigured && userId && !userId.startsWith('u_')) {
       fetchUserData();
     }
   }, [userId]);
 
   const fetchUserData = async () => {
-    setLoading(true);
     try {
       const { data: statData } = await supabase
         .from('player_stats')
@@ -81,16 +107,16 @@ export default function MyPage({ userId }) {
       }
     } catch (e) {
       console.warn('전적 로딩 알림:', e);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const winRate = Number(stats?.win_rate || (stats?.total_matches ? ((stats.wins / stats.total_matches) * 100).toFixed(1) : 0));
+  const winRate = Number(
+    stats?.win_rate ??
+      (stats?.total_matches ? ((stats.wins / stats.total_matches) * 100).toFixed(1) : 0)
+  );
 
   return (
     <div className="space-y-4">
-      {/* 썬 클럽 VIP 멤버십 프로필 배너 */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-5 text-slate-950 shadow-2xl">
         <div className="absolute top-0 right-0 -mr-6 -mt-6 w-32 h-32 rounded-full bg-white/20 blur-xl pointer-events-none" />
         <div className="relative z-10 flex justify-between items-start">
@@ -99,14 +125,14 @@ export default function MyPage({ userId }) {
               SUN TENNIS VIP CLUB
             </span>
             <h2 className="text-xl font-black text-slate-950 flex items-center gap-1.5">
-              <span>☀️</span> 김철수 회원님
+              <span>☀️</span> {userName} 회원님
             </h2>
             <div className="flex gap-1.5 pt-1">
               <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">
-                금배 (Lv.5)
+                {userGrade}
               </span>
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/40 text-slate-950">
-                정회원
+                정회원 ({userGender})
               </span>
             </div>
           </div>
@@ -117,18 +143,14 @@ export default function MyPage({ userId }) {
         </div>
       </div>
 
-      {/* 통산 4대 지표 요약 카드 */}
       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
         <div className="flex justify-between items-center border-b border-slate-800 pb-2">
           <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
             <span>📊</span> 통산 누적 공식 전적
           </span>
-          <span className="text-xs font-extrabold text-amber-400">
-            승률 {winRate}%
-          </span>
+          <span className="text-xs font-extrabold text-amber-400">승률 {winRate}%</span>
         </div>
 
-        {/* 승률 프로그레스 바 */}
         <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
           <div
             className="bg-gradient-to-r from-amber-400 to-emerald-400 h-2.5 rounded-full transition-all duration-1000"
@@ -158,7 +180,6 @@ export default function MyPage({ userId }) {
         </div>
       </div>
 
-      {/* 최근 경기 상세 이력 */}
       <div className="space-y-2.5">
         <h3 className="text-xs font-extrabold text-slate-300 px-1 flex items-center gap-1.5">
           <span>🎾</span> 최근 경기 이력 타임라인
