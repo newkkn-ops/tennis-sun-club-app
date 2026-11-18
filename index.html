@@ -173,8 +173,11 @@
         </div>
 
         <div class="flex items-center gap-1.5">
+          <button onclick="toggleUserRole()" id="roleToggleBtn" class="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/40 transition cursor-pointer" title="관리자 모드로 전환하여 운영관리 창 열기">
+            👑 관리자 전환
+          </button>
           <span id="roleStatusBadge" class="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
-            👤 일반회원
+            일반회원
           </span>
           <button onclick="openAuthScreenModal()" id="authActionBtn" class="px-2 py-1 rounded-xl text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700 hover:text-white transition cursor-pointer">
             로그아웃
@@ -265,6 +268,34 @@
                 <span>등록 선수 자동 배정</span>
               </button>
             </div>
+
+            <button onclick="switchTab('admin')" class="w-full py-2 bg-slate-950/90 hover:bg-slate-800 text-amber-300 font-bold rounded-xl text-xs border border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer">
+              <span>⚙️</span>
+              <span>운영관리 창에서 대회·방식·선수·코트 종합 설정 ➔</span>
+            </button>
+          </div>
+
+          <!-- 회원 전용 읽기 모드 현황 바 -->
+          <div id="courtsMemberNoticeBox" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 shadow-md flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center justify-center text-sm font-bold">
+                🏟️
+              </div>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-black text-white">실시간 코트 운영 현황</span>
+                  <span id="courtsMemberCountBadge" class="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded font-bold">
+                    총 3개 코트 가동 중
+                  </span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">
+                  대회 생성, 방식 설정, 코트 증감 및 선수 배정은 관리자 전용 기능입니다.
+                </p>
+              </div>
+            </div>
+            <span class="text-[10px] font-extrabold text-emerald-400 bg-emerald-950/70 border border-emerald-500/30 px-2 py-1 rounded-lg shrink-0">
+              🔴 LIVE 실시간
+            </span>
           </div>
 
           <!-- 대진 방식 퀵 버튼 2개 -->
@@ -315,7 +346,7 @@
               <span class="font-extrabold text-xs text-white flex items-center gap-1.5">
                 <span class="text-amber-400">🎾</span> KDK 참가 선수 명단 (<span id="registeredCountSpan">14</span>명 등록됨)
               </span>
-              <button onclick="loadAllPlayersToKdk()" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700">전체 불러오기</button>
+              <button onclick="loadAllPlayersToKdk()" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700 cursor-pointer">전체 불러오기</button>
             </div>
 
             <textarea
@@ -324,13 +355,32 @@
               rows="2"
             >김철수, 강동원, 박민수, 정지훈, 이영희, 한지민, 최수진, 송중기</textarea>
 
-            <button
-              onclick="generateKdkTournament()"
-              class="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>🏓</span>
-              <span>KDK 대진표 자동 편성 & 랭킹 초기화</span>
-            </button>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                onclick="generateKdkTournament()"
+                class="py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>🏓</span>
+                <span>대진표 편성</span>
+              </button>
+              <button
+                onclick="switchTab('admin')"
+                class="py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>⚙️</span>
+                <span>운영관리 창 이동</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 회원 전용 KDK 안내 박스 -->
+          <div id="kdkMemberNoticeBox" class="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-md text-center space-y-1">
+            <p class="text-xs font-bold text-emerald-300 flex items-center justify-center gap-1">
+              <span>🔄</span> KDK 파트너 순환 대진표 & 실시간 순위 조회
+            </p>
+            <p class="text-[10px] text-slate-400">
+              참여선수 명단 편성 및 순환 방식 설정은 관리자 모드로 로그인 시 운영관리 창에서 진행됩니다.
+            </p>
           </div>
 
           <!-- KDK 실시간 개인 순위표 -->
@@ -717,11 +767,29 @@
               </div>
             </div>
 
-            <!-- 가용 코트 선택 -->
-            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <!-- 가용 코트 선택 및 코트 수 조절 (+/-) -->
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
               <div class="flex justify-between items-center">
-                <span class="text-xs font-bold text-slate-300">🎾 사용할 코트 선택</span>
-                <span id="adminSelectedCourtsLabel" class="text-[11px] font-extrabold text-amber-400">선택 코트: 1번, 2번, 3번</span>
+                <span class="text-xs font-bold text-slate-300">🎾 사용할 코트 지정</span>
+                <div class="flex items-center gap-1.5">
+                  <span id="adminSelectedCourtsLabel" class="text-[11px] font-extrabold text-amber-400">선택 코트: 1번, 2번, 3번</span>
+                  <button
+                    type="button"
+                    onclick="removeAdminCourtStepper()"
+                    title="코트 1개 줄이기 (-)"
+                    class="w-7 h-7 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 flex items-center justify-center font-black text-sm cursor-pointer"
+                  >
+                    －
+                  </button>
+                  <button
+                    type="button"
+                    onclick="addAdminCourtStepper()"
+                    title="코트 1개 늘리기 (+)"
+                    class="w-7 h-7 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-black text-sm cursor-pointer"
+                  >
+                    ＋
+                  </button>
+                </div>
               </div>
               <div id="adminCourtButtonsGrid" class="grid grid-cols-6 gap-1.5"></div>
             </div>
@@ -1482,6 +1550,10 @@
 
     // 관리자가 코트 넘버를 코트 수에 맞게 계속 생성 (+)
     function addCourt() {
+      if (!isAdminUser()) {
+        alert('코트 추가는 관리자 모드에서만 가능합니다.');
+        return;
+      }
       const nextNum = courtsData.length > 0 ? Math.max(...courtsData.map(c => c.courtNumber)) + 1 : 1;
       courtsData.push({
         id: Date.now(),
@@ -1497,6 +1569,10 @@
 
     // 관리자가 코트 수를 1개 줄이기 (-)
     function removeCourt() {
+      if (!isAdminUser()) {
+        alert('코트 축소는 관리자 모드에서만 가능합니다.');
+        return;
+      }
       if (courtsData.length <= 1) {
         alert('최소 1개 이상의 코트가 유지되어야 합니다.');
         return;
@@ -1999,7 +2075,35 @@
     }
 
     function toggleUserRole() {
-      alert('👑 현재 관리자 모드로 작동 중입니다. (코트 추가 및 선수 배정 자유 수정 가능)');
+      if (currentUserRole === 'admin') {
+        currentUserRole = 'member';
+        const nameEl = document.getElementById('headerMemberName');
+        if (nameEl) nameEl.innerText = '김철수 회원님';
+        applyRoleVisibility();
+        switchTab('courts');
+        alert('👤 [일반회원 모드]로 전환되었습니다.\n대회생성, 대회방식, 선수지정, 코트지정 등 관리 기능이 비활성화되며 경기 일정 및 대진표 열람 전용으로 동작합니다.');
+      } else {
+        currentUserRole = 'admin';
+        const nameEl = document.getElementById('headerMemberName');
+        if (nameEl) nameEl.innerText = '공유 관리자님';
+        applyRoleVisibility();
+        renderAdminConsole();
+        switchTab('admin');
+        alert('👑 [관리자 모드]로 전환되었습니다!\n운영관리 창에서 대회생성, 방식선택, 선수지정, 코트지정을 모두 제어하실 수 있습니다.');
+      }
+    }
+
+    function addAdminCourtStepper() {
+      const nextNum = adminSelectedCourts.length > 0 ? Math.max(...adminSelectedCourts) + 1 : 1;
+      adminSelectedCourts.push(nextNum);
+      adminSelectedCourts.sort((a, b) => a - b);
+      renderAdminConsole();
+    }
+
+    function removeAdminCourtStepper() {
+      if (adminSelectedCourts.length <= 1) return;
+      adminSelectedCourts.pop();
+      renderAdminConsole();
     }
 
     // =========================================================================
@@ -2589,14 +2693,31 @@
         el.classList.toggle('hidden', !admin);
       });
 
+      const memberCourtBox = document.getElementById('courtsMemberNoticeBox');
+      if (memberCourtBox) memberCourtBox.classList.toggle('hidden', admin);
+
+      const memberKdkBox = document.getElementById('kdkMemberNoticeBox');
+      if (memberKdkBox) memberKdkBox.classList.toggle('hidden', admin);
+
       const badge = document.getElementById('roleStatusBadge');
       if (badge) {
         if (admin) {
-          badge.innerText = '👑 관리자';
+          badge.innerText = '운영자';
           badge.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-red-500/20 text-red-300 border-red-500/40';
         } else {
-          badge.innerText = '👤 일반회원';
+          badge.innerText = '일반회원';
           badge.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+        }
+      }
+
+      const toggleBtn = document.getElementById('roleToggleBtn');
+      if (toggleBtn) {
+        if (admin) {
+          toggleBtn.innerText = '👤 회원뷰 전환';
+          toggleBtn.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700 transition cursor-pointer';
+        } else {
+          toggleBtn.innerText = '👑 관리자 전환';
+          toggleBtn.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/40 transition cursor-pointer';
         }
       }
 

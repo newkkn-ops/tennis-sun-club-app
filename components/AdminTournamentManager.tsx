@@ -826,13 +826,38 @@ export default function AdminTournamentManager({
           </div>
         </div>
 
-        {/* 가용 코트 번호 선택 */}
-        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+        {/* 가용 코트 번호 선택 및 코트 수 조절 (+/-) */}
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-300">🎾 사용할 코트 선택</span>
-            <span className="text-[11px] font-extrabold text-amber-400">
-              선택 코트: {selectedCourts.map((c) => `${c}번`).join(', ')}
-            </span>
+            <span className="text-xs font-bold text-slate-300">🎾 사용할 코트 지정</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-amber-400 bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-700">
+                총 {selectedCourts.length}개 코트
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedCourts.length <= 1) return;
+                  setSelectedCourts((prev) => prev.slice(0, prev.length - 1));
+                }}
+                disabled={selectedCourts.length <= 1}
+                title="코트 1개 줄이기 (-)"
+                className="w-7 h-7 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center font-black text-sm cursor-pointer"
+              >
+                －
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextNum = selectedCourts.length > 0 ? Math.max(...selectedCourts) + 1 : 1;
+                  setSelectedCourts((prev) => [...prev, nextNum].sort((a, b) => a - b));
+                }}
+                title="코트 1개 늘리기 (+)"
+                className="w-7 h-7 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-black text-sm cursor-pointer"
+              >
+                ＋
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-6 gap-1.5">
             {[1, 2, 3, 4, 5, 6].map((cNum) => {

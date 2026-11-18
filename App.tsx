@@ -819,6 +819,25 @@ export default function TennisApp() {
     } catch {}
   };
 
+  // 관리자(운영자) 계정 빠른 입장 (관리자 전용 운영관리 창 활성화)
+  const handleAdminDemoLogin = () => {
+    const adminUser: RegisteredPlayer = {
+      id: 'p10',
+      username: 'admin',
+      name: '공유 관리자',
+      grade: '금배',
+      gender: 'M',
+      role: 'admin',
+      isGuest: false,
+    };
+    setCurrentUser(adminUser);
+    setRole('admin');
+    setActiveTab('admin');
+    try {
+      localStorage.setItem('sun_tennis_current_user', JSON.stringify(adminUser));
+    } catch {}
+  };
+
   // 로그아웃 핸들러
   const handleLogout = () => {
     try {
@@ -1145,17 +1164,27 @@ export default function TennisApp() {
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleQuickDemoLogin}
-                className="w-full py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>⚡</span>
-                <span>일반회원(김철수 · 금배)으로 바로 입장</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleQuickDemoLogin}
+                  className="py-2.5 bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <span>👤</span>
+                  <span>일반회원 입장</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdminDemoLogin}
+                  className="py-2.5 bg-gradient-to-r from-red-500/20 via-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <span>👑</span>
+                  <span>관리자 입장</span>
+                </button>
+              </div>
 
               <p className="text-[10px] text-center text-slate-500 pt-0.5">
-                💡 관리자 접속은 아이디에 <span className="text-slate-300 font-bold">admin</span>(또는 관리자)과 비밀번호를 입력해 로그인하세요.
+                💡 관리자 접속 시 운영관리 창에서 대회생성, 방식선택, 선수지정, 코트지정을 직접 제어할 수 있습니다.
               </p>
             </div>
           </div>
@@ -1358,6 +1387,35 @@ export default function TennisApp() {
             </div>
 
             <div className="flex items-center gap-1.5">
+              {!isAdmin ? (
+                <button
+                  onClick={() => {
+                    setRole('admin');
+                    if (currentUser) {
+                      setCurrentUser({ ...currentUser, role: 'admin' });
+                    }
+                    setActiveTab('admin');
+                  }}
+                  className="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/40 transition cursor-pointer"
+                  title="관리자 모드로 전환하여 운영관리 창 열기"
+                >
+                  👑 관리자 전환
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setRole('member');
+                    if (currentUser) {
+                      setCurrentUser({ ...currentUser, role: 'member' });
+                    }
+                    setActiveTab('courts');
+                  }}
+                  className="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700 transition cursor-pointer"
+                  title="일반회원 뷰로 전환"
+                >
+                  👤 회원뷰 전환
+                </button>
+              )}
               <span
                 className={`px-2 py-1 rounded-xl text-[10px] font-extrabold border ${
                   isAdmin
@@ -1365,7 +1423,7 @@ export default function TennisApp() {
                     : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 }`}
               >
-                {isAdmin ? '👑 관리자' : '👤 일반회원'}
+                {isAdmin ? '운영자' : '일반회원'}
               </span>
               <button
                 onClick={handleLogout}
@@ -1412,75 +1470,105 @@ export default function TennisApp() {
             {activeTab === 'courts' && (
               <div className="space-y-3.5">
                 
-                {/* 관리자 코트 추가 생성 및 선수 자동 배정 툴바 (관리자 전용) */}
-                {isAdmin && (
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3 shadow-xl space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-white flex items-center gap-1.5">
-                      <span className="text-amber-400">🏟️</span> 코트 배정 & 관리자 제어기
-                    </span>
-                    <span className="text-[11px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
-                      총 {courts.length}개 코트 운영 중
-                    </span>
-                  </div>
-
-                  {/* 코트 수 증감 (+ / -) 스텝퍼 조절 바 */}
-                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-inner">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-300">코트 수 조절:</span>
-                      <span className="text-sm font-black text-amber-400 bg-slate-900 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-xs">
-                        {courts.length}개 코트
+                {/* 관리자 코트 추가 생성 및 선수 자동 배정 툴바 (관리자 전용) / 회원 모드 읽기전용 현황 */}
+                {isAdmin ? (
+                  <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3 shadow-xl space-y-2.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                        <span className="text-amber-400">🏟️</span> 코트 배정 & 관리자 제어기
+                      </span>
+                      <span className="text-[11px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
+                        총 {courts.length}개 코트 운영 중
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      {/* 코트 수 1개 줄이기 (-) 버튼 */}
+                    {/* 코트 수 증감 (+ / -) 스텝퍼 조절 바 */}
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-inner">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-300">코트 수 조절:</span>
+                        <span className="text-sm font-black text-amber-400 bg-slate-900 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-xs">
+                          {courts.length}개 코트
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* 코트 수 1개 줄이기 (-) 버튼 */}
+                        <button
+                          type="button"
+                          onClick={handleRemoveCourt}
+                          disabled={courts.length <= 1}
+                          title="코트 1개 줄이기 (-)"
+                          className={`w-9 h-8 rounded-xl font-black text-base flex items-center justify-center transition shadow-sm ${
+                            courts.length <= 1
+                              ? 'bg-slate-850 text-slate-600 border border-slate-800 cursor-not-allowed'
+                              : 'bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white cursor-pointer active:scale-95'
+                          }`}
+                        >
+                          －
+                        </button>
+
+                        {/* 코트 수 1개 늘리기 (+) 버튼 */}
+                        <button
+                          type="button"
+                          onClick={handleAddCourt}
+                          title="코트 1개 추가하기 (+)"
+                          className="w-9 h-8 rounded-xl font-black text-base flex items-center justify-center bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 hover:text-white cursor-pointer active:scale-95 transition shadow-sm"
+                        >
+                          ＋
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      {/* 코트 넘버를 코트 수에 맞게 계속 생성하는 버튼 */}
                       <button
-                        type="button"
-                        onClick={handleRemoveCourt}
-                        disabled={courts.length <= 1}
-                        title="코트 1개 줄이기 (-)"
-                        className={`w-9 h-8 rounded-xl font-black text-base flex items-center justify-center transition shadow-sm ${
-                          courts.length <= 1
-                            ? 'bg-slate-850 text-slate-600 border border-slate-800 cursor-not-allowed'
-                            : 'bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white cursor-pointer active:scale-95'
-                        }`}
+                        onClick={handleAddCourt}
+                        className="py-2 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-md cursor-pointer"
                       >
-                        －
+                        <span className="text-sm">+</span>
+                        <span>코트 추가 ({courts.length + 1}번)</span>
                       </button>
 
-                      {/* 코트 수 1개 늘리기 (+) 버튼 */}
+                      {/* 등록된 선수를 코트에 자동 배정하는 버튼 */}
                       <button
-                        type="button"
-                        onClick={handleAddCourt}
-                        title="코트 1개 추가하기 (+)"
-                        className="w-9 h-8 rounded-xl font-black text-base flex items-center justify-center bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 hover:text-white cursor-pointer active:scale-95 transition shadow-sm"
+                        onClick={handleAutoAssignPlayers}
+                        className="py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-md cursor-pointer"
                       >
-                        ＋
+                        <span>🎲</span>
+                        <span>선수 자동 배정</span>
                       </button>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-0.5">
-                    {/* 코트 넘버를 코트 수에 맞게 계속 생성하는 버튼 */}
                     <button
-                      onClick={handleAddCourt}
-                      className="py-2 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-md cursor-pointer"
+                      onClick={() => setActiveTab('admin')}
+                      className="w-full py-2 bg-slate-950/90 hover:bg-slate-800 text-amber-300 font-bold rounded-xl text-xs border border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <span className="text-sm">+</span>
-                      <span>코트 추가 ({courts.length + 1}번)</span>
-                    </button>
-
-                    {/* 등록된 선수를 코트에 자동 배정하는 버튼 */}
-                    <button
-                      onClick={handleAutoAssignPlayers}
-                      className="py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition flex items-center justify-center gap-1 shadow-md cursor-pointer"
-                    >
-                      <span>🎲</span>
-                      <span>등록 선수 자동 배정</span>
+                      <span>⚙️</span>
+                      <span>운영관리 창에서 대회·방식·선수·코트 종합 설정 ➔</span>
                     </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 shadow-md flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center justify-center text-sm font-bold">
+                        🏟️
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-black text-white">실시간 코트 운영 현황</span>
+                          <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded font-bold">
+                            총 {courts.length}개 코트 가동 중
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          대회 생성, 방식 설정, 코트 증감 및 선수 배정은 관리자 전용 기능입니다.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-950/70 border border-emerald-500/30 px-2 py-1 rounded-lg shrink-0">
+                      🔴 LIVE 실시간
+                    </span>
+                  </div>
                 )}
 
                 {/* 대진 방식 빠른 이동 버튼 2개 */}
@@ -1644,41 +1732,59 @@ export default function TennisApp() {
                   </button>
                 </div>
 
-                {/* KDK 참가자 명단 입력 및 대진표 자동 편성 (관리자 전용) */}
-                {isAdmin && (
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="font-extrabold text-xs text-white flex items-center gap-1.5">
-                      <span className="text-amber-400">🎾</span> KDK 참가 선수 명단 ({registeredPlayers.length}명 등록됨)
-                    </span>
-                    <button
-                      onClick={() => {
-                        const names = registeredPlayers.map((p) => p.name).join(', ');
-                        setParticipantsInput(names);
-                      }}
-                      className="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700"
-                    >
-                      등록회원 전체 불러오기
-                    </button>
+                {/* KDK 참가자 명단 입력 및 대진표 자동 편성 (관리자 전용) / 회원 모드 안내 */}
+                {isAdmin ? (
+                  <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-extrabold text-xs text-white flex items-center gap-1.5">
+                        <span className="text-amber-400">🎾</span> KDK 참가 선수 명단 ({registeredPlayers.length}명 등록됨)
+                      </span>
+                      <button
+                        onClick={() => {
+                          const names = registeredPlayers.map((p) => p.name).join(', ');
+                          setParticipantsInput(names);
+                        }}
+                        className="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700 cursor-pointer"
+                      >
+                        등록회원 전체 불러오기
+                      </button>
+                    </div>
+
+                    <textarea
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono leading-relaxed"
+                      rows={2}
+                      value={participantsInput}
+                      onChange={(e) => setParticipantsInput(e.target.value)}
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          alert('🎉 KDK 파트너 순환 대진표가 새로 편성되었습니다!');
+                        }}
+                        className="py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>🏓</span>
+                        <span>대진표 편성</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('admin')}
+                        className="py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <span>⚙️</span>
+                        <span>운영관리 창 이동</span>
+                      </button>
+                    </div>
                   </div>
-
-                  <textarea
-                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono leading-relaxed"
-                    rows={2}
-                    value={participantsInput}
-                    onChange={(e) => setParticipantsInput(e.target.value)}
-                  />
-
-                  <button
-                    onClick={() => {
-                      alert('🎉 KDK 파트너 순환 대진표가 새로 편성되었습니다!');
-                    }}
-                    className="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>🏓</span>
-                    <span>KDK 대진표 자동 편성 & 랭킹 초기화</span>
-                  </button>
-                </div>
+                ) : (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-md text-center space-y-1">
+                    <p className="text-xs font-bold text-emerald-300 flex items-center justify-center gap-1">
+                      <span>🔄</span> KDK 파트너 순환 대진표 & 실시간 순위 조회
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      참여선수 명단 편성 및 순환 방식 설정은 관리자 모드로 로그인 시 운영관리 창에서 진행됩니다.
+                    </p>
+                  </div>
                 )}
 
                 {/* KDK 실시간 개인 순위표 */}
