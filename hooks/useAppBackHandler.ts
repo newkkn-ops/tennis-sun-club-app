@@ -40,6 +40,7 @@ export function useAppBackHandler({
   const showExitModalRef = useRef(showExitConfirmModal);
   const lastRootBackPressRef = useRef<number>(0);
   const isExitingRef = useRef<boolean>(false);
+  const mountedAtRef = useRef<number>(Date.now());
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -164,13 +165,21 @@ export function useAppBackHandler({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // 초기 진입 시 백버튼 가로채기용 히스토리 가드 등록
+    mountedAtRef.current = Date.now();
+    isExitingRef.current = false;
+
+    // 초기 진입/새로고침 시 백버튼 가로채기용 히스토리 가드 등록 (새로고침 시 중복 스택 방지)
     if (!window.history.state?.sunTennisBackGuard) {
       armHistoryGuard();
     }
 
     const handlePopState = () => {
       if (isExitingRef.current) return;
+      // 새로고침 직후 일부 모바일 브라우저(Safari/WebView)가 자동 발생시키는 초기 popstate 무시
+      if (Date.now() - mountedAtRef.current < 350) {
+        armHistoryGuard();
+        return;
+      }
       // 앱이 바로 종료되거나 이탈하지 않도록 즉시 가드 재등록
       armHistoryGuard();
       triggerBackAction();

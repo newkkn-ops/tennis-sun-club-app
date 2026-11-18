@@ -58,6 +58,7 @@ export default function TennisApp() {
   // 0. 로그인 / 회원가입 인증 상태
   // ----------------------------------------------------
   const [currentUser, setCurrentUser] = useState<RegisteredPlayer | null>(null);
+  const [authHydrated, setAuthHydrated] = useState<boolean>(false);
   const [isSignUp, setIsSignUp] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [authMessage, setAuthMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -679,7 +680,7 @@ export default function TennisApp() {
     setSelectedCourt(null);
   };
 
-  // 초기 로컬 스토리지 가입 회원(승인 대기 포함) 불러오기
+  // 초기 로컬 스토리지 가입 회원(승인 대기 포함) 및 로그인 세션/현재 화면 복원 (새로고침 시 자동종료·로그아웃 방지)
   useEffect(() => {
     try {
       const savedUsersRaw = localStorage.getItem('sun_tennis_registered_users');
@@ -692,7 +693,6 @@ export default function TennisApp() {
             savedUsers.forEach((su) => {
               byId.set(su.id, { ...byId.get(su.id), ...su });
             });
-            // 최신 가입(또는 대기) 신청자가 상단에 보이도록 정렬
             const merged = Array.from(byId.values());
             return merged.sort((a, b) => {
               if (a.approvalStatus === 'pending' && b.approvalStatus !== 'pending') return -1;
@@ -702,8 +702,51 @@ export default function TennisApp() {
           });
         }
       }
-    } catch {}
+
+      const savedCurrentUserRaw = localStorage.getItem('sun_tennis_current_user');
+      if (savedCurrentUserRaw) {
+        const parsedUser: RegisteredPlayer = JSON.parse(savedCurrentUserRaw);
+        if (parsedUser && parsedUser.id && parsedUser.name) {
+          const resolvedRole: 'member' | 'admin' = parsedUser.role === 'admin' ? 'admin' : 'member';
+          setCurrentUser({ ...parsedUser, role: resolvedRole });
+          setRole(resolvedRole);
+
+          const savedSessionRaw = localStorage.getItem('sun_tennis_session_state');
+          if (savedSessionRaw) {
+            const parsedSession = JSON.parse(savedSessionRaw);
+            const validTabs = ['courts', 'kdk', 'tournament', 'mypage', 'admin'];
+            if (parsedSession?.activeTab && validTabs.includes(parsedSession.activeTab)) {
+              const safeTab =
+                parsedSession.activeTab === 'admin' && resolvedRole !== 'admin'
+                  ? 'courts'
+                  : parsedSession.activeTab;
+              setActiveTab(safeTab);
+            } else {
+              setActiveTab(resolvedRole === 'admin' ? 'admin' : 'courts');
+            }
+            if (parsedSession?.tourPhase === 'qualifying' || parsedSession?.tourPhase === 'main') {
+              setTourPhase(parsedSession.tourPhase);
+            }
+          } else {
+            setActiveTab(resolvedRole === 'admin' ? 'admin' : 'courts');
+          }
+        }
+      }
+    } catch {} finally {
+      setAuthHydrated(true);
+    }
   }, []);
+
+  // 로그인 상태에서 현재 탭/토너먼트 단계 자동 저장 (새로고침 시 동일 화면 유지)
+  useEffect(() => {
+    if (!authHydrated || !currentUser) return;
+    try {
+      localStorage.setItem(
+        'sun_tennis_session_state',
+        JSON.stringify({ activeTab, tourPhase })
+      );
+    } catch {}
+  }, [authHydrated, currentUser, activeTab, tourPhase]);
 
   // 로그인 & 회원가입 제출 핸들러 (아이디 + 비밀번호 기반 · 회원가입은 운영자 승인 후 접속)
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -1001,6 +1044,7 @@ export default function TennisApp() {
   const handleLogout = () => {
     try {
       localStorage.removeItem('sun_tennis_current_user');
+      localStorage.removeItem('sun_tennis_session_state');
     } catch {}
     setCurrentUser(null);
     setRole('member');
@@ -1151,6 +1195,20 @@ export default function TennisApp() {
     );
   }
 
+  // 새로고침 직후 로컬 로그인 세션 복원 중일 때 깜빡임/초기화 방지
+  if (!authHydrated) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-2xl shadow-lg animate-pulse">
+            ☀️
+          </div>
+          <p className="text-xs font-bold text-slate-400">썬 테니스 클럽 화면을 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
   // ============================================================================
   // [로그인 & 회원가입 화면]: 로그인하지 않은 경우 첫 화면으로 표시
   // ============================================================================
@@ -1218,42 +1276,8 @@ export default function TennisApp() {
               <p className="text-xs text-slate-400">
                 {isSignUp
                   ? '이메일 없이 사용할 아이디와 비밀번호만 입력해 간편하게 가입하세요.'
-                  : '아이디와 비밀번호로 로그인하거나 회원가입 버튼을 눌러 새 계정을 만드세요.'}
+                  : '아이디와 비밀번호를 입력해 로그인하거나 회원가입 버튼을 눌러주세요.'}
               </p>
-            </div>
-
-            {/* 상단 로그인 / 회원가입 탭 전환 버튼 */}
-            <div className="grid grid-cols-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-xs font-extrabold">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(false);
-                  setAuthMessage(null);
-                }}
-                className={`py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  !isSignUp
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>🔑</span>
-                <span>로그인</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(true);
-                  setAuthMessage(null);
-                }}
-                className={`py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  isSignUp
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>✨</span>
-                <span>회원가입</span>
-              </button>
             </div>
 
             {authMessage && (
@@ -1383,24 +1407,54 @@ export default function TennisApp() {
                 </>
               )}
 
-              <button
-                type="submit"
-                disabled={authLoading}
-                className={`w-full py-3 font-black rounded-xl text-sm shadow-lg transition flex items-center justify-center gap-2 cursor-pointer ${
-                  isSignUp
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 shadow-emerald-500/20'
-                    : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 shadow-amber-500/20'
-                }`}
-              >
-                <span>{isSignUp ? '✨' : '🎾'}</span>
-                <span>
-                  {authLoading
-                    ? '처리 중...'
-                    : isSignUp
-                    ? '회원가입 신청하기 (운영자 승인 후 접속)'
-                    : '로그인하기'}
-                </span>
-              </button>
+              {/* 중복 없는 단일 로그인 · 회원가입 버튼 영역 */}
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                {!isSignUp ? (
+                  <>
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="py-3 font-black rounded-xl text-sm shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 shadow-amber-500/20"
+                    >
+                      <span>🔑</span>
+                      <span>{authLoading ? '처리 중...' : '로그인'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSignUp(true);
+                        setAuthMessage(null);
+                      }}
+                      className="py-3 font-black rounded-xl text-sm transition flex items-center justify-center gap-1.5 cursor-pointer bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-300 border border-emerald-500/40"
+                    >
+                      <span>✨</span>
+                      <span>회원가입</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSignUp(false);
+                        setAuthMessage(null);
+                      }}
+                      className="py-3 font-black rounded-xl text-sm transition flex items-center justify-center gap-1.5 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                    >
+                      <span>🔑</span>
+                      <span>로그인</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="py-3 font-black rounded-xl text-sm shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 shadow-emerald-500/20"
+                    >
+                      <span>✨</span>
+                      <span>{authLoading ? '처리 중...' : '회원가입 신청'}</span>
+                    </button>
+                  </>
+                )}
+              </div>
               {isSignUp && (
                 <p className="text-[11px] text-center text-amber-300/90 bg-amber-950/40 border border-amber-500/30 rounded-xl py-2 px-3">
                   ⏳ 회원가입 신청 후 운영자(관리자)의 확인 및 승인이 완료되면 로그인하여 접속할 수 있습니다.
@@ -1408,24 +1462,8 @@ export default function TennisApp() {
               )}
             </form>
 
-            {/* 하단 회원가입 전환 버튼 & 관리자 전용 입장 버튼 (관리자 아이디·비번 인증 필수) */}
+            {/* 하단 관리자 전용 입장 버튼 (관리자 아이디·비번 인증 필수) */}
             <div className="pt-3 border-t border-slate-800 space-y-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setAuthMessage(null);
-                }}
-                className="w-full py-2.5 bg-emerald-950/40 hover:bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 font-extrabold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>{isSignUp ? '🔑' : '📝'}</span>
-                <span>
-                  {isSignUp
-                    ? '이미 계정이 있으신가요? 로그인 화면으로 이동'
-                    : '아직 회원이 아니신가요? 회원가입 하기'}
-                </span>
-              </button>
-
               <button
                 type="button"
                 onClick={() => {

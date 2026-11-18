@@ -16,6 +16,7 @@ export function useAppBackHandler({
   const showExitModalRef = useRef(showExitConfirmModal);
   const lastRootBackPressRef = useRef(0);
   const isExitingRef = useRef(false);
+  const mountedAtRef = useRef(Date.now());
   const toastTimerRef = useRef(null);
 
   useEffect(() => {
@@ -121,12 +122,19 @@ export function useAppBackHandler({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    mountedAtRef.current = Date.now();
+    isExitingRef.current = false;
+
     if (!window.history.state?.sunTennisBackGuard) {
       armHistoryGuard();
     }
 
     const handlePopState = () => {
       if (isExitingRef.current) return;
+      if (Date.now() - mountedAtRef.current < 350) {
+        armHistoryGuard();
+        return;
+      }
       armHistoryGuard();
       triggerBackAction();
     };
