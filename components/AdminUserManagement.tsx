@@ -19,6 +19,7 @@ const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테
 export interface ManagedMember {
   id: string;
   username?: string;
+  password?: string;
   name: string;
   email?: string;
   gender: 'M' | 'F' | string;
@@ -70,6 +71,8 @@ export default function AdminUserManagement({
   const [editingMember, setEditingMember] = useState<ManagedMember | null>(null);
   const [editName, setEditName] = useState<string>('');
   const [editEmail, setEditEmail] = useState<string>('');
+  const [editPassword, setEditPassword] = useState<string>('');
+  const [showEditPassword, setShowEditPassword] = useState<boolean>(true);
   const [editPhone, setEditPhone] = useState<string>('');
   const [editGender, setEditGender] = useState<'M' | 'F'>('M');
   const [editGrade, setEditGrade] = useState<string>('은배');
@@ -79,6 +82,7 @@ export default function AdminUserManagement({
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [newName, setNewName] = useState<string>('');
   const [newEmail, setNewEmail] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
   const [newPhone, setNewPhone] = useState<string>('');
   const [newGender, setNewGender] = useState<'M' | 'F'>('M');
   const [newGrade, setNewGrade] = useState<string>('테린이');
@@ -105,18 +109,36 @@ export default function AdminUserManagement({
     } catch {}
   };
 
-  // 회원 정보 수정 모달 열기
+  // 회원 정보 수정 모달 열기 (아이디 및 저장된 비밀번호까지 불러오기)
   const openEditModal = (member: ManagedMember) => {
-    setEditingMember(member);
+    let resolvedPassword = member.password || '';
+    if (!resolvedPassword) {
+      try {
+        const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
+        const found = savedList.find(
+          (u: any) =>
+            u.id === member.id ||
+            (member.username && u.username?.toLowerCase() === member.username.toLowerCase()) ||
+            (member.email && u.email?.toLowerCase() === member.email.toLowerCase())
+        );
+        if (found?.password) {
+          resolvedPassword = found.password;
+        }
+      } catch {}
+    }
+
+    setEditingMember({ ...member, password: resolvedPassword || member.password });
     setEditName(member.name || '');
     setEditEmail(member.username || member.email || '');
+    setEditPassword(resolvedPassword);
+    setShowEditPassword(true);
     setEditPhone(member.phone || '');
     setEditGender(member.gender === 'F' || member.gender === '여' ? 'F' : 'M');
     setEditGrade(member.grade || '은배');
     setEditRole(member.role || 'member');
   };
 
-  // 회원 정보 수정 저장 핸들러
+  // 회원 정보 수정 저장 핸들러 (아이디 중복 검사 + 비밀번호 수정 포함)
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMember) return;
@@ -125,11 +147,38 @@ export default function AdminUserManagement({
       return;
     }
 
+    const trimmedId = editEmail.trim();
+    const trimmedPw = editPassword.trim();
+
+    if (trimmedId && trimmedId.length < 2) {
+      alert('아이디는 2자 이상 입력해 주세요.');
+      return;
+    }
+
+    if (trimmedId) {
+      const duplicate = users.some(
+        (u) =>
+          u.id !== editingMember.id &&
+          ((u.username && u.username.toLowerCase() === trimmedId.toLowerCase()) ||
+            (u.email && u.email.toLowerCase() === trimmedId.toLowerCase()))
+      );
+      if (duplicate) {
+        alert(`이미 다른 회원이 사용 중인 아이디(${trimmedId})입니다.`);
+        return;
+      }
+    }
+
+    if (trimmedPw.length > 0 && trimmedPw.length < 4) {
+      alert('비밀번호는 최소 4자 이상 입력해 주세요.');
+      return;
+    }
+
     const updated: ManagedMember = {
       ...editingMember,
       name: editName.trim(),
-      username: editEmail.trim(),
-      email: editEmail.trim().includes('@') ? editEmail.trim() : editingMember.email || '',
+      username: trimmedId,
+      password: trimmedPw,
+      email: trimmedId.includes('@') ? trimmedId : editingMember.email || '',
       phone: editPhone.trim(),
       gender: editGender,
       grade: editGrade,
@@ -143,11 +192,21 @@ export default function AdminUserManagement({
 
     try {
       const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const nextSaved = savedList.map((u: any) =>
-        u.id === updated.id || (u.email && u.email === editingMember.email)
-          ? { ...u, ...updated }
-          : u
+      const existsInStorage = savedList.some(
+        (u: any) =>
+          u.id === updated.id ||
+          (editingMember.username && u.username?.toLowerCase() === editingMember.username.toLowerCase()) ||
+          (editingMember.email && u.email && u.email === editingMember.email)
       );
+      const nextSaved = existsInStorage
+        ? savedList.map((u: any) =>
+            u.id === updated.id ||
+            (editingMember.username && u.username?.toLowerCase() === editingMember.username.toLowerCase()) ||
+            (editingMember.email && u.email && u.email === editingMember.email)
+              ? { ...u, ...updated }
+              : u
+          )
+        : [updated, ...savedList];
       localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
     } catch {}
 
@@ -166,7 +225,11 @@ export default function AdminUserManagement({
     }
 
     setEditingMember(null);
-    alert(`✅ [${updated.name}] 회원의 정보가 수정되었습니다.`);
+    alert(
+      `✅ [${updated.name}] 회원의 정보가 수정되었습니다.\n아이디: ${updated.username || '미설정'} / 비밀번호: ${
+        updated.password ? '변경(저장) 완료' : '미설정'
+      }`
+    );
   };
 
   // 인라인 등급 빠른 변경
@@ -327,6 +390,7 @@ export default function AdminUserManagement({
     const created: ManagedMember = {
       id: `p_${Date.now()}`,
       username: newEmail.trim() || newName.trim(),
+      password: newPassword.trim() || undefined,
       name: newName.trim(),
       email: newEmail.trim().includes('@') ? newEmail.trim() : '',
       phone: newPhone.trim(),
@@ -351,6 +415,7 @@ export default function AdminUserManagement({
 
     setNewName('');
     setNewEmail('');
+    setNewPassword('');
     setNewPhone('');
     setShowAddForm(false);
     alert(`🎉 [${created.name} (${created.grade})] 회원이 신규 등록되었습니다.`);
@@ -502,6 +567,22 @@ export default function AdminUserManagement({
                 className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
               />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="비밀번호 (선택 · 4자 이상)"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+              />
+              <input
+                type="tel"
+                placeholder="휴대폰 번호 (선택)"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+              />
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <select
                 value={newGender}
@@ -649,8 +730,8 @@ export default function AdminUserManagement({
       {/* [모달]: 가입회원 상세 정보 수정 모달 */}
       {/* ================================================================= */}
       {editingMember && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 text-white">
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 text-white my-auto max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="text-sm font-black text-amber-400 flex items-center gap-1.5">
                 <span>✎</span> [{editingMember.name}] 회원 정보 수정
@@ -665,6 +746,60 @@ export default function AdminUserManagement({
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-3">
+              {/* 로그인 계정 정보 (아이디 · 비밀번호 확인 및 수정) */}
+              <div className="bg-slate-950/90 border border-amber-500/35 rounded-2xl p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-amber-300 flex items-center gap-1">
+                    <span>🔐</span> 로그인 아이디 · 비밀번호 확인 및 수정
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                    아이디 (ID) <span className="text-[10px] text-slate-500 font-normal">이메일 형식 불필요</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="아이디 입력 (2자 이상)"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      비밀번호 확인 및 수정
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      {editingMember.password ? '설정됨' : '미설정'}
+                    </span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type={showEditPassword ? 'text' : 'password'}
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      placeholder="현재 비밀번호 확인 또는 새 비밀번호 (4자 이상)"
+                      className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-emerald-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPassword((prev) => !prev)}
+                      className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-[11px] font-bold shrink-0 cursor-pointer"
+                    >
+                      {showEditPassword ? '🙈 숨김' : '👁️ 보기'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {editingMember.password
+                      ? `현재 저장된 비밀번호를 바로 확인하거나 새 비밀번호로 변경할 수 있습니다.`
+                      : `현재 비밀번호가 미설정 상태입니다. 입력 후 저장하면 해당 비밀번호로 로그인됩니다.`}
+                  </p>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">
                   이름 (실명) <span className="text-amber-400">*</span>
@@ -719,17 +854,6 @@ export default function AdminUserManagement({
                   <option value="member">👤 일반 클럽 회원 (member)</option>
                   <option value="admin">👑 클럽 운영자 / 관리자 (admin)</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">아이디 (ID)</label>
-                <input
-                  type="text"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="아이디 입력 (이메일 형식 불필요)"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                />
               </div>
 
               <div>

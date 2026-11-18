@@ -6,6 +6,7 @@ import AdminTournamentManager, {
   ParticipantPlayer,
 } from './components/AdminTournamentManager';
 import AdminUserManagement, { ManagedMember } from './components/AdminUserManagement';
+import KdkCourtOperations from './components/KdkCourtOperations';
 import { generateKDKSchedule, GRADE_WEIGHTS } from './lib/kdk';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
@@ -1710,155 +1711,33 @@ export default function TennisApp() {
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 2]: KDK 파트너 순환 진행 전용 화면 */}
+            {/* [탭 2]: KDK 코트별 운영 & 실력균등 자동/수동 · 최소 2게임 · 종료 시 1·2·3등 자동집계(동점 시 나이합산) */}
             {/* ---------------------------------------------------- */}
             {activeTab === 'kdk' && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 p-3 rounded-2xl border border-emerald-500/30 shadow-md">
-                  <div>
-                    <h3 className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
-                      <span>🔄</span> KDK 파트너 순환 리그
-                    </h3>
-                    <p className="text-[10px] text-slate-400">
-                      {currentTournament.name} ({currentTournament.date})
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('tournament')}
-                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs cursor-pointer"
-                  >
-                    <span>🏆</span>
-                    <span>토너먼트로</span>
-                  </button>
-                </div>
-
-                {/* KDK 참가자 명단 입력 및 대진표 자동 편성 (관리자 전용) / 회원 모드 안내 */}
-                {isAdmin ? (
-                  <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-extrabold text-xs text-white flex items-center gap-1.5">
-                        <span className="text-amber-400">🎾</span> KDK 참가 선수 명단 ({registeredPlayers.length}명 등록됨)
-                      </span>
-                      <button
-                        onClick={() => {
-                          const names = registeredPlayers.map((p) => p.name).join(', ');
-                          setParticipantsInput(names);
-                        }}
-                        className="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700 cursor-pointer"
-                      >
-                        등록회원 전체 불러오기
-                      </button>
-                    </div>
-
-                    <textarea
-                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono leading-relaxed"
-                      rows={2}
-                      value={participantsInput}
-                      onChange={(e) => setParticipantsInput(e.target.value)}
-                    />
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => {
-                          alert('🎉 KDK 파트너 순환 대진표가 새로 편성되었습니다!');
-                        }}
-                        className="py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <span>🏓</span>
-                        <span>대진표 편성</span>
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('admin')}
-                        className="py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <span>⚙️</span>
-                        <span>운영관리 창 이동</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-md text-center space-y-1">
-                    <p className="text-xs font-bold text-emerald-300 flex items-center justify-center gap-1">
-                      <span>🔄</span> KDK 파트너 순환 대진표 & 실시간 순위 조회
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      참여선수 명단 편성 및 순환 방식 설정은 관리자 모드로 로그인 시 운영관리 창에서 진행됩니다.
-                    </p>
-                  </div>
-                )}
-
-                {/* KDK 실시간 개인 순위표 */}
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2.5">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                    <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                      <span>🥇</span> KDK 실시간 개인 순위표
-                    </span>
-                    <span className="text-[10px] text-slate-400">승수 &gt; 득실차 &gt; 승점 순</span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-center text-xs">
-                      <thead>
-                        <tr className="text-slate-400 border-b border-slate-800/80 text-[10px]">
-                          <th className="py-1">순위</th>
-                          <th className="py-1 text-left px-2">선수(등급)</th>
-                          <th className="py-1">경기</th>
-                          <th className="py-1">승-패</th>
-                          <th className="py-1">득실</th>
-                          <th className="py-1 font-bold text-amber-400">승점</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/50">
-                        {kdkStandings.map((s) => (
-                          <tr key={s.name} className={s.rank <= 3 ? 'bg-amber-400/5 font-bold' : ''}>
-                            <td className="py-2">
-                              {s.rank === 1 ? '🥇 1' : s.rank === 2 ? '🥈 2' : s.rank === 3 ? '🥉 3' : s.rank}
-                            </td>
-                            <td className="py-2 text-left px-2 text-white">
-                              {s.name} <span className="text-[10px] text-slate-400 font-normal">({s.grade})</span>
-                            </td>
-                            <td className="py-2 text-slate-300">{s.matches}</td>
-                            <td className="py-2 text-emerald-400">{s.wins}승 {s.losses}패</td>
-                            <td className="py-2 text-slate-300">{s.ptsDiff}</td>
-                            <td className="py-2 font-black text-amber-400">{s.totalPts}점</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* KDK 라운드별 경기 리스트 */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-extrabold text-slate-300 px-1 flex items-center gap-1">
-                    <span>🎾</span> KDK 라운드별 경기 진행 & 스코어
-                  </h4>
-
-                  {kdkRounds.map((r) => (
-                    <div key={r.round} className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2.5">
-                      <div className="text-xs font-black text-emerald-400 border-b border-slate-800 pb-1.5 flex justify-between">
-                        <span>{r.name}</span>
-                        <span className="text-[10px] text-slate-400">{r.matches.length}개 경기</span>
-                      </div>
-
-                      <div className="space-y-2">
-                        {r.matches.map((m) => (
-                          <div key={m.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
-                            <span className="font-extrabold text-amber-400 text-[10px]">코트 {m.court}</span>
-                            <span className="font-bold text-white truncate max-w-[90px]">{m.teamA.join(' / ')}</span>
-                            <span className="text-sm font-black text-white px-2 py-0.5 bg-slate-900 rounded border border-slate-800">
-                              {m.scoreA} : {m.scoreB}
-                            </span>
-                            <span className="font-bold text-white truncate max-w-[90px]">{m.teamB.join(' / ')}</span>
-                            <span className={`text-[10px] font-bold ${m.completed ? 'text-emerald-400' : 'text-slate-500'}`}>
-                              {m.completed ? '완료' : '진행'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <KdkCourtOperations
+                  tournamentName={`${currentTournament.name} (${currentTournament.date})`}
+                  availablePlayers={registeredPlayers}
+                  onSyncCourtsToApp={(syncedCourts) => {
+                    setCourts(syncedCourts);
+                  }}
+                  onAddNewPlayerToClub={(newPlayer) => {
+                    setRegisteredPlayers((prev) => {
+                      if (prev.some((p) => p.id === newPlayer.id)) return prev;
+                      return [
+                        ...prev,
+                        {
+                          id: newPlayer.id,
+                          name: newPlayer.name,
+                          grade: newPlayer.grade,
+                          gender: newPlayer.gender === 'F' || newPlayer.gender === '여' ? 'F' : 'M',
+                          role: 'member',
+                          isGuest: true,
+                        },
+                      ];
+                    });
+                  }}
+                />
               </div>
             )}
 
