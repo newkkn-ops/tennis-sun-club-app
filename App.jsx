@@ -533,6 +533,13 @@ export default function TennisApp() {
         return;
       }
 
+      const nowStr = new Date().toLocaleString('ko-KR', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
       const newUser = {
         id: `u_${Date.now()}`,
         username: rawId,
@@ -543,7 +550,9 @@ export default function TennisApp() {
         grade: signUpGrade,
         role: 'member',
         status: 'playing',
-        isLoggedIn: true,
+        approvalStatus: 'pending',
+        requestedAt: nowStr,
+        isLoggedIn: false,
       };
 
       setUsers((prev) => {
@@ -553,12 +562,17 @@ export default function TennisApp() {
         } catch {}
         return updated;
       });
-      setCurrentUser(newUser);
-      setRole('member');
-      setActiveTab('courts');
-      try {
-        localStorage.setItem('sun_tennis_current_user', JSON.stringify(newUser));
-      } catch {}
+      setIsSignUp(false);
+      setPassword('');
+      setConfirmPassword('');
+      setSignUpName('');
+      setAuthMessage({
+        type: 'success',
+        text: `⏳ [${newUser.name}] 님의 회원가입 신청(ID: ${newUser.username})이 접수되었습니다! 운영자(관리자) 승인 완료 후 로그인하여 접속할 수 있습니다.`,
+      });
+      alert(
+        `✅ 회원가입 신청이 완료되었습니다!\n신청 아이디: ${newUser.username}\n\n⏳ 운영자(관리자) 확인 및 승인 후 접속할 수 있습니다.`
+      );
       return;
     }
 
@@ -581,22 +595,39 @@ export default function TennisApp() {
         u.name === rawId
     );
 
+    if (!matched && !isAdminAccount) {
+      setAuthMessage({
+        type: 'error',
+        text: '등록되지 않은 아이디입니다. 회원가입 신청 후 운영자(관리자) 승인을 받아 접속해 주세요.',
+      });
+      return;
+    }
+
     if (matched && matched.password && password && matched.password !== password) {
       setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
       return;
     }
 
+    if (matched && matched.approvalStatus === 'pending' && !isAdminAccount) {
+      setAuthMessage({
+        type: 'error',
+        text: `⏳ [${matched.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다. 승인 완료 후 접속할 수 있습니다.`,
+      });
+      return;
+    }
+
     const resolvedRole = isAdminAccount || matched?.role === 'admin' ? 'admin' : 'member';
     const loggedUser = matched
-      ? { ...matched, role: resolvedRole, isLoggedIn: true }
+      ? { ...matched, role: resolvedRole, approvalStatus: 'approved', isLoggedIn: true }
       : {
-          id: `u_${Date.now()}`,
-          username: rawId,
-          name: isAdminAccount ? '공유 (총괄관리자)' : rawId.split('@')[0] || '김철수',
-          email: rawId,
+          id: '10',
+          username: 'admin',
+          name: '공유 (총괄관리자)',
+          email: 'admin@suntc.kr',
           gender: 'M',
           grade: '금배',
-          role: resolvedRole,
+          role: 'admin',
+          approvalStatus: 'approved',
           isLoggedIn: true,
         };
 
@@ -1234,6 +1265,26 @@ export default function TennisApp() {
                 <AdminUserManagement
                   externalUsers={users}
                   currentUserId={currentUser?.id}
+                  onApproveMember={(approved) => {
+                    setUsers((prev) => {
+                      const next = prev.map((u) =>
+                        String(u.id) === String(approved.id) ? { ...u, approvalStatus: 'approved' } : u
+                      );
+                      try {
+                        localStorage.setItem('sun_tennis_registered_users', JSON.stringify(next));
+                      } catch {}
+                      return next;
+                    });
+                  }}
+                  onRejectMember={(rejectedId) => {
+                    setUsers((prev) => {
+                      const next = prev.filter((u) => String(u.id) !== String(rejectedId));
+                      try {
+                        localStorage.setItem('sun_tennis_registered_users', JSON.stringify(next));
+                      } catch {}
+                      return next;
+                    });
+                  }}
                   onUpdateMember={(updated) => {
                     setUsers((prev) =>
                       prev.map((u) => (String(u.id) === String(updated.id) ? { ...u, ...updated } : u))
@@ -1256,12 +1307,12 @@ export default function TennisApp() {
                     }
                   }}
                   onAddMember={(newMember) => {
-                    setUsers((prev) => [newMember, ...prev]);
+                    setUsers((prev) => [{ ...newMember, approvalStatus: 'approved' }, ...prev]);
                   }}
                 />
 
                 <AdminTournamentManager
-                  registeredUsers={users}
+                  registeredUsers={users.filter((u) => u.approvalStatus !== 'pending')}
                   currentUser={currentUser}
                   activeTournament={activeTournament}
                   onApplyTournament={(config) => applyTournamentToAppState(config, true)}

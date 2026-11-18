@@ -44,6 +44,8 @@ export interface RegisteredPlayer {
   role: 'member' | 'admin';
   phone?: string;
   isGuest?: boolean; // 미가입 회원 또는 임의 등록 선수 여부
+  approvalStatus?: 'pending' | 'approved'; // 운영자 회원가입 승인 상태
+  requestedAt?: string;
 }
 
 const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
@@ -74,21 +76,24 @@ export default function TennisApp() {
   // 1. 등록된 공식 선수(가입회원 + 미가입회원/임의선수) 명부 풀
   // ----------------------------------------------------
   const [registeredPlayers, setRegisteredPlayers] = useState<RegisteredPlayer[]>([
-    { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false },
-    { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false },
-    { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false },
-    { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false },
-    { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false },
-    { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false },
-    { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false },
-    { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false },
-    { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false },
-    { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false },
-    { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', isGuest: true },
-    { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', isGuest: true },
-    { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', isGuest: true },
-    { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', isGuest: true },
+    { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false, approvalStatus: 'approved' },
+    { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', isGuest: true, approvalStatus: 'approved' },
+    { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', isGuest: true, approvalStatus: 'approved' },
+    { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', isGuest: true, approvalStatus: 'approved' },
+    { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', isGuest: true, approvalStatus: 'approved' },
   ]);
+
+  const pendingApprovalCount = registeredPlayers.filter((p) => p.approvalStatus === 'pending').length;
+  const approvedPlayers = registeredPlayers.filter((p) => p.approvalStatus !== 'pending');
 
   // ----------------------------------------------------
   // 2. 대회명 생성 및 진행날짜 자동 생성 / 기록 관리 상태
@@ -580,7 +585,7 @@ export default function TennisApp() {
     setSelectedCourt(null);
   };
 
-  // 초기 로컬 스토리지 가입 회원 불러오기
+  // 초기 로컬 스토리지 가입 회원(승인 대기 포함) 불러오기
   useEffect(() => {
     try {
       const savedUsersRaw = localStorage.getItem('sun_tennis_registered_users');
@@ -588,19 +593,25 @@ export default function TennisApp() {
         const savedUsers: RegisteredPlayer[] = JSON.parse(savedUsersRaw);
         if (Array.isArray(savedUsers) && savedUsers.length > 0) {
           setRegisteredPlayers((prev) => {
-            const existingIds = new Set(prev.map((u) => u.id));
-            const merged = [...prev];
+            const byId = new Map<string, RegisteredPlayer>();
+            prev.forEach((u) => byId.set(u.id, u));
             savedUsers.forEach((su) => {
-              if (!existingIds.has(su.id)) merged.unshift(su);
+              byId.set(su.id, { ...byId.get(su.id), ...su });
             });
-            return merged;
+            // 최신 가입(또는 대기) 신청자가 상단에 보이도록 정렬
+            const merged = Array.from(byId.values());
+            return merged.sort((a, b) => {
+              if (a.approvalStatus === 'pending' && b.approvalStatus !== 'pending') return -1;
+              if (a.approvalStatus !== 'pending' && b.approvalStatus === 'pending') return 1;
+              return 0;
+            });
           });
         }
       }
     } catch {}
   }, []);
 
-  // 로그인 & 회원가입 제출 핸들러 (아이디 + 비밀번호 방식, 이메일 형식 불필요)
+  // 로그인 & 회원가입 제출 핸들러 (아이디 + 비밀번호 기반 · 회원가입은 운영자 승인 후 접속)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthMessage(null);
@@ -625,18 +636,38 @@ export default function TennisApp() {
         return;
       }
 
-      // 중복 아이디 검사
-      const isDuplicateInState = registeredPlayers.some(
-        (p) => (p.username && p.username.toLowerCase() === trimmedId.toLowerCase()) ||
-               (p.email && p.email.toLowerCase() === trimmedId.toLowerCase())
-      );
-      if (isDuplicateInState) {
-        setAuthMessage({ type: 'error', text: `이미 사용 중인 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.` });
+      // 중복 아이디 검사 (현재 상태 + localStorage 모두 검사)
+      let savedLocalList: any[] = [];
+      try {
+        savedLocalList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
+      } catch {}
+
+      const isDuplicate =
+        registeredPlayers.some(
+          (p) =>
+            (p.username && p.username.toLowerCase() === trimmedId.toLowerCase()) ||
+            (p.email && p.email.toLowerCase() === trimmedId.toLowerCase())
+        ) ||
+        savedLocalList.some(
+          (p: any) =>
+            (p.username && p.username.toLowerCase() === trimmedId.toLowerCase()) ||
+            (p.email && p.email.toLowerCase() === trimmedId.toLowerCase())
+        );
+
+      if (isDuplicate) {
+        setAuthMessage({ type: 'error', text: `이미 사용 중이거나 승인 대기 중인 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.` });
         return;
       }
 
       setAuthLoading(true);
       try {
+        const nowStr = new Date().toLocaleString('ko-KR', {
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
         const newPlayer: RegisteredPlayer = {
           id: `p_${Date.now()}`,
           username: trimmedId,
@@ -647,27 +678,32 @@ export default function TennisApp() {
           role: 'member',
           phone: signUpPhone.trim(),
           isGuest: false,
+          approvalStatus: 'pending', // 운영자 확인 및 승인 전까지 접속 불가
+          requestedAt: nowStr,
         };
 
         setRegisteredPlayers((prev) => [newPlayer, ...prev.filter((p) => p.username !== newPlayer.username)]);
         try {
-          const prevSaved = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
           const updatedSaved = [
             { ...newPlayer, password },
-            ...prevSaved.filter((u: any) => u.username !== newPlayer.username),
+            ...savedLocalList.filter((u: any) => u.username !== newPlayer.username),
           ];
           localStorage.setItem('sun_tennis_registered_users', JSON.stringify(updatedSaved));
-          localStorage.setItem('sun_tennis_current_user', JSON.stringify(newPlayer));
         } catch {}
 
-        if (!participantsInput.includes(newPlayer.name)) {
-          setParticipantsInput((prev) => `${newPlayer.name}, ${prev}`);
-        }
-
-        setCurrentUser(newPlayer);
-        setRole('member');
-        setActiveTab('courts');
-        alert(`🎉 환영합니다, ${newPlayer.name} 회원님!\n아이디 [${newPlayer.username}] · 등급 [${newPlayer.grade}]으로 회원가입 및 로그인이 완료되었습니다.`);
+        // 바로 로그인시키지 않고 승인 대기 안내 표시 후 로그인 화면으로 전환
+        setIsSignUp(false);
+        setPassword('');
+        setConfirmPassword('');
+        setSignUpName('');
+        setSignUpPhone('');
+        setAuthMessage({
+          type: 'success',
+          text: `⏳ [${newPlayer.name}] 님의 회원가입 신청(ID: ${newPlayer.username})이 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 로그인하여 접속할 수 있습니다.`,
+        });
+        alert(
+          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${newPlayer.username}\n이름/등급: ${newPlayer.name} (${newPlayer.grade})\n\n⏳ 운영자(관리자)의 확인 및 승인 후 로그인하여 접속하실 수 있습니다.`
+        );
       } finally {
         setAuthLoading(false);
       }
@@ -680,7 +716,7 @@ export default function TennisApp() {
       setAuthLoading(true);
       try {
         const lowerId = trimmedId.toLowerCase();
-        let matchedUser: RegisteredPlayer | undefined;
+        let matchedUser: any = undefined;
 
         try {
           const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
@@ -691,22 +727,21 @@ export default function TennisApp() {
               u.name?.toLowerCase() === lowerId
           );
           if (foundLocal) {
-            if (foundLocal.password && foundLocal.password !== password) {
-              setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
-              setAuthLoading(false);
-              return;
-            }
             matchedUser = foundLocal;
           }
         } catch {}
 
-        if (!matchedUser) {
-          matchedUser = registeredPlayers.find(
-            (u) =>
-              u.username?.toLowerCase() === lowerId ||
-              u.email?.toLowerCase() === lowerId ||
-              u.name?.toLowerCase() === lowerId
-          );
+        const stateMatched = registeredPlayers.find(
+          (u) =>
+            u.username?.toLowerCase() === lowerId ||
+            u.email?.toLowerCase() === lowerId ||
+            u.name?.toLowerCase() === lowerId
+        );
+
+        if (matchedUser && stateMatched) {
+          matchedUser = { ...matchedUser, ...stateMatched };
+        } else if (!matchedUser && stateMatched) {
+          matchedUser = stateMatched;
         }
 
         const isAdminLogin =
@@ -716,16 +751,41 @@ export default function TennisApp() {
           lowerId === 'admin@suntc.kr' ||
           matchedUser?.role === 'admin';
 
+        // 미등록 아이디 차단 (관리자 제외)
+        if (!matchedUser && !isAdminLogin) {
+          setAuthMessage({
+            type: 'error',
+            text: '등록되지 않은 아이디입니다. 회원가입 신청 후 운영자(관리자) 승인을 받아 접속해 주세요.',
+          });
+          return;
+        }
+
+        // 비밀번호 일치 여부 확인 (가입 시 설정한 비밀번호가 있는 경우)
+        if (matchedUser?.password && matchedUser.password !== password) {
+          setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
+          return;
+        }
+
+        // 운영자 승인 대기 중인 계정 접속 차단
+        if (matchedUser && matchedUser.approvalStatus === 'pending' && !isAdminLogin) {
+          setAuthMessage({
+            type: 'error',
+            text: `⏳ [${matchedUser.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다. 승인 완료 후 로그인하여 접속할 수 있습니다.`,
+          });
+          return;
+        }
+
         const loggedUser: RegisteredPlayer = matchedUser
-          ? { ...matchedUser, role: isAdminLogin ? 'admin' : 'member' }
+          ? { ...matchedUser, role: isAdminLogin ? 'admin' : 'member', approvalStatus: 'approved' }
           : {
-              id: `p_${Date.now()}`,
-              username: trimmedId,
-              name: isAdminLogin ? '관리자' : trimmedId,
-              grade: isAdminLogin ? '금배' : '테린이',
+              id: 'p10',
+              username: 'admin',
+              name: '공유 (관리자)',
+              grade: '금배',
               gender: 'M',
-              role: isAdminLogin ? 'admin' : 'member',
+              role: 'admin',
               isGuest: false,
+              approvalStatus: 'approved',
             };
 
         setCurrentUser(loggedUser);
@@ -1056,10 +1116,15 @@ export default function TennisApp() {
                   {authLoading
                     ? '처리 중...'
                     : isSignUp
-                    ? '회원가입 완료 및 시작하기'
+                    ? '회원가입 신청하기 (운영자 승인 후 접속)'
                     : '로그인하기'}
                 </span>
               </button>
+              {isSignUp && (
+                <p className="text-[11px] text-center text-amber-300/90 bg-amber-950/40 border border-amber-500/30 rounded-xl py-2 px-3">
+                  ⏳ 회원가입 신청 후 운영자(관리자)의 확인 및 승인이 완료되면 로그인하여 접속할 수 있습니다.
+                </p>
+              )}
             </form>
 
             {/* 하단 회원가입 전환 버튼 & 빠른 체험 입장 버튼 */}
@@ -1252,8 +1317,15 @@ export default function TennisApp() {
                 >
                   <span className="text-base">⚙️</span>
                   <div className="flex-1">
-                    <p className="leading-tight">운영자 관리 센터</p>
-                    <p className="text-[10px] text-slate-500 font-normal">회원 정보수정·가입취소 & 대회관리</p>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="leading-tight">운영자 관리 센터</p>
+                      {pendingApprovalCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black animate-pulse">
+                          승인대기 {pendingApprovalCount}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-normal">가입승인 · 회원수정·취소 & 대회관리</p>
                   </div>
                 </button>
               )}
@@ -2017,16 +2089,30 @@ export default function TennisApp() {
             {/* ---------------------------------------------------- */}
             {isAdmin && activeTab === 'admin' && (
               <div className="space-y-4">
-                {/* 1. 가입회원 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
+                {/* 1. 회원가입 승인 · 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
                 <AdminUserManagement
                   externalUsers={registeredPlayers}
                   currentUserId={currentUser?.id}
+                  onApproveMember={(approved: ManagedMember) => {
+                    setRegisteredPlayers((prev) =>
+                      prev.map((p) =>
+                        p.id === approved.id ? { ...p, approvalStatus: 'approved' } : p
+                      )
+                    );
+                    if (!participantsInput.includes(approved.name)) {
+                      setParticipantsInput((prev) => `${approved.name}, ${prev}`);
+                    }
+                  }}
+                  onRejectMember={(rejectedId: string) => {
+                    setRegisteredPlayers((prev) => prev.filter((p) => p.id !== rejectedId));
+                  }}
                   onUpdateMember={(updated: ManagedMember) => {
                     setRegisteredPlayers((prev) =>
                       prev.map((p) =>
                         p.id === updated.id
                           ? {
                               ...p,
+                              username: updated.username ?? p.username,
                               name: updated.name,
                               email: updated.email,
                               phone: updated.phone,
@@ -2040,6 +2126,7 @@ export default function TennisApp() {
                     if (currentUser && currentUser.id === updated.id) {
                       setCurrentUser({
                         ...currentUser,
+                        username: updated.username ?? currentUser.username,
                         name: updated.name,
                         email: updated.email,
                         phone: updated.phone,
@@ -2065,12 +2152,14 @@ export default function TennisApp() {
                   onAddMember={(newMember: ManagedMember) => {
                     const added: RegisteredPlayer = {
                       id: newMember.id,
+                      username: newMember.username,
                       name: newMember.name,
                       email: newMember.email,
                       phone: newMember.phone,
                       gender: newMember.gender === 'F' || newMember.gender === '여' ? 'F' : 'M',
                       grade: newMember.grade,
                       role: newMember.role,
+                      approvalStatus: 'approved',
                     };
                     setRegisteredPlayers((prev) => [added, ...prev]);
                     if (!participantsInput.includes(added.name)) {
@@ -2081,7 +2170,7 @@ export default function TennisApp() {
 
                 {/* 2. 관리자 대회 생성 & 코트/선수 배치 콘솔 */}
                 <AdminTournamentManager
-                  registeredUsers={registeredPlayers}
+                  registeredUsers={approvedPlayers}
                   currentUser={currentUser}
                   activeTournament={null}
                   onApplyTournament={(config: TournamentConfig) => {
@@ -2192,12 +2281,17 @@ export default function TennisApp() {
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('admin')}
-                className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+                className={`relative flex flex-col items-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
                   activeTab === 'admin'
                     ? 'text-red-400 font-bold scale-105 bg-red-400/10'
                     : 'text-slate-400 hover:text-slate-200 font-medium'
                 }`}
               >
+                {pendingApprovalCount > 0 && (
+                  <span className="absolute -top-1 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black flex items-center justify-center animate-bounce">
+                    {pendingApprovalCount}
+                  </span>
+                )}
                 <span className="text-base">⚙️</span>
                 <span className="text-[10px] mt-0.5">운영관리</span>
               </button>

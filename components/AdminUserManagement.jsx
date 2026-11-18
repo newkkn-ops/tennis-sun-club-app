@@ -22,6 +22,8 @@ export default function AdminUserManagement({
   onUpdateMember,
   onCancelMembership,
   onAddMember,
+  onApproveMember,
+  onRejectMember,
 }) {
   const [users, setUsers] = useState(
     externalUsers || [
@@ -178,6 +180,77 @@ export default function AdminUserManagement({
     }
   };
 
+  const handleApproveMember = async (member) => {
+    const approved = { ...member, approvalStatus: 'approved' };
+    setUsers((prev) => prev.map((u) => (u.id === member.id ? approved : u)));
+    if (onApproveMember) {
+      onApproveMember(approved);
+    } else if (onUpdateMember) {
+      onUpdateMember(approved);
+    }
+
+    try {
+      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
+      const exists = savedList.some(
+        (u) =>
+          u.id === member.id ||
+          (member.username && u.username?.toLowerCase() === member.username.toLowerCase())
+      );
+      const nextSaved = exists
+        ? savedList.map((u) =>
+            u.id === member.id ||
+            (member.username && u.username?.toLowerCase() === member.username.toLowerCase())
+              ? { ...u, approvalStatus: 'approved' }
+              : u
+          )
+        : [approved, ...savedList];
+      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('users').update({ approval_status: 'approved' }).eq('id', member.id);
+      } catch {}
+    }
+
+    alert(
+      `✅ [${member.name} (${member.username || member.email || '회원'})] 님의 회원가입이 승인되었습니다!\n지금부터 로그인하여 앱에 접속할 수 있습니다.`
+    );
+  };
+
+  const handleRejectMember = async (member) => {
+    const confirmed = window.confirm(
+      `⚠️ [${member.name} (ID: ${member.username || member.email || '미등록'})] 님의 회원가입 신청을 거절(취소)하시겠습니까?`
+    );
+    if (!confirmed) return;
+
+    setUsers((prev) => prev.filter((u) => u.id !== member.id));
+    if (onRejectMember) {
+      onRejectMember(member.id, member.name);
+    } else if (onCancelMembership) {
+      onCancelMembership(member.id, member.name);
+    }
+
+    try {
+      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
+      const filtered = savedList.filter(
+        (u) =>
+          u.id !== member.id &&
+          (!member.username || u.username?.toLowerCase() !== member.username.toLowerCase()) &&
+          (!member.email || u.email !== member.email)
+      );
+      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(filtered));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('users').delete().eq('id', member.id);
+      } catch {}
+    }
+
+    alert(`❌ [${member.name}] 님의 회원가입 신청이 거절(삭제)되었습니다.`);
+  };
+
   const handleCancelUserMembership = async (member) => {
     const confirmed = window.confirm(
       `⚠️ 정말 [${member.name} (${member.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?\n\n취소 시 클럽 회원 명부 및 로그인 계정에서 즉시 삭제됩니다.`
@@ -192,7 +265,10 @@ export default function AdminUserManagement({
     try {
       const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
       const filtered = savedList.filter(
-        (u) => u.id !== member.id && (!member.email || u.email !== member.email)
+        (u) =>
+          u.id !== member.id &&
+          (!member.username || u.username?.toLowerCase() !== member.username.toLowerCase()) &&
+          (!member.email || u.email !== member.email)
       );
       localStorage.setItem('sun_tennis_registered_users', JSON.stringify(filtered));
     } catch {}
@@ -215,12 +291,14 @@ export default function AdminUserManagement({
 
     const created = {
       id: `p_${Date.now()}`,
+      username: newEmail.trim() || newName.trim(),
       name: newName.trim(),
-      email: newEmail.trim() || `${newName.trim()}@suntc.kr`,
+      email: newEmail.trim().includes('@') ? newEmail.trim() : '',
       phone: newPhone.trim(),
       gender: newGender,
       grade: newGrade,
       role: newRole,
+      approvalStatus: 'approved',
     };
 
     setUsers((prev) => [created, ...prev]);
@@ -243,18 +321,102 @@ export default function AdminUserManagement({
     alert(`🎉 [${created.name} (${created.grade})] 회원이 신규 등록되었습니다.`);
   };
 
-  const filteredUsers = users.filter((u) => {
+  const pendingUsers = users.filter((u) => u.approvalStatus === 'pending');
+  const approvedUsers = users.filter((u) => u.approvalStatus !== 'pending');
+
+  const filteredUsers = approvedUsers.filter((u) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
     return (
       u.name?.toLowerCase().includes(q) ||
       u.grade?.toLowerCase().includes(q) ||
+      u.username?.toLowerCase().includes(q) ||
       u.email?.toLowerCase().includes(q)
     );
   });
 
   return (
     <div className="space-y-4">
+      <div
+        className={`rounded-2xl p-4 shadow-xl space-y-3 border ${
+          pendingUsers.length > 0
+            ? 'bg-gradient-to-br from-amber-950/60 via-slate-900 to-slate-900 border-amber-500/50'
+            : 'bg-slate-900 border-slate-800'
+        }`}
+      >
+        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+          <div>
+            <h2 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
+              <span>⏳</span> 회원가입 승인 대기 목록
+              {pendingUsers.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black animate-pulse">
+                  {pendingUsers.length}명 대기
+                </span>
+              )}
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              신규 가입 신청 회원을 운영자가 확인 후 승인하면 정회원으로 등록되어 앱에 접속할 수 있습니다.
+            </p>
+          </div>
+        </div>
+
+        {pendingUsers.length === 0 ? (
+          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-center text-[11px] text-slate-400">
+            현재 승인 대기 중인 회원가입 신청이 없습니다.
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {pendingUsers.map((u) => (
+              <div
+                key={u.id}
+                className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-3 space-y-2.5 text-xs shadow-md"
+              >
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-black text-white">{u.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                        {u.grade}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black">
+                        승인 대기중
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                      <span>신청 ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
+                      {u.phone && <span>· 연락처: {u.phone}</span>}
+                      {u.requestedAt && <span>· 신청일시: {u.requestedAt}</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1 border-t border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={() => handleApproveMember(u)}
+                    className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-[11px] shadow-md transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>✅</span>
+                    <span>가입 승인 (접속 허용)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRejectMember(u)}
+                    className="py-2 px-3 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>❌</span>
+                    <span>거절</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3.5">
         <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
           <div>

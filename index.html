@@ -820,6 +820,17 @@
             </button>
           </div>
 
+          <!-- 회원가입 승인 대기 목록 (운영자 확인 후 승인/거절) -->
+          <div id="adminPendingApprovalBox" class="bg-gradient-to-br from-amber-950/60 via-slate-900 to-slate-900 border border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+              <h3 class="text-sm font-black text-amber-300 flex items-center gap-1.5">
+                <span>⏳</span> 회원가입 승인 대기 목록
+              </h3>
+              <span id="adminPendingCountBadge" class="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">대기 0명</span>
+            </div>
+            <div id="adminPendingUsersContainer" class="space-y-2"></div>
+          </div>
+
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center border-b border-slate-800 pb-2">
               <h3 class="text-sm font-black text-red-400">👑 썬 클럽 등록 공식 선수 명부</h3>
@@ -2366,13 +2377,68 @@
       }
     }
 
+    function syncHtmlUsersToStorage() {
+      try {
+        localStorage.setItem('sun_tennis_registered_users', JSON.stringify(registeredPlayers));
+      } catch {}
+    }
+
+    function loadHtmlUsersFromStorage() {
+      try {
+        const raw = localStorage.getItem('sun_tennis_registered_users');
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (Array.isArray(saved) && saved.length > 0) {
+            const byId = new Map();
+            registeredPlayers.forEach(u => byId.set(u.id, u));
+            saved.forEach(su => byId.set(su.id, { ...byId.get(su.id), ...su }));
+            registeredPlayers = Array.from(byId.values());
+          }
+        }
+      } catch {}
+    }
+
     function renderAdminUsers() {
       renderAdminConsole();
+      const pendingList = registeredPlayers.filter(u => u.approvalStatus === 'pending');
+      const approvedList = registeredPlayers.filter(u => u.approvalStatus !== 'pending');
+
+      const pendingBadge = document.getElementById('adminPendingCountBadge');
+      if (pendingBadge) pendingBadge.innerText = `대기 ${pendingList.length}명`;
+
+      const pendingContainer = document.getElementById('adminPendingUsersContainer');
+      if (pendingContainer) {
+        if (pendingList.length === 0) {
+          pendingContainer.innerHTML = `<div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-center text-[11px] text-slate-400">현재 승인 대기 중인 회원가입 신청이 없습니다.</div>`;
+        } else {
+          pendingContainer.innerHTML = pendingList.map(u => `
+            <div class="bg-slate-950 border border-amber-500/40 rounded-xl p-3 space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-black text-white">${u.name}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">${u.grade}</span>
+                  <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) · ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong></span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-black">승인 대기</span>
+              </div>
+              <div class="flex gap-2">
+                <button type="button" onclick="approveHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black text-[11px] cursor-pointer">
+                  ✅ 가입 승인 (접속 허용)
+                </button>
+                <button type="button" onclick="rejectHtmlMember('${u.id}')" class="py-1.5 px-3 rounded-lg bg-red-950/60 text-red-300 border border-red-500/40 font-bold text-[11px] cursor-pointer">
+                  ❌ 거절
+                </button>
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+
       const countEl = document.getElementById('adminPlayersCount');
-      if (countEl) countEl.innerText = registeredPlayers.length;
+      if (countEl) countEl.innerText = approvedList.length;
       const c = document.getElementById('adminUserListContainer');
       if (!c) return;
-      c.innerHTML = registeredPlayers.map(u => `
+      c.innerHTML = approvedList.map(u => `
         <div class="py-3 flex flex-col gap-2 text-xs">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -2394,6 +2460,27 @@
       `).join('');
     }
 
+    function approveHtmlMember(userId) {
+      const user = registeredPlayers.find(u => u.id === userId);
+      if (!user) return;
+      user.approvalStatus = 'approved';
+      if (!adminSelectedPlayerIds.includes(user.id)) adminSelectedPlayerIds.push(user.id);
+      syncHtmlUsersToStorage();
+      renderAdminUsers();
+      alert(`✅ [${user.name} (ID: ${user.username || user.email || ''})] 님의 회원가입이 승인되었습니다!\n지금부터 로그인하여 접속할 수 있습니다.`);
+    }
+
+    function rejectHtmlMember(userId) {
+      const user = registeredPlayers.find(u => u.id === userId);
+      if (!user) return;
+      if (!confirm(`⚠️ [${user.name}] 님의 회원가입 신청을 거절(취소)하시겠습니까?`)) return;
+      registeredPlayers = registeredPlayers.filter(u => u.id !== userId);
+      adminSelectedPlayerIds = adminSelectedPlayerIds.filter(id => id !== userId);
+      syncHtmlUsersToStorage();
+      renderAdminUsers();
+      alert(`❌ [${user.name}] 님의 회원가입 신청이 거절(삭제)되었습니다.`);
+    }
+
     function editHtmlMember(userId) {
       const user = registeredPlayers.find(u => u.id === userId);
       if (!user) return;
@@ -2405,6 +2492,7 @@
       user.name = newName.trim();
       user.grade = newGrade.trim();
       if (newGender) user.gender = newGender.trim().toUpperCase() === 'F' ? 'F' : 'M';
+      syncHtmlUsersToStorage();
       renderAdminUsers();
       alert(`✅ [${user.name} (${user.grade})] 회원의 정보가 수정되었습니다.`);
     }
@@ -2415,6 +2503,7 @@
       if (!confirm(`⚠️ 정말 [${user.name} (${user.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?`)) return;
       registeredPlayers = registeredPlayers.filter(u => u.id !== userId);
       adminSelectedPlayerIds = adminSelectedPlayerIds.filter(id => id !== userId);
+      syncHtmlUsersToStorage();
       renderAdminUsers();
       alert(`🗑️ [${user.name}] 회원의 회원가입 취소(탈퇴) 처리가 완료되었습니다.`);
     }
@@ -2473,11 +2562,11 @@
       if (signUp) {
         signUpFields.classList.remove('hidden');
         confirmPwField.classList.remove('hidden');
-        titleText.innerText = '신규 클럽 회원가입';
-        descText.innerText = '아래 가입 폼을 작성하면 즉시 클럽 공식 선수로 등록됩니다.';
+        titleText.innerText = '신규 클럽 회원가입 신청';
+        descText.innerText = '가입 신청 후 운영자(관리자)의 확인 및 승인이 완료되면 접속할 수 있습니다.';
         tabSignUp.className = 'py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md transition cursor-pointer';
         tabLogin.className = 'py-2.5 rounded-xl text-slate-400 hover:text-white transition cursor-pointer';
-        submitBtn.innerText = '✨ 회원가입 완료 및 시작하기';
+        submitBtn.innerText = '✨ 회원가입 신청 (운영자 승인 후 접속)';
         submitBtn.className = 'w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black rounded-xl text-sm shadow-lg transition cursor-pointer';
         toggleBtn.innerText = '🔑 이미 계정이 있으신가요? 로그인 화면으로 이동';
       } else {
@@ -2584,22 +2673,22 @@
           password: pw,
           role: 'member',
           email: loginId,
-          isGuest: false
+          isGuest: false,
+          approvalStatus: 'pending',
+          requestedAt: new Date().toLocaleString('ko-KR')
         };
         registeredPlayers.unshift(newPlayer);
-        adminSelectedPlayerIds.push(newPlayer.id);
-        currentUserRole = 'member';
-        document.getElementById('headerMemberName').innerText = name + ' 회원님';
-        document.getElementById('headerMemberGrade').innerText = grade;
-        applyRoleVisibility();
-        switchTab('courts');
-        closeAuthScreenModal();
-        alert(`🎉 환영합니다, ${name} 회원님! 아이디 [${loginId}] / [${grade}] 등급으로 회원가입 및 로그인이 완료되었습니다.`);
+        syncHtmlUsersToStorage();
+        document.getElementById('htmlAuthPassword').value = '';
+        document.getElementById('htmlAuthConfirmPassword').value = '';
+        setHtmlAuthMode(false);
+        alert(`✅ 회원가입 신청이 접수되었습니다!\n신청 아이디: ${loginId} (${name} · ${grade})\n\n⏳ 운영자(관리자)의 확인 및 승인 완료 후 로그인하여 접속하실 수 있습니다.`);
       } else {
         if (!loginId) {
           alert('아이디를 입력해 주세요.');
           return;
         }
+        loadHtmlUsersFromStorage();
         const isAdminAccount =
           normalizedId === 'admin' ||
           normalizedId === 'admin@suntc.kr' ||
@@ -2612,8 +2701,16 @@
             (p.email && p.email.toLowerCase() === normalizedId) ||
             p.name === loginId
         );
+        if (!matched && !isAdminAccount) {
+          alert('등록되지 않은 아이디입니다. 회원가입 신청 후 운영자(관리자) 승인을 받아 접속해 주세요.');
+          return;
+        }
         if (matched && matched.password && pw && matched.password !== pw) {
           alert('비밀번호가 일치하지 않습니다.');
+          return;
+        }
+        if (matched && matched.approvalStatus === 'pending' && !isAdminAccount) {
+          alert(`⏳ [${matched.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다.\n승인 완료 후 로그인하여 접속할 수 있습니다.`);
           return;
         }
 
@@ -2635,6 +2732,7 @@
     }
 
     // 초기 실행
+    loadHtmlUsersFromStorage();
     updateTournamentHeaderUI();
     applyRoleVisibility();
     renderCourts();
