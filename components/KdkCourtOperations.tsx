@@ -12,7 +12,7 @@ import {
 
 export interface KdkCourtState {
   courtNumber: number;
-  targetPlayerCount: number; // 코트별 선수 인원 수 (4~8명)
+  targetPlayerCount: number; // 코트별 선수 인원 수 (최소 4명 ~ 최대 20명, 관리자 지정)
   gameCount: number; // 코트별 게임 수 (최소 2게임 이상, 운영자 설정)
   assignMode: 'AUTO' | 'MANUAL';
   players: Player[];
@@ -20,9 +20,13 @@ export interface KdkCourtState {
   isFinished: boolean;
 }
 
+const MIN_COURT_PLAYERS = 4;
+const MAX_COURT_PLAYERS = 20;
+
 interface KdkCourtOperationsProps {
   tournamentName: string;
   availablePlayers: any[];
+  isAdmin?: boolean;
   onSyncCourtsToApp?: (
     syncedCourts: {
       id: number;
@@ -78,6 +82,7 @@ function normalizePlayer(raw: any, idx: number): Player {
 export default function KdkCourtOperations({
   tournamentName,
   availablePlayers,
+  isAdmin = false,
   onSyncCourtsToApp,
   onAddNewPlayerToClub,
 }: KdkCourtOperationsProps) {
@@ -197,8 +202,9 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 코트 추가 생성
+  // 코트 추가 생성 (관리자 전용)
   const handleAddKdkCourt = () => {
+    if (!isAdmin) return;
     const nextNum =
       kdkCourts.length > 0
         ? Math.max(...kdkCourts.map((c) => c.courtNumber)) + 1
@@ -228,8 +234,9 @@ export default function KdkCourtOperations({
     syncToMainApp(next);
   };
 
-  // 코트 삭제
+  // 코트 삭제 (관리자 전용)
   const handleRemoveKdkCourt = (courtNum: number) => {
+    if (!isAdmin) return;
     if (kdkCourts.length <= 1) {
       alert('최소 1개 이상의 KDK 코트가 유지되어야 합니다.');
       return;
@@ -242,13 +249,14 @@ export default function KdkCourtOperations({
     syncToMainApp(next);
   };
 
-  // 코트별 선수 인원 수 선정 (4명, 5명, 6명, 7명, 8명...)
+  // 코트별 참여인원 지정 (관리자 전용 · 최소 4명 ~ 최대 20명)
   const handleChangeTargetPlayerCount = (courtNum: number, newCount: number) => {
-    const safeCount = Math.max(4, Math.min(12, newCount));
+    if (!isAdmin) return;
+    const safeCount = Math.max(MIN_COURT_PLAYERS, Math.min(MAX_COURT_PLAYERS, newCount));
     updateCourt(courtNum, (court) => {
       let nextPlayers = [...court.players];
       if (nextPlayers.length < safeCount) {
-        // 다른 코트 미배정 선수 우선 추가 후 부족하면 전체 풀에서 채움
+        // 다른 코트 미배정 선수 우선 추가 후 부족하면 전체 풀에서 채움 (최대 20명)
         const currentIds = new Set(nextPlayers.map((p) => p.id));
         const otherUsedIds = new Set(
           kdkCourts
@@ -259,7 +267,10 @@ export default function KdkCourtOperations({
           ...playerPool.filter((p) => !currentIds.has(p.id) && !otherUsedIds.has(p.id)),
           ...playerPool.filter((p) => !currentIds.has(p.id) && otherUsedIds.has(p.id)),
         ];
-        nextPlayers = [...nextPlayers, ...candidates.slice(0, safeCount - nextPlayers.length)];
+        nextPlayers = [
+          ...nextPlayers,
+          ...candidates.slice(0, safeCount - nextPlayers.length),
+        ].slice(0, MAX_COURT_PLAYERS);
       } else if (nextPlayers.length > safeCount) {
         nextPlayers = nextPlayers.slice(0, safeCount);
       }
@@ -279,9 +290,10 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 코트별 게임 수 설정 (최소 2게임 보장, 운영자 자유 설정)
+  // 코트별 게임 수 설정 (관리자 전용 · 최소 2게임 ~ 최대 20게임)
   const handleChangeCourtGameCount = (courtNum: number, newGameCount: number) => {
-    const safeGames = Math.max(2, Math.min(12, newGameCount));
+    if (!isAdmin) return;
+    const safeGames = Math.max(2, Math.min(20, newGameCount));
     updateCourt(courtNum, (court) => {
       let nextGames: CourtKdkGame[];
       if (court.assignMode === 'AUTO' && court.players.length >= 4) {
@@ -315,15 +327,32 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 코트에 특정 선수 배정 / 해제 토글
+  // 코트에 특정 선수 배정 / 해제 토글 (관리자 전용 · 코트당 최대 20명)
   const handleTogglePlayerInCourt = (courtNum: number, player: Player) => {
+    if (!isAdmin) return;
+    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
+    if (
+      targetCourt &&
+      !targetCourt.players.some((p) => p.id === player.id) &&
+      targetCourt.players.length >= MAX_COURT_PLAYERS
+    ) {
+      alert(`코트별 참여인원은 최대 ${MAX_COURT_PLAYERS}명까지 선택할 수 있습니다.`);
+      return;
+    }
+
     updateCourt(courtNum, (court) => {
       const exists = court.players.some((p) => p.id === player.id);
+      if (!exists && court.players.length >= MAX_COURT_PLAYERS) {
+        return court;
+      }
       const nextPlayers = exists
         ? court.players.filter((p) => p.id !== player.id)
         : [...court.players, player];
 
-      const nextTarget = Math.max(4, nextPlayers.length);
+      const nextTarget = Math.max(
+        MIN_COURT_PLAYERS,
+        Math.min(MAX_COURT_PLAYERS, nextPlayers.length)
+      );
       const nextGames =
         court.assignMode === 'AUTO' && nextPlayers.length >= 4
           ? generateCourtKDKGames(court.courtNumber, nextPlayers, court.gameCount)
@@ -339,8 +368,9 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 코트 내 선수 나이 개별 수정 (동점 시 나이합산 기준)
+  // 코트 내 선수 나이 개별 수정 (관리자 전용 · 동점 시 나이합산 기준)
   const handleUpdatePlayerAge = (playerId: string, newAge: number) => {
+    if (!isAdmin) return;
     const safeAge = Math.max(10, Math.min(99, newAge || 40));
     setPlayerPool((prev) =>
       prev.map((p) => (p.id === playerId ? { ...p, age: safeAge } : p))
@@ -364,11 +394,16 @@ export default function KdkCourtOperations({
     );
   };
 
-  // 임의 선수(미가입 회원) 이름 + 급수 + 나이 직접 추가 및 현재 코트 즉시 배치
+  // 임의 선수(미가입 회원) 이름 + 급수 + 나이 직접 추가 및 현재 코트 즉시 배치 (관리자 전용 · 최대 20명)
   const handleAddGuestToActiveCourt = () => {
+    if (!isAdmin) return;
     const raw = guestName.trim();
     if (!raw) {
       alert('추가할 선수의 이름을 입력해 주세요.');
+      return;
+    }
+    if (activeCourt && activeCourt.players.length >= MAX_COURT_PLAYERS) {
+      alert(`코트별 참여인원은 최대 ${MAX_COURT_PLAYERS}명까지 선택할 수 있습니다.`);
       return;
     }
     const parsedAge = parseInt(guestAge, 10) || 45;
@@ -377,7 +412,15 @@ export default function KdkCourtOperations({
       .map((n) => n.trim())
       .filter((n) => n.length > 0);
 
-    const newPlayers: Player[] = names.map((name, idx) => ({
+    const remainingSlots = activeCourt
+      ? MAX_COURT_PLAYERS - activeCourt.players.length
+      : MAX_COURT_PLAYERS;
+    const allowedNames = names.slice(0, remainingSlots);
+    if (names.length > remainingSlots) {
+      alert(`코트별 최대 ${MAX_COURT_PLAYERS}명 제한으로 ${allowedNames.length}명만 추가됩니다.`);
+    }
+
+    const newPlayers: Player[] = allowedNames.map((name, idx) => ({
       id: `kdk_guest_${Date.now()}_${idx}`,
       name,
       grade: guestGrade,
@@ -393,14 +436,17 @@ export default function KdkCourtOperations({
 
     if (activeCourt) {
       updateCourt(activeCourt.courtNumber, (court) => {
-        const nextPlayers = [...court.players, ...newPlayers];
+        const nextPlayers = [...court.players, ...newPlayers].slice(0, MAX_COURT_PLAYERS);
         const nextGames =
           court.assignMode === 'AUTO' && nextPlayers.length >= 4
             ? generateCourtKDKGames(court.courtNumber, nextPlayers, court.gameCount)
             : court.games;
         return {
           ...court,
-          targetPlayerCount: Math.max(4, nextPlayers.length),
+          targetPlayerCount: Math.max(
+            MIN_COURT_PLAYERS,
+            Math.min(MAX_COURT_PLAYERS, nextPlayers.length)
+          ),
           players: nextPlayers,
           games: nextGames,
           isFinished: false,
@@ -410,8 +456,9 @@ export default function KdkCourtOperations({
     setGuestName('');
   };
 
-  // 코트별 KDK 실력균등 자동 편성 실행
+  // 코트별 KDK 실력균등 자동 편성 실행 (관리자 전용)
   const handleRunCourtAutoBalance = (courtNum: number) => {
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       if (court.players.length < 4) {
         alert(`${courtNum}번 코트에 최소 4명 이상의 선수를 배정해 주세요.`);
@@ -431,7 +478,7 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 수동모드: 특정 게임의 팀 선수 직접 변경
+  // 수동모드: 특정 게임의 팀 선수 직접 변경 (관리자 전용)
   const handleManualChangeGamePlayer = (
     courtNum: number,
     gameId: string,
@@ -439,6 +486,7 @@ export default function KdkCourtOperations({
     slotIdx: 0 | 1,
     newPlayerId: string
   ) => {
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       const chosen =
         court.players.find((p) => p.id === newPlayerId) ||
@@ -477,13 +525,14 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 게임 스코어 조절 (- / +)
+  // 게임 스코어 조절 (- / +, 관리자 전용)
   const handleUpdateGameScore = (
     courtNum: number,
     gameId: string,
     deltaA: number,
     deltaB: number
   ) => {
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       const nextGames = court.games.map((g) => {
         if (g.id !== gameId) return g;
@@ -497,8 +546,9 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 개별 게임 완료 토글 (모든 게임이 완료되면 코트 자동 종료 및 1·2·3등 자동집계!)
+  // 개별 게임 완료 토글 (관리자 전용)
   const handleToggleGameComplete = (courtNum: number, gameId: string) => {
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       const nextGames = court.games.map((g) =>
         g.id === gameId ? { ...g, completed: !g.completed } : g
@@ -512,8 +562,9 @@ export default function KdkCourtOperations({
     });
   };
 
-  // 코트 전체 경기 종료 및 1·2·3등 즉시 자동 집계 버튼
+  // 코트 전체 경기 종료 및 1·2·3등 즉시 자동 집계 버튼 (관리자 전용)
   const handleFinishCourtAndAggregate = (courtNum: number) => {
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       const completedGames = court.games.map((g) => ({ ...g, completed: true }));
       return {
@@ -556,13 +607,15 @@ export default function KdkCourtOperations({
               {tournamentName} · 코트별 인원·게임수(최소 2게임) 설정 & 종료 시 1·2·3등 자동집계(동점 시 나이합산)
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleAddKdkCourt}
-            className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer shrink-0"
-          >
-            + 코트 추가
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleAddKdkCourt}
+              className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer shrink-0"
+            >
+              + 코트 추가
+            </button>
+          )}
         </div>
 
         {/* 코트 선택 탭 바 */}
@@ -600,8 +653,9 @@ export default function KdkCourtOperations({
       {activeCourt && (
         <div className="space-y-4">
           {/* ========================================================== */}
-          {/* 1. 선택 코트 설정: 인원 선정 + 게임 수(최소 2게임) + 자동/수동 모드 */}
+          {/* 1. 선택 코트 설정 (관리자 전용) / 회원 모드 열람전용 안내 */}
           {/* ========================================================== */}
+          {isAdmin ? (
           <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3.5">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
               <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
@@ -618,23 +672,75 @@ export default function KdkCourtOperations({
               )}
             </div>
 
-            {/* 코트별 선수 인원 수 선정 + 코트별 게임 수 설정 (최소 2게임 보장) */}
+            {/* 코트별 선수 인원 수 선정 (관리자 지정 · 최대 20명) + 코트별 게임 수 설정 (최소 2게임 보장) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* 코트별 선수 인원 선정 */}
+              {/* 코트별 참여인원 지정 (최소 4명 ~ 최대 20명) */}
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-bold text-slate-300">👥 코트별 선수 인원 선정</span>
+                  <span className="text-[11px] font-bold text-slate-300">
+                    👥 코트별 참여인원 지정 <span className="text-emerald-400">(최대 20명)</span>
+                  </span>
                   <span className="text-xs font-black text-emerald-400">
-                    {activeCourt.players.length}명 배정
+                    {activeCourt.players.length} / {MAX_COURT_PLAYERS}명
                   </span>
                 </div>
-                <div className="grid grid-cols-5 gap-1">
-                  {[4, 5, 6, 7, 8].map((cnt) => (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={activeCourt.players.length <= MIN_COURT_PLAYERS}
+                    onClick={() =>
+                      handleChangeTargetPlayerCount(
+                        activeCourt.courtNumber,
+                        Math.max(MIN_COURT_PLAYERS, activeCourt.players.length - 1)
+                      )
+                    }
+                    className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-black text-sm border border-slate-700 cursor-pointer shrink-0"
+                  >
+                    －
+                  </button>
+                  <select
+                    value={Math.max(
+                      MIN_COURT_PLAYERS,
+                      Math.min(MAX_COURT_PLAYERS, activeCourt.players.length)
+                    )}
+                    onChange={(e) =>
+                      handleChangeTargetPlayerCount(
+                        activeCourt.courtNumber,
+                        parseInt(e.target.value, 10)
+                      )
+                    }
+                    className="flex-1 h-8 px-2 bg-slate-900 border border-emerald-500/40 rounded-lg text-xs text-emerald-300 font-black text-center cursor-pointer"
+                  >
+                    {Array.from(
+                      { length: MAX_COURT_PLAYERS - MIN_COURT_PLAYERS + 1 },
+                      (_, i) => MIN_COURT_PLAYERS + i
+                    ).map((cnt) => (
+                      <option key={cnt} value={cnt}>
+                        {cnt}명 참여
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={activeCourt.players.length >= MAX_COURT_PLAYERS}
+                    onClick={() =>
+                      handleChangeTargetPlayerCount(
+                        activeCourt.courtNumber,
+                        Math.min(MAX_COURT_PLAYERS, activeCourt.players.length + 1)
+                      )
+                    }
+                    className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-black text-sm border border-slate-700 cursor-pointer shrink-0"
+                  >
+                    ＋
+                  </button>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {[4, 6, 8, 10, 12, 16, 20].map((cnt) => (
                     <button
                       key={cnt}
                       type="button"
                       onClick={() => handleChangeTargetPlayerCount(activeCourt.courtNumber, cnt)}
-                      className={`py-1.5 rounded-lg text-[11px] font-black border transition cursor-pointer ${
+                      className={`py-1 rounded-lg text-[10px] font-black border transition cursor-pointer ${
                         activeCourt.players.length === cnt
                           ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
                           : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
@@ -741,10 +847,10 @@ export default function KdkCourtOperations({
             <div className="space-y-2.5 pt-1">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-extrabold text-white">
-                  🎾 {activeCourt.courtNumber}번 코트 배정 선수 선택 (클릭으로 배정/해제)
+                  🎾 {activeCourt.courtNumber}번 코트 배정 선수 선택 ({activeCourt.players.length}/{MAX_COURT_PLAYERS}명 · 클릭 배정/해제)
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  나이 입력값은 동점 시 나이합산 순위 기준에 반영
+                  최대 {MAX_COURT_PLAYERS}명까지 선택 가능
                 </span>
               </div>
 
@@ -858,9 +964,34 @@ export default function KdkCourtOperations({
               </button>
             )}
           </div>
+          ) : (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-black text-emerald-300">
+                  👤 회원 모드 (열람 전용 · 수정 불가)
+                </span>
+                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
+                  {activeCourt.players.length}명 참여 · 총 {activeCourt.gameCount}게임
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                코트 추가·삭제, 참여인원 선정, 게임수 및 대진 수정은 운영자(관리자) 전용입니다.
+              </p>
+              <div className="flex flex-wrap gap-1 pt-0.5">
+                {activeCourt.players.map((p) => (
+                  <span
+                    key={p.id}
+                    className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-bold"
+                  >
+                    {p.name} <span className="text-amber-300">({p.grade})</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ========================================================== */}
-          {/* 2. 코트별 게임 진행 및 스코어 입력 (자동/수동 편집 + 경기 종료) */}
+          {/* 2. 코트별 게임 진행 및 스코어 입력 (관리자: 편집 / 회원: 열람 전용) */}
           {/* ========================================================== */}
           <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -869,18 +1000,22 @@ export default function KdkCourtOperations({
                   🎾 {activeCourt.courtNumber}번 코트 경기 진행 ({completedGamesCount}/{activeCourt.games.length} 게임 완료)
                 </h4>
                 <p className="text-[10px] text-slate-400">
-                  {activeCourt.assignMode === 'MANUAL'
+                  {!isAdmin
+                    ? '실시간 경기 진행 현황 및 스코어 (확인 전용)'
+                    : activeCourt.assignMode === 'MANUAL'
                     ? '수동모드: 각 게임의 출전 선수를 드롭다운으로 직접 변경할 수 있습니다.'
                     : '자동모드: 인원수에 맞춰 실력 차이가 없도록 균등 편성되었습니다.'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => handleFinishCourtAndAggregate(activeCourt.courtNumber)}
-                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer"
-              >
-                🏁 코트 경기 종료·자동집계
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleFinishCourtAndAggregate(activeCourt.courtNumber)}
+                  className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer"
+                >
+                  🏁 코트 경기 종료·자동집계
+                </button>
+              )}
             </div>
 
             <div className="space-y-2.5">
@@ -911,21 +1046,33 @@ export default function KdkCourtOperations({
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleToggleGameComplete(activeCourt.courtNumber, g.id)}
-                        className={`text-[10px] px-2.5 py-0.5 rounded-lg font-black border cursor-pointer transition ${
-                          g.completed
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                        }`}
-                      >
-                        {g.completed ? '✓ 경기완료' : '경기완료 처리'}
-                      </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGameComplete(activeCourt.courtNumber, g.id)}
+                          className={`text-[10px] px-2.5 py-0.5 rounded-lg font-black border cursor-pointer transition ${
+                            g.completed
+                              ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                          }`}
+                        >
+                          {g.completed ? '✓ 경기완료' : '경기완료 처리'}
+                        </button>
+                      ) : (
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-lg font-black ${
+                            g.completed
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {g.completed ? '✓ 경기완료' : '진행 중'}
+                        </span>
+                      )}
                     </div>
 
-                    {/* 팀 배치 (수동모드면 드롭다운 직접 배치, 자동모드면 깔끔한 표시) */}
-                    {activeCourt.assignMode === 'MANUAL' ? (
+                    {/* 팀 배치 (관리자 수동모드면 드롭다운 직접 배치, 그 외 깔끔한 표시) */}
+                    {isAdmin && activeCourt.assignMode === 'MANUAL' ? (
                       <div className="grid grid-cols-11 gap-1.5 items-center">
                         <div className="col-span-5 space-y-1">
                           {[0, 1].map((slot) => (
@@ -990,50 +1137,58 @@ export default function KdkCourtOperations({
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1.5 mx-2 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateGameScore(activeCourt.courtNumber, g.id, -1, 0)
-                            }
-                            className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-                          >
-                            -
-                          </button>
+                        <div className="flex items-center gap-1.5 mx-2 bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-800">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateGameScore(activeCourt.courtNumber, g.id, -1, 0)
+                              }
+                              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
+                            >
+                              -
+                            </button>
+                          )}
                           <span className="text-sm font-black text-white w-4 text-center">
                             {g.scoreA}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateGameScore(activeCourt.courtNumber, g.id, 1, 0)
-                            }
-                            className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-                          >
-                            +
-                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateGameScore(activeCourt.courtNumber, g.id, 1, 0)
+                              }
+                              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
+                            >
+                              +
+                            </button>
+                          )}
                           <span className="text-[10px] font-black text-slate-500">:</span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateGameScore(activeCourt.courtNumber, g.id, 0, -1)
-                            }
-                            className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-                          >
-                            -
-                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateGameScore(activeCourt.courtNumber, g.id, 0, -1)
+                              }
+                              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
+                            >
+                              -
+                            </button>
+                          )}
                           <span className="text-sm font-black text-white w-4 text-center">
                             {g.scoreB}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateGameScore(activeCourt.courtNumber, g.id, 0, 1)
-                            }
-                            className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-                          >
-                            +
-                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateGameScore(activeCourt.courtNumber, g.id, 0, 1)
+                              }
+                              className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
+                            >
+                              +
+                            </button>
+                          )}
                         </div>
 
                         <div className="flex-1 text-right">
@@ -1047,8 +1202,8 @@ export default function KdkCourtOperations({
                       </div>
                     )}
 
-                    {/* 수동모드일 때도 스코어 입력 바 표시 */}
-                    {activeCourt.assignMode === 'MANUAL' && (
+                    {/* 관리자 수동모드일 때도 스코어 입력 바 표시 */}
+                    {isAdmin && activeCourt.assignMode === 'MANUAL' && (
                       <div className="flex items-center justify-center gap-2 bg-slate-900 py-1.5 px-3 rounded-xl border border-slate-800">
                         <span className="text-[10px] font-bold text-emerald-400">TEAM A</span>
                         <button

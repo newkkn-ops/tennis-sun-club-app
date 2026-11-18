@@ -745,15 +745,9 @@ export default function TennisApp() {
           matchedUser = stateMatched;
         }
 
-        const isAdminLogin =
-          lowerId === 'admin' ||
-          lowerId === '관리자' ||
-          lowerId === '운영자' ||
-          lowerId === 'admin@suntc.kr' ||
-          matchedUser?.role === 'admin';
-
-        // 미등록 아이디 차단 (관리자 제외)
-        if (!matchedUser && !isAdminLogin) {
+        // 기본 로그인 창에서 아이디·비번으로 로그인 시 항상 회원모드('member')로 접속!
+        // (관리자 모드는 반드시 하단 [👑 관리자 입장] 버튼에서 관리자 아이디·비번 인증을 거쳐야 함)
+        if (!matchedUser) {
           setAuthMessage({
             type: 'error',
             text: '등록되지 않은 아이디입니다. 회원가입 신청 후 운영자(관리자) 승인을 받아 접속해 주세요.',
@@ -762,13 +756,13 @@ export default function TennisApp() {
         }
 
         // 비밀번호 일치 여부 확인 (가입 시 설정한 비밀번호가 있는 경우)
-        if (matchedUser?.password && matchedUser.password !== password) {
+        if (matchedUser.password && matchedUser.password !== password) {
           setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
           return;
         }
 
         // 운영자 승인 대기 중인 계정 접속 차단
-        if (matchedUser && matchedUser.approvalStatus === 'pending' && !isAdminLogin) {
+        if (matchedUser.approvalStatus === 'pending') {
           setAuthMessage({
             type: 'error',
             text: `⏳ [${matchedUser.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다. 승인 완료 후 로그인하여 접속할 수 있습니다.`,
@@ -776,22 +770,15 @@ export default function TennisApp() {
           return;
         }
 
-        const loggedUser: RegisteredPlayer = matchedUser
-          ? { ...matchedUser, role: isAdminLogin ? 'admin' : 'member', approvalStatus: 'approved' }
-          : {
-              id: 'p10',
-              username: 'admin',
-              name: '공유 (관리자)',
-              grade: '금배',
-              gender: 'M',
-              role: 'admin',
-              isGuest: false,
-              approvalStatus: 'approved',
-            };
+        const loggedUser: RegisteredPlayer = {
+          ...matchedUser,
+          role: 'member',
+          approvalStatus: 'approved',
+        };
 
         setCurrentUser(loggedUser);
-        setRole(loggedUser.role);
-        setActiveTab(loggedUser.role === 'admin' ? 'admin' : 'courts');
+        setRole('member');
+        setActiveTab('courts');
         try {
           localStorage.setItem('sun_tennis_current_user', JSON.stringify(loggedUser));
         } catch {}
@@ -801,39 +788,117 @@ export default function TennisApp() {
     }
   };
 
-  // 일반회원 체험 계정 빠른 입장 (항상 일반회원 권한으로 입장 - 관리자 화면 숨김)
-  const handleQuickDemoLogin = () => {
-    const demoUser: RegisteredPlayer = {
-      id: 'p1',
-      username: 'chulsoo',
-      name: '김철수',
-      grade: '금배',
-      gender: 'M',
-      role: 'member',
-      isGuest: false,
+  // 관리자 전용 로그인 모달 상태 (관리자 아이디·비번 미입력/불일치 시 입장 불가)
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(false);
+  const [adminLoginId, setAdminLoginId] = useState<string>('');
+  const [adminLoginPw, setAdminLoginPw] = useState<string>('');
+  const [adminLoginError, setAdminLoginError] = useState<string>('');
+
+  // 회원 마이페이지 내 정보 수정 상태
+  const [editMyName, setEditMyName] = useState<string>('');
+  const [editMyGender, setEditMyGender] = useState<'M' | 'F'>('M');
+  const [editMyGrade, setEditMyGrade] = useState<string>('은배');
+  const [editMyPhone, setEditMyPhone] = useState<string>('');
+  const [editMyPassword, setEditMyPassword] = useState<string>('');
+  const [myInfoSavedMsg, setMyInfoSavedMsg] = useState<string>('');
+
+  useEffect(() => {
+    if (currentUser) {
+      setEditMyName(currentUser.name || '');
+      setEditMyGender(currentUser.gender === 'F' ? 'F' : 'M');
+      setEditMyGrade(currentUser.grade || '은배');
+      setEditMyPhone(currentUser.phone || '');
+      setEditMyPassword('');
+      setMyInfoSavedMsg('');
+    }
+  }, [currentUser]);
+
+  // 회원 본인 정보 수정 저장 핸들러
+  const handleSaveMyProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (!editMyName.trim()) {
+      alert('이름을 입력해 주세요.');
+      return;
+    }
+
+    const updatedUser: RegisteredPlayer = {
+      ...currentUser,
+      name: editMyName.trim(),
+      gender: editMyGender,
+      grade: editMyGrade,
+      phone: editMyPhone.trim(),
+      password: editMyPassword.trim() ? editMyPassword.trim() : currentUser.password,
     };
-    setCurrentUser(demoUser);
-    setRole('member');
-    setActiveTab('courts');
+
+    setCurrentUser(updatedUser);
+    setRegisteredPlayers((prev) => {
+      const next = prev.map((p) => (p.id === updatedUser.id ? { ...p, ...updatedUser } : p));
+      try {
+        localStorage.setItem('sun_tennis_registered_users', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     try {
-      localStorage.setItem('sun_tennis_current_user', JSON.stringify(demoUser));
+      localStorage.setItem('sun_tennis_current_user', JSON.stringify(updatedUser));
     } catch {}
+    setEditMyPassword('');
+    setMyInfoSavedMsg('✅ 내 정보가 성공적으로 수정되었습니다!');
   };
 
-  // 관리자(운영자) 계정 빠른 입장 (관리자 전용 운영관리 창 활성화)
-  const handleAdminDemoLogin = () => {
-    const adminUser: RegisteredPlayer = {
-      id: 'p10',
-      username: 'admin',
-      name: '공유 관리자',
-      grade: '금배',
-      gender: 'M',
-      role: 'admin',
-      isGuest: false,
-    };
+  // 관리자 아이디·비밀번호 엄격 인증 후 관리자 모드 입장
+  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginError('');
+    const trimmedAdminId = adminLoginId.trim().toLowerCase();
+    const trimmedAdminPw = adminLoginPw.trim();
+
+    if (!trimmedAdminId || !trimmedAdminPw) {
+      setAdminLoginError('관리자 아이디와 비밀번호를 모두 입력해야 관리자 모드로 입장할 수 있습니다.');
+      return;
+    }
+
+    const matchedAdmin = registeredPlayers.find(
+      (u) =>
+        u.role === 'admin' &&
+        (u.username?.toLowerCase() === trimmedAdminId || u.email?.toLowerCase() === trimmedAdminId)
+    );
+
+    const isDefaultAdminValid =
+      (trimmedAdminId === 'admin' || trimmedAdminId === 'admin@suntc.kr') &&
+      trimmedAdminPw === 'admin1234';
+
+    const isMatchedAdminValid =
+      Boolean(matchedAdmin) &&
+      (matchedAdmin?.password
+        ? matchedAdmin.password === trimmedAdminPw
+        : trimmedAdminPw === 'admin1234');
+
+    if (!isDefaultAdminValid && !isMatchedAdminValid) {
+      setAdminLoginError('❌ 관리자 아이디 또는 비밀번호가 일치하지 않습니다. 관리자 인증 없이는 입장할 수 없습니다.');
+      return;
+    }
+
+    const adminUser: RegisteredPlayer = matchedAdmin
+      ? { ...matchedAdmin, role: 'admin', approvalStatus: 'approved' }
+      : {
+          id: 'p10',
+          username: 'admin',
+          name: '공유 관리자',
+          grade: '금배',
+          gender: 'M',
+          role: 'admin',
+          isGuest: false,
+          approvalStatus: 'approved',
+        };
+
     setCurrentUser(adminUser);
     setRole('admin');
     setActiveTab('admin');
+    setShowAdminLoginModal(false);
+    setAdminLoginId('');
+    setAdminLoginPw('');
+    setAdminLoginError('');
     try {
       localStorage.setItem('sun_tennis_current_user', JSON.stringify(adminUser));
     } catch {}
@@ -921,44 +986,6 @@ export default function TennisApp() {
                   ? '이메일 없이 사용할 아이디와 비밀번호만 입력해 간편하게 가입하세요.'
                   : '아이디와 비밀번호로 로그인하거나 회원가입 버튼을 눌러 새 계정을 만드세요.'}
               </p>
-            </div>
-
-            {/* 빠른 접속 버튼 (관리자 / 일반회원 즉시 로그인) */}
-            <div className="bg-slate-950 p-3 rounded-2xl border border-amber-500/30 space-y-2">
-              <p className="text-[11px] font-extrabold text-amber-300 text-center">
-                ⚡ 빠른 접속 (일반회원 로그인 시 관리자 화면 숨김 처리)
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const adminUser: RegisteredPlayer = {
-                      id: 'p10',
-                      username: 'admin',
-                      name: '공유',
-                      grade: '금배',
-                      gender: 'M',
-                      role: 'admin',
-                      isGuest: false,
-                    };
-                    setCurrentUser(adminUser);
-                    setRole('admin');
-                    setActiveTab('admin');
-                  }}
-                  className="py-2.5 px-3 bg-gradient-to-r from-red-500 via-amber-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>👑</span>
-                  <span>관리자 즉시 로그인</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleQuickDemoLogin}
-                  className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>👤</span>
-                  <span>일반회원 로그인</span>
-                </button>
-              </div>
             </div>
 
             {/* 상단 로그인 / 회원가입 탭 전환 버튼 */}
@@ -1147,7 +1174,7 @@ export default function TennisApp() {
               )}
             </form>
 
-            {/* 하단 회원가입 전환 버튼 & 빠른 체험 입장 버튼 */}
+            {/* 하단 회원가입 전환 버튼 & 관리자 전용 입장 버튼 (관리자 아이디·비번 인증 필수) */}
             <div className="pt-3 border-t border-slate-800 space-y-2.5">
               <button
                 type="button"
@@ -1165,31 +1192,101 @@ export default function TennisApp() {
                 </span>
               </button>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleQuickDemoLogin}
-                  className="py-2.5 bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <span>👤</span>
-                  <span>일반회원 입장</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAdminDemoLogin}
-                  className="py-2.5 bg-gradient-to-r from-red-500/20 via-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <span>👑</span>
-                  <span>관리자 입장</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminLoginId('');
+                  setAdminLoginPw('');
+                  setAdminLoginError('');
+                  setShowAdminLoginModal(true);
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-red-500/20 via-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <span>👑</span>
+                <span>관리자 입장 (관리자 아이디·비밀번호 인증)</span>
+              </button>
 
               <p className="text-[10px] text-center text-slate-500 pt-0.5">
-                💡 관리자 접속 시 운영관리 창에서 대회생성, 방식선택, 선수지정, 코트지정을 직접 제어할 수 있습니다.
+                💡 일반 로그인 시 회원모드(열람 및 본인 정보 수정)로 접속되며, 관리자 모드는 관리자 계정 인증 후 입장 가능합니다.
               </p>
             </div>
           </div>
         </div>
+
+        {/* [관리자 전용 아이디·비밀번호 인증 모달] */}
+        {showAdminLoginModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-amber-500/40 w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-amber-400 flex items-center gap-1.5">
+                    <span>👑</span> 관리자 전용 인증 로그인
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    관리자 아이디와 비밀번호를 정확히 입력해야 입장됩니다.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdminLoginModal(false)}
+                  className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {adminLoginError && (
+                <div className="p-2.5 rounded-xl bg-red-950/70 border border-red-500/40 text-red-300 text-xs font-bold">
+                  {adminLoginError}
+                </div>
+              )}
+
+              <form onSubmit={handleAdminLoginSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    관리자 아이디 <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={adminLoginId}
+                    onChange={(e) => setAdminLoginId(e.target.value)}
+                    placeholder="관리자 아이디 입력"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">
+                    관리자 비밀번호 <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={adminLoginPw}
+                    onChange={(e) => setAdminLoginPw(e.target.value)}
+                    placeholder="관리자 비밀번호 입력"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    required
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminLoginModal(false)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs shadow-lg cursor-pointer"
+                  >
+                    👑 관리자 인증 입장
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1388,35 +1485,6 @@ export default function TennisApp() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {!isAdmin ? (
-                <button
-                  onClick={() => {
-                    setRole('admin');
-                    if (currentUser) {
-                      setCurrentUser({ ...currentUser, role: 'admin' });
-                    }
-                    setActiveTab('admin');
-                  }}
-                  className="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border-amber-500/40 transition cursor-pointer"
-                  title="관리자 모드로 전환하여 운영관리 창 열기"
-                >
-                  👑 관리자 전환
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    setRole('member');
-                    if (currentUser) {
-                      setCurrentUser({ ...currentUser, role: 'member' });
-                    }
-                    setActiveTab('courts');
-                  }}
-                  className="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700 transition cursor-pointer"
-                  title="일반회원 뷰로 전환"
-                >
-                  👤 회원뷰 전환
-                </button>
-              )}
               <span
                 className={`px-2 py-1 rounded-xl text-[10px] font-extrabold border ${
                   isAdmin
@@ -1424,7 +1492,7 @@ export default function TennisApp() {
                     : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 }`}
               >
-                {isAdmin ? '운영자' : '일반회원'}
+                {isAdmin ? '👑 관리자 모드' : '👤 회원 모드 (열람전용)'}
               </span>
               <button
                 onClick={handleLogout}
@@ -1717,7 +1785,8 @@ export default function TennisApp() {
               <div className="space-y-4">
                 <KdkCourtOperations
                   tournamentName={`${currentTournament.name} (${currentTournament.date})`}
-                  availablePlayers={registeredPlayers}
+                  availablePlayers={registeredPlayers.filter((p) => p.approvalStatus !== 'pending')}
+                  isAdmin={isAdmin}
                   onSyncCourtsToApp={(syncedCourts) => {
                     setCourts(syncedCourts);
                   }}
@@ -2035,6 +2104,96 @@ export default function TennisApp() {
                       <span className="text-2xl font-black text-slate-950">TOP 3 🏆</span>
                     </div>
                   </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                      <span>✏️</span> 내 정보 수정 (본인 계정 관리)
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      ID: {currentUser.username || currentUser.id}
+                    </span>
+                  </div>
+
+                  {myInfoSavedMsg && (
+                    <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+                      {myInfoSavedMsg}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveMyProfile} className="space-y-3 text-xs">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">이름</label>
+                        <input
+                          type="text"
+                          value={editMyName}
+                          onChange={(e) => setEditMyName(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">성별</label>
+                        <select
+                          value={editMyGender}
+                          onChange={(e) => setEditMyGender(e.target.value as 'M' | 'F')}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                        >
+                          <option value="M">남성 (남)</option>
+                          <option value="F">여성 (여)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">테니스 등급(부수)</label>
+                        <select
+                          value={editMyGrade}
+                          onChange={(e) => setEditMyGrade(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-bold"
+                        >
+                          {GRADE_OPTIONS.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">휴대폰 번호</label>
+                        <input
+                          type="tel"
+                          value={editMyPhone}
+                          onChange={(e) => setEditMyPhone(e.target.value)}
+                          placeholder="010-0000-0000"
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        새 비밀번호 변경 <span className="font-normal text-slate-500">(변경 시에만 입력)</span>
+                      </label>
+                      <input
+                        type="password"
+                        value={editMyPassword}
+                        onChange={(e) => setEditMyPassword(e.target.value)}
+                        placeholder="새 비밀번호 입력 (미입력 시 기존 비밀번호 유지)"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
+                    >
+                      💾 내 정보 수정 저장
+                    </button>
+                  </form>
                 </div>
 
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
