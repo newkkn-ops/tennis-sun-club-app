@@ -1,5 +1,5 @@
 /**
- * 테니스 어플 - KDK 대진표 자동 생성 알고리즘 (TypeScript 정의 포함)
+ * 테니스 어플 - KDK 대진표 자동 생성 알고리즘 (경기 실력 차이 최소화 밸런싱 엔진)
  */
 
 export type UserGrade = '금배' | '은배' | '국화' | '동배' | '개나리' | '테린이' | '고령자부';
@@ -8,12 +8,16 @@ export interface Player {
   id: string;
   name: string;
   grade: UserGrade | string;
+  isGuest?: boolean;
 }
 
 export interface MatchPair {
   courtNumber: number;
   teamA: [Player, Player];
   teamB: [Player, Player];
+  teamAWeight?: number;
+  teamBWeight?: number;
+  skillDiff?: number;
 }
 
 export interface RoundSchedule {
@@ -52,8 +56,8 @@ interface PlayerStatTracking {
 }
 
 /**
- * KDK 대진표 자동 생성 함수
- * @param players 참가자 목록 [{ id, name, grade }, ...]
+ * KDK 대진표 자동 생성 함수 (팀 간 경기 실력 차이 0 지향 밸런스 매칭)
+ * @param players 참가자 목록 (가입회원 + 미가입회원/임의선수 모두 포함)
  * @param numCourts 사용 가능한 코트 수
  * @param totalRounds 진행할 총 라운드 수 (기본값: 4)
  */
@@ -78,7 +82,7 @@ export function generateKDKSchedule(
       restCount: 0,
       partners: new Set<string>(),
       opponents: new Set<string>(),
-      weight: GRADE_WEIGHTS[p.grade] || 5,
+      weight: GRADE_WEIGHTS[p.grade] || 6,
     };
   });
 
@@ -86,6 +90,7 @@ export function generateKDKSchedule(
   const activeCount = Math.floor(maxPlayersPerRound / 4) * 4;
 
   for (let round = 1; round <= totalRounds; round++) {
+    // 1. 출전 횟수 균등 보장 (경기 수 적은 선수 우선 선발)
     const sortedPlayers = [...players].sort((a, b) => {
       if (stats[a.id].playCount !== stats[b.id].playCount) {
         return stats[a.id].playCount - stats[b.id].playCount;
@@ -101,49 +106,70 @@ export function generateKDKSchedule(
     let bestMatches: MatchPair[] | null = null;
     let lowestPenalty = Infinity;
 
-    for (let attempt = 0; attempt < 300; attempt++) {
-      const shuffled = [...activePlayers].sort(() => Math.random() - 0.5);
+    // 2. 실력 차이 최소화(Skill Gap Zero) 및 파트너 중복 방지 최적화 탐색 (500회 시뮬레이션)
+    for (let attempt = 0; attempt < 500; attempt++) {
+      let candidatePool: Player[];
+      if (attempt === 0) {
+        // 첫 시도는 실력 가중치 순으로 정렬하여 고-저 스네이크 밸런싱 유도
+        candidatePool = [...activePlayers].sort(
+          (a, b) => stats[b.id].weight - stats[a.id].weight
+        );
+      } else {
+        candidatePool = [...activePlayers].sort(() => Math.random() - 0.5);
+      }
+
       const currentMatches: MatchPair[] = [];
       let penalty = 0;
 
-      for (let i = 0; i < shuffled.length; i += 4) {
-        const group = shuffled.slice(i, i + 4);
-        const pairings: [[[Player, Player], [Player, Player]], [[Player, Player], [Player, Player]], [[Player, Player], [Player, Player]]] = [
-          [[[group[0], group[1]], [group[2], group[3]]]],
-          [[[group[0], group[2]], [group[1], group[3]]]],
-          [[[group[0], group[3]], [group[1], group[2]]]],
-        ].map((item) => item[0]) as any;
+      for (let i = 0; i < candidatePool.length; i += 4) {
+        const group = candidatePool.slice(i, i + 4);
+        const pairings: [[Player, Player], [Player, Player]][] = [
+          [[group[0], group[3]], [group[1], group[2]]], // 고+저 vs 중+중 우선 탐색
+          [[group[0], group[2]], [group[1], group[3]]],
+          [[group[0], group[1]], [group[2], group[3]]],
+        ];
 
         let bestPair = pairings[0];
         let bestPairPenalty = Infinity;
+        let bestWeightA = 0;
+        let bestWeightB = 0;
 
         for (const [teamA, teamB] of pairings) {
           let pairPenalty = 0;
 
-          if (stats[teamA[0].id].partners.has(teamA[1].id)) pairPenalty += 100;
-          if (stats[teamB[0].id].partners.has(teamB[1].id)) pairPenalty += 100;
-
-          for (const pA of teamA) {
-            for (const pB of teamB) {
-              if (stats[pA.id].opponents.has(pB.id)) pairPenalty += 20;
-            }
-          }
-
+          // (1) 팀 간 경기 실력(급수 가중치 합) 차이 최소화 페널티 (최우선 반영)
           const weightA = stats[teamA[0].id].weight + stats[teamA[1].id].weight;
           const weightB = stats[teamB[0].id].weight + stats[teamB[1].id].weight;
-          pairPenalty += Math.abs(weightA - weightB) * 5;
+          const diff = Math.abs(weightA - weightB);
+          pairPenalty += diff * 45 + diff * diff * 20;
+
+          // (2) 파트너 중복 페널티
+          if (stats[teamA[0].id].partners.has(teamA[1].id)) pairPenalty += 150;
+          if (stats[teamB[0].id].partners.has(teamB[1].id)) pairPenalty += 150;
+
+          // (3) 상대방 중복 페널티
+          for (const pA of teamA) {
+            for (const pB of teamB) {
+              if (stats[pA.id].opponents.has(pB.id)) pairPenalty += 15;
+            }
+          }
 
           if (pairPenalty < bestPairPenalty) {
             bestPairPenalty = pairPenalty;
             bestPair = [teamA, teamB];
+            bestWeightA = weightA;
+            bestWeightB = weightB;
           }
         }
 
         penalty += bestPairPenalty;
         currentMatches.push({
           courtNumber: i / 4 + 1,
-          teamA: bestPair[0] as [Player, Player],
-          teamB: bestPair[1] as [Player, Player],
+          teamA: bestPair[0],
+          teamB: bestPair[1],
+          teamAWeight: bestWeightA,
+          teamBWeight: bestWeightB,
+          skillDiff: Math.abs(bestWeightA - bestWeightB),
         });
       }
 

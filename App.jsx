@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import AdminTournamentManager from './components/AdminTournamentManager';
 import AdminUserManagement from './components/AdminUserManagement';
+import { generateKDKSchedule } from './lib/kdk';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -33,21 +34,26 @@ export default function TennisApp() {
 
   const [activeTab, setActiveTab] = useState('courts');
   const [role, setRole] = useState('member');
+  const isAdmin = role === 'admin';
   const [adminSubTab, setAdminSubTab] = useState('tournament_builder');
   const [activeTournament, setActiveTournament] = useState(null);
   const [tourPhase, setTourPhase] = useState('qualifying');
 
   const [users, setUsers] = useState([
-    { id: '1', name: '김철수', email: 'chulsoo@suntc.kr', gender: 'M', grade: '금배', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '2', name: '강동원', email: 'dongwon@suntc.kr', gender: 'M', grade: '금배', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '3', name: '박민수', email: 'minsoo@suntc.kr', gender: 'M', grade: '은배', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '4', name: '정지훈', email: 'jihoon@suntc.kr', gender: 'M', grade: '동배', role: 'member', status: 'waiting', isLoggedIn: true },
-    { id: '5', name: '이영희', email: 'younghee@suntc.kr', gender: 'F', grade: '국화', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '6', name: '한지민', email: 'jimin@suntc.kr', gender: 'F', grade: '은배', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '7', name: '최수진', email: 'sujin@suntc.kr', gender: 'F', grade: '개나리', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '8', name: '송중기', email: 'joongki@suntc.kr', gender: 'M', grade: '동배', role: 'member', status: 'playing', isLoggedIn: true },
-    { id: '9', name: '조인성', email: 'insung@suntc.kr', gender: 'M', grade: '은배', role: 'member', status: 'waiting', isLoggedIn: true },
-    { id: '10', name: '공유', email: 'admin@suntc.kr', gender: 'M', grade: '금배', role: 'admin', status: 'waiting', isLoggedIn: true },
+    { id: '1', name: '김철수', email: 'chulsoo@suntc.kr', gender: 'M', grade: '금배', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '2', name: '강동원', email: 'dongwon@suntc.kr', gender: 'M', grade: '금배', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '3', name: '박민수', email: 'minsoo@suntc.kr', gender: 'M', grade: '은배', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '4', name: '정지훈', email: 'jihoon@suntc.kr', gender: 'M', grade: '동배', role: 'member', status: 'waiting', isLoggedIn: true, isGuest: false },
+    { id: '5', name: '이영희', email: 'younghee@suntc.kr', gender: 'F', grade: '국화', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '6', name: '한지민', email: 'jimin@suntc.kr', gender: 'F', grade: '은배', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '7', name: '최수진', email: 'sujin@suntc.kr', gender: 'F', grade: '개나리', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '8', name: '송중기', email: 'joongki@suntc.kr', gender: 'M', grade: '동배', role: 'member', status: 'playing', isLoggedIn: true, isGuest: false },
+    { id: '9', name: '조인성', email: 'insung@suntc.kr', gender: 'M', grade: '은배', role: 'member', status: 'waiting', isLoggedIn: true, isGuest: false },
+    { id: '10', name: '공유', email: 'admin@suntc.kr', gender: 'M', grade: '금배', role: 'admin', status: 'waiting', isLoggedIn: true, isGuest: false },
+    { id: '11', name: '김태희', gender: 'F', grade: '테린이', role: 'member', status: 'waiting', isLoggedIn: false, isGuest: true },
+    { id: '12', name: '정우성', gender: 'M', grade: '은배', role: 'member', status: 'waiting', isLoggedIn: false, isGuest: true },
+    { id: '13', name: '전지현', gender: 'F', grade: '국화', role: 'member', status: 'waiting', isLoggedIn: false, isGuest: true },
+    { id: '14', name: '현빈', gender: 'M', grade: '동배', role: 'member', status: 'waiting', isLoggedIn: false, isGuest: true },
   ]);
 
   const [participantsInput, setParticipantsInput] = useState(
@@ -203,33 +209,35 @@ export default function TennisApp() {
       return;
     }
 
-    const generated = [];
-    for (let r = 1; r <= 3; r++) {
-      const shuffled = [...names].sort(() => Math.random() - 0.5);
-      const matches = [];
-      for (let i = 0; i < shuffled.length; i += 4) {
-        if (i + 3 < shuffled.length) {
-          matches.push({
-            id: `gen-r${r}-m${matches.length + 1}`,
-            court: matches.length + 1,
-            teamA: [shuffled[i], shuffled[i + 1]],
-            teamB: [shuffled[i + 2], shuffled[i + 3]],
-            scoreA: 0,
-            scoreB: 0,
-            completed: false,
-          });
-        }
-      }
-      generated.push({
-        round: r,
-        name: `제 ${r} 라운드 (자동 매칭)`,
-        matches,
-      });
-    }
+    const playersPool = names.map((name, idx) => {
+      const existing = users.find((u) => u.name === name);
+      return {
+        id: existing ? String(existing.id) : `custom_${idx}`,
+        name,
+        grade: existing ? existing.grade : '은배',
+      };
+    });
+
+    const numCourts = Math.max(1, Math.min(courts.length || 3, Math.floor(playersPool.length / 4)));
+    const schedule = generateKDKSchedule(playersPool, numCourts, 3);
+
+    const generated = schedule.map((r) => ({
+      round: r.round,
+      name: `제 ${r.round} 라운드 (실력균형 자동 매칭)`,
+      matches: r.matches.map((m, mIdx) => ({
+        id: `gen-r${r.round}-m${mIdx + 1}`,
+        court: m.courtNumber,
+        teamA: [`${m.teamA[0].name} (${m.teamA[0].grade})`, `${m.teamA[1].name} (${m.teamA[1].grade})`],
+        teamB: [`${m.teamB[0].name} (${m.teamB[0].grade})`, `${m.teamB[1].name} (${m.teamB[1].grade})`],
+        scoreA: 0,
+        scoreB: 0,
+        completed: false,
+      })),
+    }));
 
     setKdkRounds(generated);
     recalculateKdkStandings(generated);
-    alert(`🎉 ${names.length}명의 참가자로 총 3개 라운드 KDK 순환 대진표가 새로 편성되었습니다!`);
+    alert(`🎉 ${names.length}명의 참가자로 경기 실력 차이가 없도록 균형 맞춘 3개 라운드 KDK 대진표가 편성되었습니다!`);
   };
 
   const [groupAStandings, setGroupAStandings] = useState([
@@ -494,62 +502,110 @@ export default function TennisApp() {
     e.preventDefault();
     setAuthMessage(null);
 
+    const rawId = email.trim();
+    const normalizedId = rawId.toLowerCase();
+
     if (isSignUp) {
-      if (!signUpName.trim()) {
-        setAuthMessage({ type: 'error', text: '이름을 입력해 주세요.' });
+      if (rawId.length < 2) {
+        setAuthMessage({ type: 'error', text: '아이디는 2자 이상 입력해 주세요. (이메일 형식 불필요)' });
+        return;
+      }
+      if (password.length < 4) {
+        setAuthMessage({ type: 'error', text: '비밀번호는 4자 이상 입력해 주세요.' });
         return;
       }
       if (password !== confirmPassword) {
         setAuthMessage({ type: 'error', text: '비밀번호 확인이 일치하지 않습니다.' });
         return;
       }
+      if (!signUpName.trim()) {
+        setAuthMessage({ type: 'error', text: '이름을 입력해 주세요.' });
+        return;
+      }
+
+      const duplicate = users.find(
+        (u) =>
+          (u.username && u.username.toLowerCase() === normalizedId) ||
+          (u.email && u.email.toLowerCase() === normalizedId)
+      );
+      if (duplicate) {
+        setAuthMessage({ type: 'error', text: '이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.' });
+        return;
+      }
 
       const newUser = {
         id: `u_${Date.now()}`,
+        username: rawId,
         name: signUpName.trim(),
-        email: email.trim(),
+        email: rawId,
+        password,
         gender: signUpGender,
         grade: signUpGrade,
-        role: signUpRole,
+        role: 'member',
         status: 'playing',
         isLoggedIn: true,
       };
 
-      setUsers((prev) => [newUser, ...prev]);
+      setUsers((prev) => {
+        const updated = [newUser, ...prev];
+        try {
+          localStorage.setItem('sun_tennis_registered_users', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
       setCurrentUser(newUser);
-      setRole(newUser.role);
-      if (newUser.role === 'admin') {
-        setActiveTab('admin');
-        setAdminSubTab('tournament_builder');
-      } else {
-        setActiveTab('courts');
-      }
+      setRole('member');
+      setActiveTab('courts');
+      try {
+        localStorage.setItem('sun_tennis_current_user', JSON.stringify(newUser));
+      } catch {}
       return;
     }
 
-    const trimmed = email.trim().toLowerCase();
+    if (!rawId) {
+      setAuthMessage({ type: 'error', text: '아이디를 입력해 주세요.' });
+      return;
+    }
+
     const isAdminAccount =
-      trimmed.includes('admin') || trimmed === '공유' || trimmed === '운영자' || trimmed === '관리자';
+      normalizedId === 'admin' ||
+      normalizedId === 'admin@suntc.kr' ||
+      normalizedId === '공유' ||
+      normalizedId === '운영자' ||
+      normalizedId === '관리자';
 
     const matched = users.find(
-      (u) => u.email?.toLowerCase() === trimmed || u.name === email.trim()
+      (u) =>
+        (u.username && u.username.toLowerCase() === normalizedId) ||
+        (u.email && u.email.toLowerCase() === normalizedId) ||
+        u.name === rawId
     );
 
+    if (matched && matched.password && password && matched.password !== password) {
+      setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
+      return;
+    }
+
+    const resolvedRole = isAdminAccount || matched?.role === 'admin' ? 'admin' : 'member';
     const loggedUser = matched
-      ? { ...matched, role: isAdminAccount ? 'admin' : matched.role, isLoggedIn: true }
+      ? { ...matched, role: resolvedRole, isLoggedIn: true }
       : {
           id: `u_${Date.now()}`,
-          name: isAdminAccount ? '공유 (총괄관리자)' : email.split('@')[0] || '김철수',
-          email: email.trim(),
+          username: rawId,
+          name: isAdminAccount ? '공유 (총괄관리자)' : rawId.split('@')[0] || '김철수',
+          email: rawId,
           gender: 'M',
           grade: '금배',
-          role: isAdminAccount ? 'admin' : 'member',
+          role: resolvedRole,
           isLoggedIn: true,
         };
 
     setCurrentUser(loggedUser);
-    setRole(loggedUser.role);
-    if (loggedUser.role === 'admin') {
+    setRole(resolvedRole);
+    try {
+      localStorage.setItem('sun_tennis_current_user', JSON.stringify(loggedUser));
+    } catch {}
+    if (resolvedRole === 'admin') {
       setActiveTab('admin');
       setAdminSubTab('tournament_builder');
     } else {
@@ -560,6 +616,7 @@ export default function TennisApp() {
   const handleQuickAdminLogin = () => {
     const adminUser = {
       id: '10',
+      username: 'admin',
       name: '공유',
       email: 'admin@suntc.kr',
       gender: 'M',
@@ -579,6 +636,7 @@ export default function TennisApp() {
   const handleQuickMemberLogin = () => {
     const memberUser = {
       id: '1',
+      username: 'chulsoo',
       name: '김철수',
       email: 'chulsoo@suntc.kr',
       gender: 'M',
@@ -732,10 +790,49 @@ export default function TennisApp() {
             )}
 
             <form onSubmit={handleAuthSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  아이디 (ID) * <span className="text-[10px] text-slate-400 font-normal">(이메일 형식 불필요)</span>
+                </label>
+                <input
+                  type="text"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={isSignUp ? '사용할 아이디 입력 (예: sun01)' : '아이디 입력 (예: chulsoo, admin)'}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">비밀번호 *</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="비밀번호 입력 (4자 이상)"
+                  minLength={4}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                  required
+                />
+              </div>
+
               {isSignUp && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">이름 *</label>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">비밀번호 확인 *</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="비밀번호 다시 입력"
+                      minLength={4}
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">이름 (실명) *</label>
                     <input
                       type="text"
                       value={signUpName}
@@ -745,7 +842,7 @@ export default function TennisApp() {
                       required
                     />
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-300 mb-1">성별</label>
                       <select
@@ -771,59 +868,8 @@ export default function TennisApp() {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-300 mb-1">권한</label>
-                      <select
-                        value={signUpRole}
-                        onChange={(e) => setSignUpRole(e.target.value)}
-                        className="w-full px-2.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-red-300 font-bold"
-                      >
-                        <option value="member">일반회원</option>
-                        <option value="admin">관리자</option>
-                      </select>
-                    </div>
                   </div>
                 </>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">
-                  이메일 또는 이름 (관리자는 admin@suntc.kr 입력)
-                </label>
-                <input
-                  type="text"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@suntc.kr 또는 이름"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">비밀번호</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="비밀번호 입력"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                  required
-                />
-              </div>
-
-              {isSignUp && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">비밀번호 확인</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="비밀번호 다시 입력"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                    required
-                  />
-                </div>
               )}
 
               <button
@@ -875,25 +921,26 @@ export default function TennisApp() {
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-2">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2">시스템 메뉴 바로가기</p>
             <div className="grid grid-cols-1 gap-1.5">
-              <button
-                onClick={() => {
-                  setRole('admin');
-                  setActiveTab('admin');
-                  setAdminSubTab('tournament_builder');
-                }}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left cursor-pointer ${
-                  activeTab === 'admin'
-                    ? 'bg-red-500/15 text-red-300 border border-red-400/40 shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <span className="text-base">👑</span>
-                <div className="flex-1">
-                  <p className="leading-tight">관리자 대회 생성 & 코트/선수 배치</p>
-                  <p className="text-[10px] text-slate-400 font-normal">대회명·토너먼트/KDK·자동/수동 선수배치</p>
-                </div>
-                <span className="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded-md font-extrabold">관리자</span>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setActiveTab('admin');
+                    setAdminSubTab('tournament_builder');
+                  }}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left cursor-pointer ${
+                    activeTab === 'admin'
+                      ? 'bg-red-500/15 text-red-300 border border-red-400/40 shadow-xs'
+                      : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="text-base">👑</span>
+                  <div className="flex-1">
+                    <p className="leading-tight">관리자 대회 생성 & 코트/선수 배치</p>
+                    <p className="text-[10px] text-slate-400 font-normal">회원관리·대회명·토너먼트/KDK</p>
+                  </div>
+                  <span className="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded-md font-extrabold">관리자</span>
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab('courts')}
@@ -978,23 +1025,15 @@ export default function TennisApp() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => {
-                  const nextRole = role === 'member' ? 'admin' : 'member';
-                  setRole(nextRole);
-                  if (nextRole === 'admin') {
-                    setActiveTab('admin');
-                    setAdminSubTab('tournament_builder');
-                  }
-                }}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer ${
-                  role === 'admin'
+              <span
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-extrabold border ${
+                  isAdmin
                     ? 'bg-red-500/20 text-red-300 border-red-500/40'
                     : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 }`}
               >
-                {role === 'admin' ? '👑 관리자 모드' : '👤 회원 모드'}
-              </button>
+                {isAdmin ? '👑 관리자' : '👤 일반회원'}
+              </span>
               <button
                 onClick={handleLogout}
                 className="px-2 py-1 rounded-xl text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
@@ -1014,15 +1053,17 @@ export default function TennisApp() {
                   {activeTournament.title}
                 </span>
               </div>
-              <button
-                onClick={() => {
-                  setActiveTab('admin');
-                  setAdminSubTab('tournament_builder');
-                }}
-                className="text-[10px] font-bold text-amber-300 hover:underline shrink-0 ml-2 cursor-pointer"
-              >
-                대진/코트 수정 ⚙
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setActiveTab('admin');
+                    setAdminSubTab('tournament_builder');
+                  }}
+                  className="text-[10px] font-bold text-amber-300 hover:underline shrink-0 ml-2 cursor-pointer"
+                >
+                  대진/코트 수정 ⚙
+                </button>
+              )}
             </div>
           )}
 
@@ -1058,12 +1099,14 @@ export default function TennisApp() {
                           {court.status === 'playing' ? '🔴 LIVE 경기 중' : '⚪ 대기 중'}
                         </span>
                       </div>
-                      <button
-                        onClick={() => openScoreModal(court)}
-                        className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold border border-slate-700 cursor-pointer"
-                      >
-                        점수 수정 ✎
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => openScoreModal(court)}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold border border-slate-700 cursor-pointer"
+                        >
+                          점수 수정 ✎
+                        </button>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 items-center">
@@ -1098,27 +1141,29 @@ export default function TennisApp() {
 
             {activeTab === 'kdk' && (
               <div className="space-y-4">
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="font-extrabold text-xs text-white">🎾 KDK 참가자 명단</span>
-                    <div className="flex gap-1.5">
-                      <button onClick={() => setQuickNames(8)} className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded-lg">8명</button>
-                      <button onClick={() => setQuickNames(12)} className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded-lg">12명</button>
+                {isAdmin && (
+                  <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-extrabold text-xs text-white">🎾 KDK 참가자 명단</span>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => setQuickNames(8)} className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded-lg">8명</button>
+                        <button onClick={() => setQuickNames(12)} className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded-lg">12명</button>
+                      </div>
                     </div>
+                    <textarea
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                      rows={2}
+                      value={participantsInput}
+                      onChange={(e) => setParticipantsInput(e.target.value)}
+                    />
+                    <button
+                      onClick={handleGenerateKdk}
+                      className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-xl text-xs cursor-pointer"
+                    >
+                      🏓 KDK 대진표 자동 편성
+                    </button>
                   </div>
-                  <textarea
-                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                    rows={2}
-                    value={participantsInput}
-                    onChange={(e) => setParticipantsInput(e.target.value)}
-                  />
-                  <button
-                    onClick={handleGenerateKdk}
-                    className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black rounded-xl text-xs cursor-pointer"
-                  >
-                    🏓 KDK 대진표 자동 편성
-                  </button>
-                </div>
+                )}
 
                 {kdkRounds.map((r, rIdx) => (
                   <div key={r.round} className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2.5">
@@ -1131,12 +1176,18 @@ export default function TennisApp() {
                         <div key={m.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
                           <div className="flex justify-between items-center">
                             <span className="text-amber-400 font-bold">코트 {m.court}</span>
-                            <button
-                              onClick={() => toggleKdkMatchComplete(rIdx, mIdx)}
-                              className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-emerald-300"
-                            >
-                              {m.completed ? '✓ 완료' : '진행중'}
-                            </button>
+                            {isAdmin ? (
+                              <button
+                                onClick={() => toggleKdkMatchComplete(rIdx, mIdx)}
+                                className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-emerald-300 cursor-pointer"
+                              >
+                                {m.completed ? '✓ 완료' : '진행중'}
+                              </button>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                                {m.completed ? '✓ 완료' : '진행중'}
+                              </span>
+                            )}
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="font-bold text-white truncate flex-1">{m.teamA.join(' / ')}</span>
@@ -1178,7 +1229,7 @@ export default function TennisApp() {
               </div>
             )}
 
-            {activeTab === 'admin' && (
+            {isAdmin && activeTab === 'admin' && (
               <div className="space-y-4">
                 <AdminUserManagement
                   externalUsers={users}
@@ -1237,16 +1288,17 @@ export default function TennisApp() {
               <span className="text-base">👤</span>
               <span className="text-[10px] mt-0.5">마이페이지</span>
             </button>
-            <button
-              onClick={() => {
-                setRole('admin');
-                setActiveTab('admin');
-              }}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl cursor-pointer ${activeTab === 'admin' ? 'text-red-400 font-bold' : 'text-slate-400'}`}
-            >
-              <span className="text-base">👑</span>
-              <span className="text-[10px] mt-0.5">대회·운영관리</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setActiveTab('admin');
+                }}
+                className={`flex flex-col items-center py-1 px-2 rounded-xl cursor-pointer ${activeTab === 'admin' ? 'text-red-400 font-bold' : 'text-slate-400'}`}
+              >
+                <span className="text-base">👑</span>
+                <span className="text-[10px] mt-0.5">대회·운영관리</span>
+              </button>
+            )}
           </nav>
         </main>
       </div>

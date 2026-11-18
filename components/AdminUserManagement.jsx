@@ -79,7 +79,7 @@ export default function AdminUserManagement({
   const openEditModal = (member) => {
     setEditingMember(member);
     setEditName(member.name || '');
-    setEditEmail(member.email || '');
+    setEditEmail(member.username || member.email || '');
     setEditPhone(member.phone || '');
     setEditGender(member.gender === 'F' || member.gender === '여' ? 'F' : 'M');
     setEditGrade(member.grade || '은배');
@@ -97,7 +97,8 @@ export default function AdminUserManagement({
     const updated = {
       ...editingMember,
       name: editName.trim(),
-      email: editEmail.trim(),
+      username: editEmail.trim(),
+      email: editEmail.trim().includes('@') ? editEmail.trim() : editingMember.email || '',
       phone: editPhone.trim(),
       gender: editGender,
       grade: editGrade,
@@ -292,8 +293,8 @@ export default function AdminUserManagement({
                 required
               />
               <input
-                type="email"
-                placeholder="이메일 (선택)"
+                type="text"
+                placeholder="아이디 (선택 · 이메일 불필요)"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
@@ -377,7 +378,7 @@ export default function AdminUserManagement({
                       )}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
-                      <span>{u.email || `${u.name}@suntc.kr`}</span>
+                      <span>ID: {u.username || u.email || '미등록'}</span>
                       {u.phone && <span>· {u.phone}</span>}
                     </div>
                   </div>
@@ -509,12 +510,12 @@ export default function AdminUserManagement({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">이메일 주소</label>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">아이디 (ID)</label>
                 <input
-                  type="email"
+                  type="text"
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="example@suntc.kr"
+                  placeholder="아이디 입력 (이메일 형식 불필요)"
                   className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
                 />
               </div>

@@ -1,13 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { generateKDKSchedule, GRADE_WEIGHTS } from '../lib/kdk';
 
 export interface ParticipantPlayer {
   id: string;
   name: string;
   grade: string;
   gender: string;
-  isGuest?: boolean; // 로그인하지 못하는 임의 추가 선수 여부
-  isLoggedInUser?: boolean;
+  isGuest?: boolean; // 미가입 회원 / 임의 등록 선수 여부
+  isLoggedInUser?: boolean; // 가입회원 여부
 }
 
 export interface AssignedMatch {
@@ -17,6 +18,9 @@ export interface AssignedMatch {
   courtNumber: number;
   teamA: [ParticipantPlayer, ParticipantPlayer];
   teamB: [ParticipantPlayer, ParticipantPlayer];
+  teamAWeight?: number;
+  teamBWeight?: number;
+  skillDiff?: number;
   scoreA: number;
   scoreB: number;
   status: 'waiting' | 'playing' | 'completed';
@@ -43,17 +47,7 @@ interface AdminTournamentManagerProps {
   onAddCustomUserToClub?: (newUser: ParticipantPlayer) => void;
 }
 
-const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
-
-const GRADE_WEIGHTS: Record<string, number> = {
-  '금배': 10,
-  '은배': 8,
-  '국화': 7,
-  '동배': 6,
-  '개나리': 5,
-  '고령자부': 5,
-  '테린이': 3,
-};
+const GRADE_OPTIONS = ['금배', '은배', '국화', '동배', '개나리', '고령자부', '테린이'];
 
 export default function AdminTournamentManager({
   registeredUsers,
@@ -62,18 +56,29 @@ export default function AdminTournamentManager({
   onApplyTournament,
   onAddCustomUserToClub,
 }: AdminTournamentManagerProps) {
-  // 1단계: 대회명 생성
+  // 1단계: 새 대회 개설 - 대회명 설정
   const [tournamentTitle, setTournamentTitle] = useState<string>(
     activeTournament?.title || '2026 썬 테니스 클럽 정기 대회'
   );
-  const [isTitleConfirmed, setIsTitleConfirmed] = useState<boolean>(Boolean(activeTournament?.title));
+  const [isTitleConfirmed, setIsTitleConfirmed] = useState<boolean>(true);
 
-  // 2단계: 대회방식 선택 ('TOURNAMENT' | 'KDK' | null)
-  const [tournamentMode, setTournamentMode] = useState<'TOURNAMENT' | 'KDK' | null>(
-    activeTournament?.mode || null
+  // 2단계: 대회방식 선택 ('TOURNAMENT' | 'KDK')
+  const [tournamentMode, setTournamentMode] = useState<'TOURNAMENT' | 'KDK'>(
+    activeTournament?.mode || 'KDK'
   );
 
-  // 3단계: 선수 배치 (로그인 회원 선택 + 미로그인 임의 선수 추가)
+  // 기본 미가입 회원 샘플 풀 (새 대회 개설 시 바로 선택하거나 추가 가능)
+  const [guestPool, setGuestPool] = useState<ParticipantPlayer[]>([
+    { id: 'guest_init_1', name: '김태희', grade: '개나리', gender: '여', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_2', name: '정우성', grade: '은배', gender: '남', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_3', name: '전지현', grade: '국화', gender: '여', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_4', name: '현빈', grade: '동배', gender: '남', isGuest: true, isLoggedInUser: false },
+  ]);
+
+  // 선수 필터 탭: 'ALL' | 'MEMBER' (가입회원) | 'GUEST' (미가입/임의선수)
+  const [playerFilterTab, setPlayerFilterTab] = useState<'ALL' | 'MEMBER' | 'GUEST'>('ALL');
+
+  // 3단계: 참여선수 선택 상태 (가입회원 + 미가입회원/임의선수 통합)
   const [selectedParticipants, setSelectedParticipants] = useState<ParticipantPlayer[]>(() => {
     if (activeTournament?.participants && activeTournament.participants.length > 0) {
       return activeTournament.participants;
@@ -83,18 +88,17 @@ export default function AdminTournamentManager({
       name: u.name,
       grade: u.grade || '은배',
       gender: u.gender === 'F' || u.gender === '여' ? '여' : '남',
-      isGuest: false,
-      isLoggedInUser: true,
+      isGuest: Boolean(u.isGuest),
+      isLoggedInUser: !u.isGuest,
     }));
   });
 
-  // 미로그인(임의) 선수 추가 입력 상태
+  // 미가입 회원 / 임의 선수 이름 직접 등록 입력 상태
   const [guestNameInput, setGuestNameInput] = useState<string>('');
   const [guestGradeInput, setGuestGradeInput] = useState<string>('은배');
   const [guestGenderInput, setGuestGenderInput] = useState<string>('남');
-  const [guestPool, setGuestPool] = useState<ParticipantPlayer[]>([]);
 
-  // 4단계: 코트 배정 및 자동/수동 배치 방식
+  // 4단계: 코트 배정 및 자동(실력차 제로 밸런싱)/수동 방식
   const [selectedCourts, setSelectedCourts] = useState<number[]>(
     activeTournament?.selectedCourts || [1, 2, 3]
   );
@@ -104,20 +108,20 @@ export default function AdminTournamentManager({
   );
   const [autoBalanceOption, setAutoBalanceOption] = useState<'BALANCE' | 'RANDOM'>('BALANCE');
 
-  // 배정된 매치 리스트 (자동 생성 후에도 수동 편집 가능)
+  // 배정된 매치 리스트
   const [assignedMatches, setAssignedMatches] = useState<AssignedMatch[]>(
     activeTournament?.matches || []
   );
 
   // 수동 추가용 개별 매치 슬롯 상태
   const [manualCourt, setManualCourt] = useState<number>(1);
-  const [manualRoundName, setManualRoundName] = useState<string>('1라운드');
+  const [manualRoundName, setManualRoundName] = useState<string>('제 1 라운드');
   const [manualTeamA1, setManualTeamA1] = useState<string>('');
   const [manualTeamA2, setManualTeamA2] = useState<string>('');
   const [manualTeamB1, setManualTeamB1] = useState<string>('');
   const [manualTeamB2, setManualTeamB2] = useState<string>('');
 
-  // 전체 선택 가능한 선수 풀 (가입/로그인 회원 + 임의 추가된 비로그인 선수)
+  // 전체 선택 가능한 선수 풀 (가입회원 + 미가입회원/임의선수)
   const allAvailablePlayers: ParticipantPlayer[] = [
     ...registeredUsers.map((u) => ({
       id: String(u.id),
@@ -130,6 +134,12 @@ export default function AdminTournamentManager({
     ...guestPool.filter((g) => !registeredUsers.some((u) => String(u.id) === g.id)),
   ];
 
+  const filteredPlayers = allAvailablePlayers.filter((p) => {
+    if (playerFilterTab === 'MEMBER') return !p.isGuest;
+    if (playerFilterTab === 'GUEST') return Boolean(p.isGuest);
+    return true;
+  });
+
   // 수동 슬롯 기본값 동기화
   useEffect(() => {
     if (selectedParticipants.length >= 4) {
@@ -140,7 +150,15 @@ export default function AdminTournamentManager({
     }
   }, [selectedParticipants]);
 
-  // 로그인 회원 참가 토글
+  const getPlayerWeight = (p?: ParticipantPlayer) => (p ? GRADE_WEIGHTS[p.grade] || 6 : 6);
+
+  const calcMatchWeights = (teamA: [ParticipantPlayer, ParticipantPlayer], teamB: [ParticipantPlayer, ParticipantPlayer]) => {
+    const wA = getPlayerWeight(teamA[0]) + getPlayerWeight(teamA[1]);
+    const wB = getPlayerWeight(teamB[0]) + getPlayerWeight(teamB[1]);
+    return { teamAWeight: wA, teamBWeight: wB, skillDiff: Math.abs(wA - wB) };
+  };
+
+  // 선수 참가 선택 토글
   const togglePlayerSelection = (player: ParticipantPlayer) => {
     setSelectedParticipants((prev) => {
       const exists = prev.some((p) => p.id === player.id);
@@ -152,7 +170,7 @@ export default function AdminTournamentManager({
     });
   };
 
-  // 전체 회원 선택 / 해제
+  // 전체 선수 선택 / 해제
   const handleSelectAllPlayers = () => {
     if (selectedParticipants.length === allAvailablePlayers.length) {
       setSelectedParticipants([]);
@@ -161,12 +179,12 @@ export default function AdminTournamentManager({
     }
   };
 
-  // 로그인하지 못하는 선수(임의 이름) 추가 핸들러 (단일 또는 쉼표 구분 복수 추가 지원)
+  // 미가입 회원 또는 임의 선수 이름 직접 등록 핸들러
   const handleAddGuestPlayer = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const raw = guestNameInput.trim();
     if (!raw) {
-      alert('추가할 선수의 이름을 입력해 주세요.');
+      alert('등록할 미가입 회원 또는 임의 선수의 이름을 입력해 주세요.');
       return;
     }
 
@@ -196,25 +214,23 @@ export default function AdminTournamentManager({
   const toggleCourtNumber = (courtNum: number) => {
     setSelectedCourts((prev) => {
       if (prev.includes(courtNum)) {
-        if (prev.length <= 1) return prev; // 최소 1개 코트 유지
+        if (prev.length <= 1) return prev;
         return prev.filter((c) => c !== courtNum).sort((a, b) => a - b);
       }
       return [...prev, courtNum].sort((a, b) => a - b);
     });
   };
 
-  // 자동 방식: 대진표 및 코트 자동 배정 실행
+  // ============================================================================
+  // [자동 배정 엔진]: KDK 실력 차이 최소화(Skill Gap 0) 및 토너먼트 밸런스 배정
+  // ============================================================================
   const handleAutoAssign = () => {
     if (!tournamentTitle.trim()) {
       alert('먼저 대회명을 입력해 주세요.');
       return;
     }
-    if (!tournamentMode) {
-      alert('대회 방식(토너먼트 또는 KDK)을 선택해 주세요.');
-      return;
-    }
     if (selectedParticipants.length < 4) {
-      alert('경기를 진행하려면 최소 4명 이상의 선수를 선택하거나 추가해 주세요.');
+      alert('경기를 진행하려면 최소 4명 이상의 참여선수를 선택하거나 임의 선수로 등록해 주세요.');
       return;
     }
 
@@ -222,84 +238,77 @@ export default function AdminTournamentManager({
     const generated: AssignedMatch[] = [];
 
     if (tournamentMode === 'KDK') {
-      // KDK 라운드별 파트너 순환 및 코트 자동 배정
-      const playHistory: Record<string, { count: number; partners: Set<string> }> = {};
-      selectedParticipants.forEach((p) => {
-        playHistory[p.id] = { count: 0, partners: new Set() };
-      });
+      if (autoBalanceOption === 'BALANCE') {
+        // KDK 전용 경기 실력 차이 최소화(Skill Gap Zero) 알고리즘 모듈 호출
+        const kdkSchedule = generateKDKSchedule(
+          selectedParticipants,
+          courts.length,
+          kdkRoundsCount
+        );
 
-      for (let r = 1; r <= kdkRoundsCount; r++) {
-        // 경기 수 적은 순 + 밸런스/랜덤 정렬
-        const pool = [...selectedParticipants].sort((a, b) => {
-          const diff = (playHistory[a.id]?.count || 0) - (playHistory[b.id]?.count || 0);
-          if (diff !== 0) return diff;
-          return Math.random() - 0.5;
+        kdkSchedule.forEach((r) => {
+          r.matches.forEach((m, mIdx) => {
+            const pA1 = selectedParticipants.find((p) => p.id === m.teamA[0].id) || (m.teamA[0] as ParticipantPlayer);
+            const pA2 = selectedParticipants.find((p) => p.id === m.teamA[1].id) || (m.teamA[1] as ParticipantPlayer);
+            const pB1 = selectedParticipants.find((p) => p.id === m.teamB[0].id) || (m.teamB[0] as ParticipantPlayer);
+            const pB2 = selectedParticipants.find((p) => p.id === m.teamB[1].id) || (m.teamB[1] as ParticipantPlayer);
+
+            const assignedCourt = courts[mIdx % courts.length];
+            const weights = calcMatchWeights([pA1, pA2], [pB1, pB2]);
+
+            generated.push({
+              id: `match_kdk_r${r.round}_c${assignedCourt}_${Date.now()}_${mIdx}`,
+              round: r.round,
+              roundName: `제 ${r.round} 라운드 (KDK 실력균형)`,
+              courtNumber: assignedCourt,
+              teamA: [pA1, pA2],
+              teamB: [pB1, pB2],
+              ...weights,
+              scoreA: 0,
+              scoreB: 0,
+              status: r.round === 1 ? 'playing' : 'waiting',
+            });
+          });
         });
-
-        const maxMatches = Math.min(courts.length, Math.floor(pool.length / 4));
-        const activePool = pool.slice(0, maxMatches * 4);
-
-        if (autoBalanceOption === 'BALANCE') {
-          // 등급 가중치 순 정렬 후 스네이크(고-저) 페어링 + 라운드별 파트너 로테이션
-          activePool.sort(
-            (a, b) => (GRADE_WEIGHTS[b.grade] || 5) - (GRADE_WEIGHTS[a.grade] || 5)
-          );
-        } else {
-          activePool.sort(() => Math.random() - 0.5);
-        }
-
-        for (let mIdx = 0; mIdx < maxMatches; mIdx++) {
-          const base = mIdx * 4;
-          const g = activePool.slice(base, base + 4);
-          if (g.length < 4) continue;
-
-          // 라운드마다 파트너 조합 변경: R1 (0,3 vs 1,2), R2 (0,2 vs 1,3), R3 (0,1 vs 2,3)
-          let teamA: [ParticipantPlayer, ParticipantPlayer];
-          let teamB: [ParticipantPlayer, ParticipantPlayer];
-          if (r % 3 === 1) {
-            teamA = [g[0], g[3]];
-            teamB = [g[1], g[2]];
-          } else if (r % 3 === 2) {
-            teamA = [g[0], g[2]];
-            teamB = [g[1], g[3]];
-          } else {
-            teamA = [g[0], g[1]];
-            teamB = [g[2], g[3]];
+      } else {
+        // 완전 랜덤 배정
+        for (let r = 1; r <= kdkRoundsCount; r++) {
+          const shuffled = [...selectedParticipants].sort(() => Math.random() - 0.5);
+          const maxMatches = Math.min(courts.length, Math.floor(shuffled.length / 4));
+          for (let mIdx = 0; mIdx < maxMatches; mIdx++) {
+            const g = shuffled.slice(mIdx * 4, mIdx * 4 + 4);
+            const assignedCourt = courts[mIdx % courts.length];
+            const weights = calcMatchWeights([g[0], g[1]], [g[2], g[3]]);
+            generated.push({
+              id: `match_kdk_rand_r${r}_${Date.now()}_${mIdx}`,
+              round: r,
+              roundName: `제 ${r} 라운드 (KDK 랜덤)`,
+              courtNumber: assignedCourt,
+              teamA: [g[0], g[1]],
+              teamB: [g[2], g[3]],
+              ...weights,
+              scoreA: 0,
+              scoreB: 0,
+              status: r === 1 ? 'playing' : 'waiting',
+            });
           }
-
-          g.forEach((p) => {
-            if (playHistory[p.id]) playHistory[p.id].count += 1;
-          });
-
-          const assignedCourt = courts[mIdx % courts.length];
-          generated.push({
-            id: `match_kdk_r${r}_c${assignedCourt}_${Date.now()}_${mIdx}`,
-            round: r,
-            roundName: `제 ${r} 라운드 (KDK 순환)`,
-            courtNumber: assignedCourt,
-            teamA,
-            teamB,
-            scoreA: 0,
-            scoreB: 0,
-            status: r === 1 ? 'playing' : 'waiting',
-          });
         }
       }
     } else {
-      // TOURNAMENT 모드: 복식 팀 구성 후 토너먼트/예선 경기 및 코트 자동 배정
+      // TOURNAMENT 모드: 실력 차이 최소화 팀 구성 후 대진 배정
       const pool = [...selectedParticipants];
       if (autoBalanceOption === 'BALANCE') {
-        pool.sort((a, b) => (GRADE_WEIGHTS[b.grade] || 5) - (GRADE_WEIGHTS[a.grade] || 5));
+        pool.sort((a, b) => getPlayerWeight(b) - getPlayerWeight(a));
       } else {
         pool.sort(() => Math.random() - 0.5);
       }
 
-      // 2인 1팀으로 묶기 (밸런스인 경우 상위+하위 매칭)
       const teams: [ParticipantPlayer, ParticipantPlayer][] = [];
       const usableCount = Math.floor(pool.length / 2) * 2;
       const half = usableCount / 2;
 
       if (autoBalanceOption === 'BALANCE' && usableCount >= 4) {
+        // 고-저 스네이크 매칭으로 모든 복식팀의 전력 합산을 균등화
         for (let i = 0; i < half; i++) {
           teams.push([pool[i], pool[usableCount - 1 - i]]);
         }
@@ -315,6 +324,7 @@ export default function AdminTournamentManager({
       let matchOrder = 0;
       for (let i = 0; i + 1 < teams.length; i += 2) {
         const assignedCourt = courts[matchOrder % courts.length];
+        const weights = calcMatchWeights(teams[i], teams[i + 1]);
         generated.push({
           id: `match_tour_${Date.now()}_${matchOrder}`,
           round: 1,
@@ -322,6 +332,7 @@ export default function AdminTournamentManager({
           courtNumber: assignedCourt,
           teamA: teams[i],
           teamB: teams[i + 1],
+          ...weights,
           scoreA: 0,
           scoreB: 0,
           status: matchOrder < courts.length ? 'playing' : 'waiting',
@@ -351,15 +362,17 @@ export default function AdminTournamentManager({
       return;
     }
 
+    const weights = calcMatchWeights([pA1, pA2], [pB1, pB2]);
     const newMatch: AssignedMatch = {
       id: `match_manual_${Date.now()}`,
       round: assignedMatches.length + 1,
       roundName:
         manualRoundName.trim() ||
-        (tournamentMode === 'TOURNAMENT' ? '토너먼트 본선' : `제 ${assignedMatches.length + 1} 경기`),
+        (tournamentMode === 'TOURNAMENT' ? '토너먼트 본선' : `제 ${assignedMatches.length + 1} 라운드`),
       courtNumber: manualCourt,
       teamA: [pA1, pA2],
       teamB: [pB1, pB2],
+      ...weights,
       scoreA: 0,
       scoreB: 0,
       status: 'playing',
@@ -371,7 +384,7 @@ export default function AdminTournamentManager({
     }
   };
 
-  // 배정된 매치의 코트 번호 또는 선수 개별 변경 (수동 미세조정)
+  // 배정된 매치의 코트 번호 또는 선수 수동 변경 시 실력 밸런스 실시간 재계산
   const handleUpdateMatchCourt = (matchId: string, newCourt: number) => {
     setAssignedMatches((prev) =>
       prev.map((m) => (m.id === matchId ? { ...m, courtNumber: newCourt } : m))
@@ -394,7 +407,10 @@ export default function AdminTournamentManager({
           m[team][1],
         ];
         updatedTeam[slotIdx] = found;
-        return { ...m, [team]: updatedTeam };
+        const nextTeamA = team === 'teamA' ? updatedTeam : m.teamA;
+        const nextTeamB = team === 'teamB' ? updatedTeam : m.teamB;
+        const weights = calcMatchWeights(nextTeamA, nextTeamB);
+        return { ...m, [team]: updatedTeam, ...weights };
       })
     );
   };
@@ -409,12 +425,8 @@ export default function AdminTournamentManager({
       alert('대회명을 입력해 주세요.');
       return;
     }
-    if (!tournamentMode) {
-      alert('대회 방식(토너먼트 또는 KDK)을 선택해 주세요.');
-      return;
-    }
     if (assignedMatches.length === 0) {
-      alert('코트 및 선수 배치가 완료된 경기가 없습니다. 자동 배정을 실행하거나 수동으로 경기를 추가해 주세요.');
+      alert('배정된 경기가 없습니다. [자동 배정 실행] 또는 [수동 대진 추가]를 먼저 눌러주세요.');
       return;
     }
 
@@ -436,15 +448,15 @@ export default function AdminTournamentManager({
 
   return (
     <div className="space-y-4">
-      {/* 상단 관리자 대회 개설 위저드 안내 배너 */}
+      {/* 상단 안내 배너 */}
       <div className="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-4 shadow-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
-              ADMIN CONSOLE
+              NEW TOURNAMENT
             </span>
             <span className="text-xs font-extrabold text-amber-300">
-              관리자 전용 대회 생성 & 코트/선수 배치 시스템
+              새 대회 개설 · 참여선수(가입/미가입/임의) & 실력균형 배정
             </span>
           </div>
           {currentUser && (
@@ -454,7 +466,7 @@ export default function AdminTournamentManager({
           )}
         </div>
         <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-          ① 대회명 생성 ➔ ② 대회방식(토너먼트 / KDK) 선택 ➔ ③ 선수 배치(로그인 회원 선택 + 미로그인 선수 이름 직접 입력) ➔ ④ 코트 및 선수 배정(자동/수동) 후 경기를 시작하면 앱 전체에 즉시 자동 연동됩니다.
+          새로운 대회 개설 시 <strong>가입회원 및 미가입 회원을 선택하거나 임의 선수 이름을 직접 등록</strong>할 수 있으며, <strong>KDK 경기 실력 차이가 없도록 맞춘 자동배정</strong>과 <strong>수동배정</strong>을 모두 지원합니다.
         </p>
       </div>
 
@@ -467,7 +479,7 @@ export default function AdminTournamentManager({
             <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">
               1
             </span>
-            <h3 className="text-sm font-black text-white">대회명 생성</h3>
+            <h3 className="text-sm font-black text-white">새 대회명 입력</h3>
           </div>
           {isTitleConfirmed && (
             <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
@@ -480,7 +492,7 @@ export default function AdminTournamentManager({
           {[
             '2026년 11월 정기 월례회',
             '제5회 썬 테니스 클럽 챔피언십',
-            '주말 번개 KDK 친선대회',
+            '주말 번개 KDK 실력균형 대회',
           ].map((preset) => (
             <button
               key={preset}
@@ -501,7 +513,7 @@ export default function AdminTournamentManager({
             type="text"
             value={tournamentTitle}
             onChange={(e) => setTournamentTitle(e.target.value)}
-            placeholder="생성할 대회명을 입력하세요 (예: 2026 추계 클럽 챔프전)"
+            placeholder="생성할 대회명을 입력하세요"
             className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400 font-bold"
           />
           <button
@@ -531,22 +543,19 @@ export default function AdminTournamentManager({
             </span>
             <h3 className="text-sm font-black text-white">대회 방식 선택 (토너먼트 / KDK)</h3>
           </div>
-          {tournamentMode && (
-            <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-400/30">
-              선택됨: {tournamentMode === 'TOURNAMENT' ? '🏆 토너먼트' : '🔄 KDK 방식'}
-            </span>
-          )}
+          <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+            선택됨: {tournamentMode === 'TOURNAMENT' ? '🏆 토너먼트' : '🔄 KDK 실력균형 리그'}
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {/* 토너먼트 선택 버튼 */}
           <button
             type="button"
             onClick={() => {
               setTournamentMode('TOURNAMENT');
               setManualRoundName('토너먼트 본선');
             }}
-            className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden ${
+            className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
               tournamentMode === 'TOURNAMENT'
                 ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-orange-500/10 border-amber-400 shadow-lg shadow-amber-500/15 scale-[1.01]'
                 : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 text-slate-400'
@@ -566,18 +575,17 @@ export default function AdminTournamentManager({
             </div>
             <p className="text-sm font-black text-white">토너먼트 (Tournament)</p>
             <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-              고정 파트너 복식조 편성 · 조별 예선 및 본선 녹아웃(8강/4강/결승) 대진 진행
+              고정 파트너 복식조 · 조별 예선 및 본선 4강/결승 브래킷
             </p>
           </button>
 
-          {/* KDK 선택 버튼 */}
           <button
             type="button"
             onClick={() => {
               setTournamentMode('KDK');
               setManualRoundName('제 1 라운드');
             }}
-            className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer relative overflow-hidden ${
+            className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
               tournamentMode === 'KDK'
                 ? 'bg-gradient-to-br from-emerald-500/20 via-slate-900 to-teal-500/10 border-emerald-400 shadow-lg shadow-emerald-500/15 scale-[1.01]'
                 : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 text-slate-400'
@@ -595,16 +603,16 @@ export default function AdminTournamentManager({
                 {tournamentMode === 'KDK' ? '✓ 선택됨' : '선택하기'}
               </span>
             </div>
-            <p className="text-sm font-black text-white">KDK (파트너 순환 리그)</p>
+            <p className="text-sm font-black text-white">KDK (실력균형 순환 리그)</p>
             <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-              매 라운드 파트너/상대 자동 교체 · 개인별 승수 및 득실차 랭킹 집계 방식
+              팀 간 경기 실력 차이가 없도록 파트너/상대 자동 밸런싱 매칭
             </p>
           </button>
         </div>
       </div>
 
       {/* ================================================================= */}
-      {/* STEP 3. 선수 구성 (로그인 회원 선택 + 미로그인 임의 선수 이름 입력) */}
+      {/* STEP 3. 참여선수 선택 (가입회원 + 미가입회원 선택 & 임의 선수 이름 등록) */}
       {/* ================================================================= */}
       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3.5">
         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -613,9 +621,11 @@ export default function AdminTournamentManager({
               3
             </span>
             <div>
-              <h3 className="text-sm font-black text-white">선수 구성 및 참가자 배치</h3>
+              <h3 className="text-sm font-black text-white">
+                참여선수 선택 (가입회원 · 미가입회원 · 임의선수 등록)
+              </h3>
               <p className="text-[10px] text-slate-400">
-                로그인한 회원을 클릭해 선택하거나, 미로그인 선수는 이름을 직접 입력해 추가하세요.
+                가입회원 및 미가입회원을 클릭해 선택하거나, 임의 선수 이름을 바로 등록하세요.
               </p>
             </div>
           </div>
@@ -624,74 +634,107 @@ export default function AdminTournamentManager({
           </span>
         </div>
 
-        {/* 3-A. 로그인/가입된 클럽 회원 선택 영역 */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-xs font-extrabold text-emerald-300 flex items-center gap-1.5">
-              <span>🟢</span> 로그인 / 등록된 클럽 회원에서 선택
-            </span>
+        {/* 가입회원 / 미가입회원 필터 탭 & 전체 선택 */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold gap-1">
             <button
               type="button"
-              onClick={handleSelectAllPlayers}
-              className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold cursor-pointer"
+              onClick={() => setPlayerFilterTab('ALL')}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                playerFilterTab === 'ALL'
+                  ? 'bg-amber-400 text-slate-950 font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              {selectedParticipants.length === allAvailablePlayers.length ? '전체 해제' : '전체 선택'}
+              전체 ({allAvailablePlayers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPlayerFilterTab('MEMBER')}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                playerFilterTab === 'MEMBER'
+                  ? 'bg-emerald-400 text-slate-950 font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              🟢 가입회원 ({allAvailablePlayers.filter((p) => !p.isGuest).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPlayerFilterTab('GUEST')}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                playerFilterTab === 'GUEST'
+                  ? 'bg-amber-400 text-slate-950 font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              🟠 미가입/임의선수 ({allAvailablePlayers.filter((p) => p.isGuest).length})
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
-            {allAvailablePlayers.map((player) => {
-              const isSelected = selectedParticipants.some((p) => p.id === player.id);
-              return (
-                <button
-                  key={player.id}
-                  type="button"
-                  onClick={() => togglePlayerSelection(player)}
-                  className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-                    isSelected
-                      ? 'bg-emerald-950/70 border-emerald-400 text-white shadow-sm'
-                      : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="truncate pr-1">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-bold truncate">{player.name}</span>
-                      {player.isGuest ? (
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                          비로그인
-                        </span>
-                      ) : (
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
-                          회원
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">
-                      {player.grade} · {player.gender}
-                    </span>
-                  </div>
-                  <span
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                      isSelected
-                        ? 'bg-emerald-400 text-slate-950'
-                        : 'bg-slate-800 text-slate-500'
-                    }`}
-                  >
-                    {isSelected ? '✓' : '+'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            onClick={handleSelectAllPlayers}
+            className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold cursor-pointer"
+          >
+            {selectedParticipants.length === allAvailablePlayers.length ? '전체 선택 해제' : '전체 선수 선택'}
+          </button>
         </div>
 
-        {/* 3-B. 로그인을 하지 못하는 선수(비로그인/게스트) 관리자 임의 이름 추가 영역 */}
+        {/* 선수 선택 그리드 (가입회원 + 미가입회원) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
+          {filteredPlayers.map((player) => {
+            const isSelected = selectedParticipants.some((p) => p.id === player.id);
+            const pt = getPlayerWeight(player);
+            return (
+              <button
+                key={player.id}
+                type="button"
+                onClick={() => togglePlayerSelection(player)}
+                className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                  isSelected
+                    ? 'bg-emerald-950/70 border-emerald-400 text-white shadow-sm'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="truncate pr-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold truncate">{player.name}</span>
+                    {player.isGuest ? (
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                        미가입/임의
+                      </span>
+                    ) : (
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                        가입회원
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {player.grade} (실력 {pt}점)
+                  </span>
+                </div>
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                    isSelected
+                      ? 'bg-emerald-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  {isSelected ? '✓' : '+'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 미가입 회원 및 임의 선수 이름 직접 등록 폼 */}
         <div className="bg-slate-950/90 border border-amber-500/30 rounded-2xl p-3.5 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-amber-300 flex items-center gap-1.5">
-              <span>✍️</span> 로그인을 못하는 선수 (관리자 임의 이름 직접 추가)
+              <span>✍️</span> 미가입 회원 또는 임의 선수 이름 직접 등록
             </span>
-            <span className="text-[10px] text-slate-400">쉼표(,)로 여러 명 동시 입력 가능</span>
+            <span className="text-[10px] text-slate-400">쉼표(,)로 여러 명 동시 등록 가능</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
@@ -705,7 +748,7 @@ export default function AdminTournamentManager({
                   handleAddGuestPlayer();
                 }
               }}
-              placeholder="이름 입력 (예: 홍길동 또는 홍길동, 이순신)"
+              placeholder="임의 선수 이름 입력 (예: 홍길동 또는 홍길동, 이순신)"
               className="sm:col-span-6 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
             />
             <select
@@ -715,7 +758,7 @@ export default function AdminTournamentManager({
             >
               {GRADE_OPTIONS.map((g) => (
                 <option key={g} value={g}>
-                  {g}
+                  {g} (실력 {GRADE_WEIGHTS[g] || 6}점)
                 </option>
               ))}
             </select>
@@ -724,16 +767,19 @@ export default function AdminTournamentManager({
               onClick={() => handleAddGuestPlayer()}
               className="sm:col-span-3 py-2 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer"
             >
-              + 임의 선수 추가
+              + 임의 선수 등록
             </button>
           </div>
 
-          {/* 현재 선택된 참가 선수 요약 태그 리스트 */}
           {selectedParticipants.length > 0 && (
             <div className="pt-2 border-t border-slate-800/80">
-              <p className="text-[10px] text-slate-400 mb-1.5 font-bold">
-                현재 대회 출전 명단 ({selectedParticipants.length}명) — 클릭 시 제외:
-              </p>
+              <div className="flex justify-between items-center mb-1.5">
+                <p className="text-[10px] text-slate-400 font-bold">
+                  현재 대회 참여 확정 선수 ({selectedParticipants.length}명: 가입회원{' '}
+                  {selectedParticipants.filter((p) => !p.isGuest).length}명 / 미가입·임의선수{' '}
+                  {selectedParticipants.filter((p) => p.isGuest).length}명):
+                </p>
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {selectedParticipants.map((p, idx) => (
                   <span
@@ -746,9 +792,11 @@ export default function AdminTournamentManager({
                     }`}
                   >
                     <span>
-                      {idx + 1}. {p.name} ({p.grade})
+                      {idx + 1}. {p.name} ({p.grade}·{getPlayerWeight(p)}점)
                     </span>
-                    {p.isGuest && <span className="text-[9px] text-amber-200">[임의]</span>}
+                    <span className="text-[9px] opacity-80">
+                      {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
+                    </span>
                     <span className="text-[10px] opacity-75">✕</span>
                   </span>
                 ))}
@@ -759,7 +807,7 @@ export default function AdminTournamentManager({
       </div>
 
       {/* ================================================================= */}
-      {/* STEP 4. 코트 배정 및 선수 배치 (자동방식 vs 수동방식) */}
+      {/* STEP 4. 코트 배정 및 실력균형 자동배정 / 수동배정 */}
       {/* ================================================================= */}
       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -768,9 +816,11 @@ export default function AdminTournamentManager({
               4
             </span>
             <div>
-              <h3 className="text-sm font-black text-white">코트 배정 및 선수 배치 (자동 / 수동)</h3>
+              <h3 className="text-sm font-black text-white">
+                코트 배정 및 선수 배치 (실력균형 자동방식 / 수동방식)
+              </h3>
               <p className="text-[10px] text-slate-400">
-                사용할 코트를 선택하고 자동 배정 또는 수동 배정으로 대진을 구성하세요.
+                KDK 자동배정 시 두 팀의 경기 실력 차이가 0이 되도록 최적의 파트너로 자동 매칭합니다.
               </p>
             </div>
           </div>
@@ -779,7 +829,7 @@ export default function AdminTournamentManager({
         {/* 가용 코트 번호 선택 */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-300">🎾 사용할 코트 선택 (다중 선택 가능)</span>
+            <span className="text-xs font-bold text-slate-300">🎾 사용할 코트 선택</span>
             <span className="text-[11px] font-extrabold text-amber-400">
               선택 코트: {selectedCourts.map((c) => `${c}번`).join(', ')}
             </span>
@@ -817,7 +867,7 @@ export default function AdminTournamentManager({
             }`}
           >
             <span>⚡</span>
-            <span>자동 방식 (코트·선수 자동배정)</span>
+            <span>자동 방식 (경기실력 차이 최소화)</span>
           </button>
 
           <button
@@ -839,7 +889,7 @@ export default function AdminTournamentManager({
           <div className="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-300">매칭 알고리즘:</span>
+                <span className="text-xs font-bold text-emerald-300">배정 기준:</span>
                 <button
                   type="button"
                   onClick={() => setAutoBalanceOption('BALANCE')}
@@ -849,7 +899,7 @@ export default function AdminTournamentManager({
                       : 'bg-slate-900 text-slate-400 border-slate-800'
                   }`}
                 >
-                  ⚖️ 급수 밸런스 배정
+                  ⚖️ 경기 실력차 제로(0) 균형 배정 (권장)
                 </button>
                 <button
                   type="button"
@@ -860,13 +910,13 @@ export default function AdminTournamentManager({
                       : 'bg-slate-900 text-slate-400 border-slate-800'
                   }`}
                 >
-                  🎲 완전 랜덤 추첨
+                  🎲 무작위 추첨
                 </button>
               </div>
 
               {tournamentMode === 'KDK' && (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400 font-bold">진행 라운드:</span>
+                  <span className="text-[11px] text-slate-400 font-bold">라운드 수:</span>
                   {[2, 3, 4].map((rNum) => (
                     <button
                       key={rNum}
@@ -885,14 +935,18 @@ export default function AdminTournamentManager({
               )}
             </div>
 
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
+              💡 <strong>실력차 제로(0) 자동배정 원리</strong>: 금배(10점)·은배(8점)·국화(7점)·동배(6점)·개나리(5점)·테린이(3점) 가중치를 합산하여 <strong>Team A와 Team B의 실력 합산 점수 차이가 0점(최소)</strong>이 되도록 파트너를 자동 조합합니다.
+            </div>
+
             <button
               type="button"
               onClick={handleAutoAssign}
               className="w-full py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>⚡</span>
+              <span>⚖️</span>
               <span>
-                {tournamentMode === 'TOURNAMENT' ? '토너먼트' : 'KDK'} 코트 및 선수 자동 배정 실행 ({selectedParticipants.length}명 / {selectedCourts.length}개 코트)
+                {tournamentMode === 'KDK' ? 'KDK 실력균형' : '토너먼트'} 코트 및 선수 자동 배정 실행 ({selectedParticipants.length}명 / {selectedCourts.length}개 코트)
               </span>
             </button>
           </div>
@@ -906,7 +960,7 @@ export default function AdminTournamentManager({
                 🖐️ 코트별 출전 선수 수동 지정 추가
               </span>
               <span className="text-[10px] text-slate-400">
-                로그인 회원 및 비로그인 임의 선수 모두 선택 가능
+                가입회원 · 미가입회원 · 임의등록 선수 모두 배치 가능
               </span>
             </div>
 
@@ -931,14 +985,13 @@ export default function AdminTournamentManager({
                   type="text"
                   value={manualRoundName}
                   onChange={(e) => setManualRoundName(e.target.value)}
-                  placeholder="예: 1라운드, 4강 1경기"
+                  placeholder="예: 제 1 라운드, 4강 1경기"
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-bold"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {/* Team A 수동 선택 */}
               <div className="bg-slate-900 p-2.5 rounded-xl border border-emerald-500/30 space-y-2">
                 <span className="text-[10px] font-black text-emerald-400 block">TEAM A 선수 2명 배치</span>
                 <select
@@ -949,7 +1002,7 @@ export default function AdminTournamentManager({
                   <option value="">선수 1 선택</option>
                   {selectedParticipants.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.grade}) {p.isGuest ? '[임의]' : '[회원]'}
+                      {p.name} ({p.grade}·{getPlayerWeight(p)}점) {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
                     </option>
                   ))}
                 </select>
@@ -961,13 +1014,12 @@ export default function AdminTournamentManager({
                   <option value="">선수 2 선택</option>
                   {selectedParticipants.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.grade}) {p.isGuest ? '[임의]' : '[회원]'}
+                      {p.name} ({p.grade}·{getPlayerWeight(p)}점) {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Team B 수동 선택 */}
               <div className="bg-slate-900 p-2.5 rounded-xl border border-amber-500/30 space-y-2">
                 <span className="text-[10px] font-black text-amber-400 block">TEAM B 선수 2명 배치</span>
                 <select
@@ -978,7 +1030,7 @@ export default function AdminTournamentManager({
                   <option value="">선수 3 선택</option>
                   {selectedParticipants.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.grade}) {p.isGuest ? '[임의]' : '[회원]'}
+                      {p.name} ({p.grade}·{getPlayerWeight(p)}점) {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
                     </option>
                   ))}
                 </select>
@@ -990,7 +1042,7 @@ export default function AdminTournamentManager({
                   <option value="">선수 4 선택</option>
                   {selectedParticipants.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.grade}) {p.isGuest ? '[임의]' : '[회원]'}
+                      {p.name} ({p.grade}·{getPlayerWeight(p)}점) {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
                     </option>
                   ))}
                 </select>
@@ -1007,12 +1059,12 @@ export default function AdminTournamentManager({
           </div>
         )}
 
-        {/* 배정된 코트 & 선수 매치업 미리보기 및 실시간 수정 테이블 */}
+        {/* 배정된 코트 & 선수 매치업 미리보기 및 실력 균형 지표 + 수동 미세조정 */}
         {assignedMatches.length > 0 && (
           <div className="space-y-2.5 pt-2 border-t border-slate-800">
             <div className="flex justify-between items-center">
               <span className="text-xs font-black text-white flex items-center gap-1.5">
-                <span>📋</span> 배정된 코트 & 선수 매치업 ({assignedMatches.length}경기)
+                <span>📋</span> 배정된 코트 & 실력균형 매치업 ({assignedMatches.length}경기)
               </span>
               <button
                 type="button"
@@ -1024,81 +1076,95 @@ export default function AdminTournamentManager({
             </div>
 
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-              {assignedMatches.map((m, idx) => (
-                <div
-                  key={m.id}
-                  className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs"
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={m.courtNumber}
-                        onChange={(e) => handleUpdateMatchCourt(m.id, Number(e.target.value))}
-                        className="bg-amber-400 text-slate-950 font-black text-[11px] px-2 py-0.5 rounded-lg cursor-pointer"
+              {assignedMatches.map((m) => {
+                const wA = m.teamAWeight ?? getPlayerWeight(m.teamA[0]) + getPlayerWeight(m.teamA[1]);
+                const wB = m.teamBWeight ?? getPlayerWeight(m.teamB[0]) + getPlayerWeight(m.teamB[1]);
+                const diff = Math.abs(wA - wB);
+                return (
+                  <div
+                    key={m.id}
+                    className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <select
+                          value={m.courtNumber}
+                          onChange={(e) => handleUpdateMatchCourt(m.id, Number(e.target.value))}
+                          className="bg-amber-400 text-slate-950 font-black text-[11px] px-2 py-0.5 rounded-lg cursor-pointer"
+                        >
+                          {[1, 2, 3, 4, 5, 6].map((c) => (
+                            <option key={c} value={c}>
+                              {c}번 코트
+                            </option>
+                          ))}
+                        </select>
+                        <span className="font-bold text-slate-300 text-[11px]">{m.roundName}</span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold border ${
+                            diff <= 2
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          }`}
+                        >
+                          ⚖️ 전력 {wA}점 vs {wB}점 (실력차 {diff}점)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMatch(m.id)}
+                        className="text-[10px] text-slate-500 hover:text-red-400 font-bold cursor-pointer"
                       >
-                        {[1, 2, 3, 4, 5, 6].map((c) => (
-                          <option key={c} value={c}>
-                            {c}번 코트
-                          </option>
+                        삭제 ✕
+                      </button>
+                    </div>
+
+                    {/* 각 팀 선수 확인 및 클릭 시 수동 변경 가능한 드롭다운 */}
+                    <div className="grid grid-cols-11 gap-1.5 items-center">
+                      <div className="col-span-5 space-y-1">
+                        {[0, 1].map((slot) => (
+                          <select
+                            key={slot}
+                            value={m.teamA[slot as 0 | 1]?.id || ''}
+                            onChange={(e) =>
+                              handleUpdateMatchPlayer(m.id, 'teamA', slot as 0 | 1, e.target.value)
+                            }
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-emerald-300 font-bold truncate"
+                          >
+                            {selectedParticipants.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.grade}·{getPlayerWeight(p)}점){p.isGuest ? ' [미가입]' : ''}
+                              </option>
+                            ))}
+                          </select>
                         ))}
-                      </select>
-                      <span className="font-bold text-slate-300 text-[11px]">{m.roundName}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMatch(m.id)}
-                      className="text-[10px] text-slate-500 hover:text-red-400 font-bold cursor-pointer"
-                    >
-                      삭제 ✕
-                    </button>
-                  </div>
+                      </div>
 
-                  {/* 각 팀 선수 확인 및 클릭 시 즉시 변경 가능한 드롭다운 */}
-                  <div className="grid grid-cols-11 gap-1.5 items-center">
-                    <div className="col-span-5 space-y-1">
-                      {[0, 1].map((slot) => (
-                        <select
-                          key={slot}
-                          value={m.teamA[slot as 0 | 1]?.id || ''}
-                          onChange={(e) =>
-                            handleUpdateMatchPlayer(m.id, 'teamA', slot as 0 | 1, e.target.value)
-                          }
-                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-emerald-300 font-bold truncate"
-                        >
-                          {selectedParticipants.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.grade}){p.isGuest ? ' [임의]' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      ))}
-                    </div>
+                      <div className="col-span-1 text-center font-black text-slate-500 text-[10px]">
+                        VS
+                      </div>
 
-                    <div className="col-span-1 text-center font-black text-slate-500 text-[10px]">
-                      VS
-                    </div>
-
-                    <div className="col-span-5 space-y-1">
-                      {[0, 1].map((slot) => (
-                        <select
-                          key={slot}
-                          value={m.teamB[slot as 0 | 1]?.id || ''}
-                          onChange={(e) =>
-                            handleUpdateMatchPlayer(m.id, 'teamB', slot as 0 | 1, e.target.value)
-                          }
-                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-300 font-bold truncate"
-                        >
-                          {selectedParticipants.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.grade}){p.isGuest ? ' [임의]' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      ))}
+                      <div className="col-span-5 space-y-1">
+                        {[0, 1].map((slot) => (
+                          <select
+                            key={slot}
+                            value={m.teamB[slot as 0 | 1]?.id || ''}
+                            onChange={(e) =>
+                              handleUpdateMatchPlayer(m.id, 'teamB', slot as 0 | 1, e.target.value)
+                            }
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-300 font-bold truncate"
+                          >
+                            {selectedParticipants.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.grade}·{getPlayerWeight(p)}점){p.isGuest ? ' [미가입]' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1110,7 +1176,7 @@ export default function AdminTournamentManager({
           className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:to-red-600 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer"
         >
           <span>🚀</span>
-          <span>대회 생성 확정 및 실시간 코트·대진표 자동 연동 시작!</span>
+          <span>새 대회 개설 확정 및 실시간 코트·대진표 자동 연동 시작!</span>
         </button>
       </div>
     </div>

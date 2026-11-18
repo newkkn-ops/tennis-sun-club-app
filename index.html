@@ -99,7 +99,7 @@
           <span class="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
             ACTIVE TOURNAMENT
           </span>
-          <button onclick="openNewTourModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black transition flex items-center gap-1 shadow-xs">
+          <button data-admin-only="true" onclick="openNewTourModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black transition flex items-center gap-1 shadow-xs">
             <span>+</span> 새 대회 개설
           </button>
         </div>
@@ -173,10 +173,10 @@
         </div>
 
         <div class="flex items-center gap-1.5">
-          <button onclick="toggleUserRole()" id="roleToggleBtn" class="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-red-500/20 text-red-300 border-red-500/40 transition">
-            👑 운영자
-          </button>
-          <button onclick="openAuthScreenModal()" id="authActionBtn" class="px-2 py-1 rounded-xl text-[10px] font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 transition">
+          <span id="roleStatusBadge" class="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
+            👤 일반회원
+          </span>
+          <button onclick="openAuthScreenModal()" id="authActionBtn" class="px-2 py-1 rounded-xl text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700 hover:text-white transition cursor-pointer">
             로그아웃
           </button>
         </div>
@@ -191,7 +191,7 @@
             <span class="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20">
               🏆 현재 진행 대회
             </span>
-            <button onclick="openNewTourModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs cursor-pointer">
+            <button data-admin-only="true" onclick="openNewTourModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs cursor-pointer">
               <span>+</span>
               <span>새 대회 개설</span>
             </button>
@@ -212,7 +212,7 @@
         <!-- ---------------------------------------------------- -->
         <div id="tabContentCourts" class="space-y-3.5">
           <!-- 관리자 코트 추가 생성 및 선수 자동 배정 툴바 -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3 shadow-xl space-y-2.5">
+          <div id="courtsAdminController" data-admin-only="true" class="bg-slate-900 border border-slate-750 rounded-2xl p-3 shadow-xl space-y-2.5">
             <div class="flex justify-between items-center">
               <span class="text-xs font-black text-white flex items-center gap-1.5">
                 <span class="text-amber-400">🏟️</span> 코트 배정 & 관리자 제어기
@@ -309,8 +309,8 @@
             </button>
           </div>
 
-          <!-- KDK 참가자 명단 -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+          <!-- KDK 참가자 명단 (관리자 전용) -->
+          <div id="kdkAdminGeneratorBox" data-admin-only="true" class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center">
               <span class="font-extrabold text-xs text-white flex items-center gap-1.5">
                 <span class="text-amber-400">🎾</span> KDK 참가 선수 명단 (<span id="registeredCountSpan">14</span>명 등록됨)
@@ -436,7 +436,7 @@
               </div>
             </div>
 
-            <button onclick="advanceGroupToMain()" class="w-full py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-2xl text-xs transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer">
+            <button id="btnAdvanceGroupToMain" data-admin-only="true" onclick="advanceGroupToMain()" class="w-full py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-2xl text-xs transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer">
               <span class="text-base">🚀</span>
               <span>조별 1, 2위 본선 진출 확정 & 본선 토너먼트 브래킷 생성</span>
             </button>
@@ -503,7 +503,7 @@
                     <span class="text-[10px] text-amber-400 font-bold">(A조 2위)</span>
                   </div>
                 </div>
-                <div class="pt-2 border-t border-slate-800/80 flex gap-2">
+                <div id="finalChampionActionRow" data-admin-only="true" class="pt-2 border-t border-slate-800/80 flex gap-2">
                   <button onclick="declareChampion('김철수 / 강동원')" class="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md">
                     🥇 김철수/강동원 우승 확정
                   </button>
@@ -854,7 +854,7 @@
           <span class="text-[10px] mt-0.5">마이페이지</span>
         </button>
 
-        <button onclick="switchTab('admin')" id="navBtnAdmin" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium">
+        <button data-admin-only="true" onclick="switchTab('admin')" id="navBtnAdmin" class="flex flex-col items-center py-1 px-2 rounded-xl transition-all text-slate-400 font-medium">
           <span class="text-base">⚙️</span>
           <span class="text-[10px] mt-0.5">운영관리</span>
         </button>
@@ -1204,6 +1204,24 @@
         </div>
 
         <form onsubmit="handleHtmlAuthSubmit(event)" class="space-y-3.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">
+              아이디 (ID) <span class="text-amber-400">*</span>
+              <span class="text-[10px] text-slate-400 font-normal ml-1">이메일 형식 불필요</span>
+            </label>
+            <input type="text" id="htmlAuthEmail" placeholder="예: sun01, chulsoo (자유 입력)" required class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">비밀번호 <span class="text-amber-400">*</span></label>
+            <input type="password" id="htmlAuthPassword" placeholder="비밀번호 입력 (4자 이상)" minlength="4" required class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+          </div>
+
+          <div id="htmlConfirmPwField" class="hidden">
+            <label class="block text-xs font-bold text-slate-300 mb-1">비밀번호 확인 <span class="text-amber-400">*</span></label>
+            <input type="password" id="htmlAuthConfirmPassword" placeholder="비밀번호 다시 입력" class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+          </div>
+
           <div id="htmlSignUpFields" class="space-y-3.5 hidden">
             <div>
               <label class="block text-xs font-bold text-slate-300 mb-1">이름 (실명) <span class="text-amber-400">*</span></label>
@@ -1236,21 +1254,6 @@
             </div>
           </div>
 
-          <div>
-            <label class="block text-xs font-bold text-slate-300 mb-1">이메일 주소 <span class="text-amber-400">*</span></label>
-            <input type="email" id="htmlAuthEmail" placeholder="example@suntc.kr" required class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-slate-300 mb-1">비밀번호 <span class="text-amber-400">*</span></label>
-            <input type="password" id="htmlAuthPassword" placeholder="비밀번호 입력 (6자 이상)" minlength="6" required class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-          </div>
-
-          <div id="htmlConfirmPwField" class="hidden">
-            <label class="block text-xs font-bold text-slate-300 mb-1">비밀번호 확인 <span class="text-amber-400">*</span></label>
-            <input type="password" id="htmlAuthConfirmPassword" placeholder="비밀번호 다시 입력" class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-          </div>
-
           <button type="submit" id="htmlAuthSubmitBtn" class="w-full py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 font-black rounded-xl text-sm shadow-lg transition cursor-pointer">
             🎾 로그인하기
           </button>
@@ -1260,9 +1263,14 @@
           <button type="button" id="htmlAuthToggleBtn" onclick="setHtmlAuthMode(!htmlIsSignUp)" class="w-full py-2.5 bg-emerald-950/40 hover:bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 font-extrabold rounded-xl text-xs transition cursor-pointer">
             📝 아직 회원이 아니신가요? 회원가입 하기
           </button>
-          <button type="button" onclick="closeAuthScreenModal()" class="w-full py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold rounded-xl text-xs transition cursor-pointer">
-            ⚡ 체험 계정(김철수 · 관리자)으로 바로 입장
-          </button>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="quickHtmlLogin('member')" class="py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 font-bold rounded-xl text-xs transition cursor-pointer">
+              👤 일반회원 로그인
+            </button>
+            <button type="button" onclick="quickHtmlLogin('admin')" class="py-2 bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-white border border-red-500/40 font-bold rounded-xl text-xs transition cursor-pointer">
+              👑 관리자 로그인
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1285,17 +1293,23 @@
       return p && GRADE_WEIGHTS[p.grade] ? GRADE_WEIGHTS[p.grade] : 6;
     }
 
+    let currentUserRole = 'member';
+    let currentActiveTab = 'courts';
+    function isAdminUser() {
+      return currentUserRole === 'admin';
+    }
+
     let registeredPlayers = [
-      { id: 'p1', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p2', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p3', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p4', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p5', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false },
-      { id: 'p6', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false },
-      { id: 'p7', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false },
-      { id: 'p8', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p9', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p10', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false },
+      { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false },
+      { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false },
+      { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false },
+      { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false },
+      { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false },
       { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', isGuest: true },
       { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', isGuest: true },
       { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', isGuest: true },
@@ -1481,6 +1495,7 @@
     }
 
     function deleteCourt(courtId) {
+      if (!isAdminUser()) return;
       if (courtsData.length <= 1) {
         alert('최소 1개 이상의 코트가 유지되어야 합니다.');
         return;
@@ -1491,26 +1506,38 @@
       }
     }
 
-    // 등록된 선수 자동 배정 (스마트 밸런싱)
+    // 등록된 선수 자동 배정 (경기 실력 차이 최소화 스마트 밸런싱)
     function autoAssignPlayers() {
-      const shuffled = [...registeredPlayers].sort(() => Math.random() - 0.5);
-      let pIdx = 0;
-      courtsData.forEach(c => {
-        const p1 = shuffled[pIdx % shuffled.length];
-        const p2 = shuffled[(pIdx + 1) % shuffled.length];
-        const p3 = shuffled[(pIdx + 2) % shuffled.length];
-        const p4 = shuffled[(pIdx + 3) % shuffled.length];
-        pIdx += 4;
-        c.status = 'playing';
-        c.teamA = [`${p1.name} (${p1.grade})`, `${p2.name} (${p2.grade})`];
-        c.teamB = [`${p3.name} (${p3.grade})`, `${p4.name} (${p4.grade})`];
+      if (!isAdminUser()) return;
+      const activePool = registeredPlayers.filter(p => adminSelectedPlayerIds.includes(p.id));
+      const pool = activePool.length >= 4 ? activePool : registeredPlayers;
+      const schedule = buildBalancedKdkSchedule(pool, courtsData.length, 1);
+      const r1Matches = schedule[0]?.matches || [];
+
+      courtsData.forEach((c, idx) => {
+        const m = r1Matches[idx % Math.max(1, r1Matches.length)];
+        if (m) {
+          c.status = 'playing';
+          c.teamA = [
+            `${m.teamA[0].name} (${m.teamA[0].grade}${m.teamA[0].isGuest ? '·미가입' : ''})`,
+            `${m.teamA[1].name} (${m.teamA[1].grade}${m.teamA[1].isGuest ? '·미가입' : ''})`
+          ];
+          c.teamB = [
+            `${m.teamB[0].name} (${m.teamB[0].grade}${m.teamB[0].isGuest ? '·미가입' : ''})`,
+            `${m.teamB[1].name} (${m.teamB[1].grade}${m.teamB[1].isGuest ? '·미가입' : ''})`
+          ];
+          c.teamAWeight = m.teamAWeight;
+          c.teamBWeight = m.teamBWeight;
+          c.skillDiff = m.skillDiff;
+        }
       });
       renderCourts();
-      alert(`🎲 등록된 선수 ${registeredPlayers.length}명 중 총 ${courtsData.length}개 코트에 선수가 자동으로 균형 배정되었습니다!`);
+      alert(`⚖️ 참여 선수 ${pool.length}명 중 총 ${courtsData.length}개 코트에 두 팀 간 경기 실력 차이가 최소화되도록 자동 균형 배정되었습니다!`);
     }
 
     // 선수 수동 배정 및 수정 모달
     function openPlayerEditModal(courtId) {
+      if (!isAdminUser()) return;
       currentEditingCourtId = courtId;
       const court = courtsData.find(c => c.id === courtId);
       if (!court) return;
@@ -1521,7 +1548,7 @@
       document.getElementById('inputPlayerB1').value = court.teamB[0] || '';
       document.getElementById('inputPlayerB2').value = court.teamB[1] || '';
 
-      const playerOptions = '<option value="">선수선택</option>' + registeredPlayers.map(p => `<option value="${p.name} (${p.grade})">${p.name} (${p.grade})</option>`).join('');
+      const playerOptions = '<option value="">선수선택</option>' + registeredPlayers.map(p => `<option value="${p.name} (${p.grade}${p.isGuest ? '·미가입' : ''})">${p.name} (${p.grade}) ${p.isGuest ? '[미가입/임의]' : '[가입회원]'}</option>`).join('');
       ['selPlayerA1', 'selPlayerA2', 'selPlayerB1', 'selPlayerB2'].forEach(id => {
         document.getElementById(id).innerHTML = playerOptions;
       });
@@ -1551,12 +1578,86 @@
       alert(`${court.courtNumber}번 코트 선수 배정 및 수정이 완료되었습니다!`);
     }
 
-    // 새 대회 개설 모달
+    // 새 대회 개설 모달 제어 및 참여선수(가입/미가입/임의등록) 관리
+    let modalAssignMode = 'AUTO'; // 'AUTO' | 'MANUAL'
+
+    function selectModalAssignMode(mode) {
+      modalAssignMode = mode;
+      const btnAuto = document.getElementById('modalBtnAssignAuto');
+      const btnManual = document.getElementById('modalBtnAssignManual');
+      if (btnAuto && btnManual) {
+        btnAuto.className = mode === 'AUTO'
+          ? 'p-2.5 rounded-xl border text-left transition cursor-pointer bg-emerald-950/70 border-emerald-400 text-white shadow-md'
+          : 'p-2.5 rounded-xl border text-left transition cursor-pointer bg-slate-950 border-slate-800 text-slate-400';
+        btnManual.className = mode === 'MANUAL'
+          ? 'p-2.5 rounded-xl border text-left transition cursor-pointer bg-amber-950/70 border-amber-400 text-white shadow-md'
+          : 'p-2.5 rounded-xl border text-left transition cursor-pointer bg-slate-950 border-slate-800 text-slate-400';
+      }
+    }
+
+    function renderModalPlayersList() {
+      const grid = document.getElementById('modalPlayersSelectionGrid');
+      const countBadge = document.getElementById('modalSelectedPlayerCountBadge');
+      if (countBadge) {
+        countBadge.innerText = `참여 ${adminSelectedPlayerIds.length}명`;
+      }
+      if (!grid) return;
+
+      grid.innerHTML = registeredPlayers.map(p => {
+        const isSel = adminSelectedPlayerIds.includes(p.id);
+        const w = getPlayerSkillWeight(p);
+        return `
+          <button type="button" onclick="toggleAdminPlayerSelect('${p.id}'); renderModalPlayersList();" class="p-2 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+            isSel ? 'bg-emerald-950/80 border-emerald-400 text-white' : 'bg-slate-900/70 border-slate-800 text-slate-400'
+          }">
+            <div class="truncate pr-1">
+              <div class="flex items-center gap-1">
+                <span class="text-[11px] font-bold truncate">${p.name}</span>
+                <span class="text-[8px] px-1 rounded ${p.isGuest ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">${p.isGuest ? '미가입' : '가입'}</span>
+              </div>
+              <span class="text-[9px] text-slate-400 block">${p.grade} (${w}점)</span>
+            </div>
+            <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${isSel ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-500'}">${isSel ? '✓' : '+'}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function addModalGuestPlayer() {
+      const input = document.getElementById('modalGuestNameInput');
+      const gradeSel = document.getElementById('modalGuestGradeSelect');
+      if (!input || !input.value.trim()) {
+        alert('등록할 미가입 회원 또는 임의 선수의 이름을 입력해 주세요.');
+        return;
+      }
+      const grade = gradeSel ? gradeSel.value : '은배';
+      const names = input.value.split(',').map(n => n.trim()).filter(n => n.length > 0);
+      names.forEach((name, idx) => {
+        const newId = 'guest_modal_' + Date.now() + '_' + idx;
+        registeredPlayers.push({
+          id: newId,
+          name: name,
+          grade: grade,
+          gender: 'M',
+          role: 'member',
+          isGuest: true
+        });
+        adminSelectedPlayerIds.push(newId);
+      });
+      input.value = '';
+      renderModalPlayersList();
+      renderAdminConsole();
+      renderAdminUsers();
+    }
+
     function openNewTourModal() {
+      if (!isAdminUser()) return;
       const today = new Date().toISOString().split('T')[0];
-      document.getElementById('modalInputTourDate').value = today; // 오늘 날짜 자동 생성
+      document.getElementById('modalInputTourDate').value = today;
       document.getElementById('modalInputTourName').value = '';
       selectTourFormat('kdk');
+      selectModalAssignMode('AUTO');
+      renderModalPlayersList();
       document.getElementById('newTourModal').classList.remove('hidden');
     }
 
@@ -1586,10 +1687,21 @@
         return;
       }
 
+      const selectedPool = registeredPlayers.filter(p => adminSelectedPlayerIds.includes(p.id));
+      if (selectedPool.length < 4) {
+        alert('최소 4명 이상의 참여선수(가입회원/미가입회원/임의선수)를 선택해 주세요.');
+        return;
+      }
+
+      adminTourTitle = name;
+      adminTourMode = selectedNewTourFormat === 'kdk' ? 'KDK' : 'TOURNAMENT';
+      adminAssignType = modalAssignMode;
+      adminSelectedCourts = Array.from({ length: courtCount }, (_, i) => i + 1);
+
       const newTour = {
         id: `tour-${Date.now()}`,
         name: name,
-        date: date, // 진행날짜 자동 기록
+        date: date,
         format: selectedNewTourFormat,
         courtCount: courtCount
       };
@@ -1597,31 +1709,82 @@
       tournamentHistory.unshift(newTour);
       currentTournament = newTour;
 
-      // 지정한 코트 수에 맞게 코트 동적 생성
-      courtsData = [];
-      for (let i = 1; i <= courtCount; i++) {
-        courtsData.push({
-          id: i,
-          courtNumber: i,
-          status: 'playing',
-          teamA: ['선수 배정 필요', '선수 배정 필요'],
-          teamB: ['선수 배정 필요', '선수 배정 필요'],
-          scoreA: 0,
-          scoreB: 0
-        });
-      }
+      if (modalAssignMode === 'AUTO') {
+        // KDK 경기 실력 차이 최소화(Skill Gap Zero) 자동 배정 실행 및 앱 전체 연동
+        const balancedRounds = buildBalancedKdkSchedule(selectedPool, courtCount, 3);
+        const r1Matches = balancedRounds[0]?.matches || [];
 
-      updateTournamentHeaderUI();
-      renderCourts();
-      closeNewTourModal();
+        courtsData = [];
+        for (let i = 1; i <= courtCount; i++) {
+          const m = r1Matches[(i - 1) % Math.max(1, r1Matches.length)];
+          if (m) {
+            courtsData.push({
+              id: i,
+              courtNumber: i,
+              status: 'playing',
+              teamA: [
+                `${m.teamA[0].name} (${m.teamA[0].grade}${m.teamA[0].isGuest ? '·미가입' : ''})`,
+                `${m.teamA[1].name} (${m.teamA[1].grade}${m.teamA[1].isGuest ? '·미가입' : ''})`
+              ],
+              teamB: [
+                `${m.teamB[0].name} (${m.teamB[0].grade}${m.teamB[0].isGuest ? '·미가입' : ''})`,
+                `${m.teamB[1].name} (${m.teamB[1].grade}${m.teamB[1].isGuest ? '·미가입' : ''})`
+              ],
+              teamAWeight: m.teamAWeight,
+              teamBWeight: m.teamBWeight,
+              skillDiff: m.skillDiff,
+              scoreA: 0,
+              scoreB: 0
+            });
+          }
+        }
 
-      if (selectedNewTourFormat === 'kdk') {
-        switchTab('kdk');
+        if (selectedNewTourFormat === 'kdk') {
+          kdkRounds = balancedRounds.map(r => ({
+            round: r.round,
+            name: `제 ${r.round} 라운드 (실력균형 자동매칭)`,
+            matches: r.matches.map(m => ({
+              court: m.courtNumber,
+              teamA: `${m.teamA[0].name} / ${m.teamA[1].name}`,
+              teamB: `${m.teamB[0].name} / ${m.teamB[1].name}`,
+              teamAWeight: m.teamAWeight,
+              teamBWeight: m.teamBWeight,
+              skillDiff: m.skillDiff,
+              scoreA: 0,
+              scoreB: 0,
+              completed: false
+            }))
+          }));
+        }
+
+        updateTournamentHeaderUI();
+        renderCourts();
+        renderKdk();
+        closeNewTourModal();
+        switchTab('courts');
+        alert(`🎉 [${newTour.name}] 대회가 개설되었습니다!\n👥 참여 선수: 총 ${selectedPool.length}명 (가입회원 + 미가입/임의선수)\n⚖️ 배정 방식: 경기 실력 차이 최소화 자동 배정\n🏟️ 코트 현황 및 대진표에 즉시 자동 연동되었습니다!`);
       } else {
-        switchTab('tournament');
+        // 수동 배정 모드 선택한 경우: 관리자 수동 배정 콘솔로 즉시 연결
+        courtsData = [];
+        for (let i = 1; i <= courtCount; i++) {
+          courtsData.push({
+            id: i,
+            courtNumber: i,
+            status: 'waiting',
+            teamA: ['선수 수동 배정 대기', '선수 수동 배정 대기'],
+            teamB: ['선수 수동 배정 대기', '선수 수동 배정 대기'],
+            scoreA: 0,
+            scoreB: 0
+          });
+        }
+        updateTournamentHeaderUI();
+        renderCourts();
+        closeNewTourModal();
+        switchTab('admin');
+        switchAdminAssignType('MANUAL');
+        renderAdminConsole();
+        alert(`🖐️ [${newTour.name}] 대회가 수동 배정 모드로 생성되었습니다!\n관리자 화면에서 코트별 출전 선수를 직접 배치해 주세요.`);
       }
-
-      alert(`🎉 [${newTour.name}] 대회가 성공적으로 개설되었습니다!\n📅 진행 날짜: ${newTour.date} (자동 기록됨)\n⚙️ 진행 방식: ${newTour.format === 'kdk' ? 'KDK 순환 리그' : '예선/본선 토너먼트'}\n🏟️ 생성된 코트: 총 ${courtCount}개 코트`);
     }
 
     function switchTournament(tourId) {
@@ -1667,6 +1830,7 @@
       const btnAdd = document.getElementById('btnAddCourtBtn');
       if (btnAdd) btnAdd.innerHTML = `<span class="text-sm">+</span><span>코트 추가 생성 (${courtsData.length + 1}번)</span>`;
 
+      const adminMode = isAdminUser();
       const container = document.getElementById('courtsListContainer');
       container.innerHTML = courtsData.map(court => `
         <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3 relative overflow-hidden transition-all hover:border-slate-700">
@@ -1677,14 +1841,16 @@
                 ${court.status === 'playing' ? '🔴 LIVE 경기 중' : court.status === 'completed' ? '🏁 경기 완료' : '⚪ 대기 중'}
               </span>
             </div>
-            <div class="flex items-center gap-1.5">
-              <button onclick="openScoreModal(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-slate-800 text-amber-300 font-bold border border-slate-700">점수 수정 ✎</button>
-              ${courtsData.length > 1 ? `<button onclick="deleteCourt(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-red-950/60 text-red-300 font-bold border border-red-500/30">✕</button>` : ''}
-            </div>
+            ${adminMode ? `
+              <div class="flex items-center gap-1.5">
+                <button onclick="openScoreModal(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-slate-800 text-amber-300 font-bold border border-slate-700 cursor-pointer">점수 수정 ✎</button>
+                ${courtsData.length > 1 ? `<button onclick="deleteCourt(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-red-950/60 text-red-300 font-bold border border-red-500/30 cursor-pointer">✕</button>` : ''}
+              </div>
+            ` : ''}
           </div>
 
           <div class="grid grid-cols-2 gap-3 items-center">
-            <div onclick="openPlayerEditModal(${court.id})" class="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1 cursor-pointer hover:border-amber-400/50 transition">
+            <div ${adminMode ? `onclick="openPlayerEditModal(${court.id})"` : ''} class="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1 ${adminMode ? 'cursor-pointer hover:border-amber-400/50 transition' : ''}">
               <div class="flex justify-between items-center">
                 <span class="text-[10px] font-black text-amber-400">TEAM A</span>
                 <span class="text-xl font-black text-white">${court.scoreA}</span>
@@ -1692,10 +1858,10 @@
               <div class="text-xs font-bold text-slate-200">
                 ${court.teamA.map(p => `<p class="truncate">${p}</p>`).join('')}
               </div>
-              <span class="text-[9px] text-slate-500 block text-right pt-0.5">선수 수정 ✎</span>
+              ${adminMode ? '<span class="text-[9px] text-slate-500 block text-right pt-0.5">선수 수정 ✎</span>' : ''}
             </div>
 
-            <div onclick="openPlayerEditModal(${court.id})" class="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1 cursor-pointer hover:border-emerald-400/50 transition">
+            <div ${adminMode ? `onclick="openPlayerEditModal(${court.id})"` : ''} class="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1 ${adminMode ? 'cursor-pointer hover:border-emerald-400/50 transition' : ''}">
               <div class="flex justify-between items-center">
                 <span class="text-[10px] font-black text-emerald-400">TEAM B</span>
                 <span class="text-xl font-black text-white">${court.scoreB}</span>
@@ -1703,25 +1869,35 @@
               <div class="text-xs font-bold text-slate-200">
                 ${court.teamB.map(p => `<p class="truncate">${p}</p>`).join('')}
               </div>
-              <span class="text-[9px] text-slate-500 block text-right pt-0.5">선수 수정 ✎</span>
+              ${adminMode ? '<span class="text-[9px] text-slate-500 block text-right pt-0.5">선수 수정 ✎</span>' : ''}
             </div>
           </div>
 
-          <button onclick="openPlayerEditModal(${court.id})" class="w-full py-1.5 bg-slate-950/90 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-[11px] border border-slate-800 transition flex items-center justify-center gap-1 cursor-pointer">
-            <span>👤</span><span>${court.courtNumber}번 코트 선수 수동 배정 및 수정</span>
-          </button>
+          ${adminMode ? `
+            <button onclick="openPlayerEditModal(${court.id})" class="w-full py-1.5 bg-slate-950/90 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-[11px] border border-slate-800 transition flex items-center justify-center gap-1 cursor-pointer">
+              <span>👤</span><span>${court.courtNumber}번 코트 선수 수동 배정 및 수정</span>
+            </button>
+          ` : ''}
         </div>
       `).join('');
     }
 
     // 탭 전환
     function switchTab(tabId) {
+      if (tabId === 'admin' && !isAdminUser()) {
+        tabId = 'courts';
+      }
+      currentActiveTab = tabId;
       const tabs = ['courts', 'kdk', 'tournament', 'mypage', 'admin'];
       tabs.forEach(t => {
         const wrap = document.getElementById(`tabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
         const btn = document.getElementById(`navBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (wrap) wrap.classList.toggle('hidden', t !== tabId);
+        if (wrap) wrap.classList.toggle('hidden', t !== tabId || (t === 'admin' && !isAdminUser()));
         if (btn) {
+          if (t === 'admin' && !isAdminUser()) {
+            btn.classList.add('hidden');
+            return;
+          }
           if (t === tabId) {
             btn.className = `flex flex-col items-center py-1 px-2 rounded-xl transition-all font-bold scale-105 ${
               t === 'kdk' ? 'text-emerald-400 bg-emerald-400/10' :
@@ -1736,7 +1912,7 @@
 
       if (tabId === 'courts') renderCourts();
       if (tabId === 'kdk') renderKdk();
-      if (tabId === 'admin') renderAdminUsers();
+      if (tabId === 'admin' && isAdminUser()) renderAdminUsers();
     }
 
     function switchTourPhase(phase) {
@@ -1753,11 +1929,13 @@
     }
 
     function advanceGroupToMain() {
+      if (!isAdminUser()) return;
       switchTourPhase('main');
       alert('🏆 예선 조별 1, 2위가 확정되어 본선 4강 토너먼트 브래킷에 자동 배치되었습니다!');
     }
 
     function declareChampion(team) {
+      if (!isAdminUser()) return;
       document.getElementById('championName').innerText = team;
       document.getElementById('championBanner').classList.remove('hidden');
       alert(`🎉 축하합니다! [${team}] 조가 썬 테니스 클럽 공식 챔피언에 등극했습니다! 🏆`);
@@ -1959,7 +2137,7 @@
     function runAdminAutoAssign() {
       const selectedPlayers = registeredPlayers.filter(p => adminSelectedPlayerIds.includes(p.id));
       if (selectedPlayers.length < 4) {
-        alert('최소 4명 이상의 선수를 선택하거나 임의 선수로 추가해 주세요.');
+        alert('최소 4명 이상의 참여선수(가입회원/미가입회원/임의선수)를 선택해 주세요.');
         return;
       }
 
@@ -1967,35 +2145,38 @@
       const courts = adminSelectedCourts.length > 0 ? adminSelectedCourts : [1, 2];
 
       if (adminTourMode === 'KDK') {
-        for (let r = 1; r <= 3; r++) {
-          const shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5);
-          const maxM = Math.min(courts.length, Math.floor(shuffled.length / 4));
-          for (let m = 0; m < maxM; m++) {
-            const g = shuffled.slice(m * 4, m * 4 + 4);
+        const balancedRounds = buildBalancedKdkSchedule(selectedPlayers, courts.length, 3);
+        balancedRounds.forEach(r => {
+          r.matches.forEach((m, mIdx) => {
             adminAssignedMatches.push({
-              id: 'm_auto_' + r + '_' + m + '_' + Date.now(),
-              round: r,
-              roundName: '제 ' + r + ' 라운드 (KDK)',
-              courtNumber: courts[m % courts.length],
-              teamA: [g[0], g[1]],
-              teamB: [g[2], g[3]]
+              id: 'm_auto_' + r.round + '_' + mIdx + '_' + Date.now(),
+              round: r.round,
+              roundName: '제 ' + r.round + ' 라운드 (KDK 실력균형)',
+              courtNumber: courts[mIdx % courts.length],
+              teamA: m.teamA,
+              teamB: m.teamB,
+              teamAWeight: m.teamAWeight,
+              teamBWeight: m.teamBWeight,
+              skillDiff: m.skillDiff
             });
-          }
-        }
-      } else {
-        const shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5);
-        const maxM = Math.floor(shuffled.length / 4);
-        for (let m = 0; m < maxM; m++) {
-          const g = shuffled.slice(m * 4, m * 4 + 4);
-          adminAssignedMatches.push({
-            id: 'm_tour_' + m + '_' + Date.now(),
-            round: 1,
-            roundName: '토너먼트 제 ' + (m + 1) + '경기',
-            courtNumber: courts[m % courts.length],
-            teamA: [g[0], g[1]],
-            teamB: [g[2], g[3]]
           });
-        }
+        });
+      } else {
+        const balancedRounds = buildBalancedKdkSchedule(selectedPlayers, courts.length, 1);
+        const r1 = balancedRounds[0]?.matches || [];
+        r1.forEach((m, mIdx) => {
+          adminAssignedMatches.push({
+            id: 'm_tour_' + mIdx + '_' + Date.now(),
+            round: 1,
+            roundName: '토너먼트 제 ' + (mIdx + 1) + '경기 (실력균형)',
+            courtNumber: courts[mIdx % courts.length],
+            teamA: m.teamA,
+            teamB: m.teamB,
+            teamAWeight: m.teamAWeight,
+            teamBWeight: m.teamBWeight,
+            skillDiff: m.skillDiff
+          });
+        });
       }
       renderAdminConsole();
     }
@@ -2197,7 +2378,7 @@
             <div class="flex items-center gap-2">
               <span class="font-bold text-white">${u.name}</span>
               <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
-              <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) ${u.isGuest ? '[임의추가]' : ''}</span>
+              <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) ${u.username ? `· ID: ${u.username}` : ''} ${u.isGuest ? '[임의추가]' : ''}</span>
             </div>
             <span class="text-[10px] text-amber-300 font-bold">${u.role === 'admin' ? '👑 관리자' : '일반회원'}</span>
           </div>
@@ -2240,6 +2421,7 @@
 
     // 스코어 모달
     function openScoreModal(courtId) {
+      if (!isAdminUser()) return;
       currentEditingCourt = courtsData.find(c => c.id === courtId);
       if (!currentEditingCourt) return;
       document.getElementById('modalCourtTitle').innerHTML = `<span>🎾</span> ${currentEditingCourt.courtNumber}번 코트 점수 실시간 조절`;
@@ -2311,46 +2493,150 @@
       }
     }
 
+    // 권한(관리자 vs 일반회원)에 따라 관리자 전용 UI 표시/숨김
+    function applyRoleVisibility() {
+      const admin = isAdminUser();
+      document.querySelectorAll('[data-admin-only="true"]').forEach(el => {
+        el.classList.toggle('hidden', !admin);
+      });
+
+      const badge = document.getElementById('roleStatusBadge');
+      if (badge) {
+        if (admin) {
+          badge.innerText = '👑 관리자';
+          badge.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-red-500/20 text-red-300 border-red-500/40';
+        } else {
+          badge.innerText = '👤 일반회원';
+          badge.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+        }
+      }
+
+      if (!admin && currentActiveTab === 'admin') {
+        switchTab('courts');
+      } else {
+        renderCourts();
+      }
+    }
+
+    function quickHtmlLogin(targetRole) {
+      if (targetRole === 'admin') {
+        currentUserRole = 'admin';
+        document.getElementById('headerMemberName').innerText = '공유 관리자님';
+        document.getElementById('headerMemberGrade').innerText = '금배';
+        applyRoleVisibility();
+        renderAdminUsers();
+        switchTab('admin');
+        closeAuthScreenModal();
+      } else {
+        currentUserRole = 'member';
+        document.getElementById('headerMemberName').innerText = '김철수 회원님';
+        document.getElementById('headerMemberGrade').innerText = '금배';
+        applyRoleVisibility();
+        switchTab('courts');
+        closeAuthScreenModal();
+      }
+    }
+
     function handleHtmlAuthSubmit(e) {
       e.preventDefault();
-      const email = document.getElementById('htmlAuthEmail').value.trim();
+      const loginId = document.getElementById('htmlAuthEmail').value.trim();
+      const normalizedId = loginId.toLowerCase();
       const pw = document.getElementById('htmlAuthPassword').value;
 
       if (htmlIsSignUp) {
         const name = document.getElementById('htmlSignUpName').value.trim();
         const gender = document.getElementById('htmlSignUpGender').value;
         const grade = document.getElementById('htmlSignUpGrade').value;
+        const phone = (document.getElementById('htmlSignUpPhone')?.value || '').trim();
         const pwConfirm = document.getElementById('htmlAuthConfirmPassword').value;
 
-        if (!name) {
-          alert('이름(실명)을 입력해 주세요.');
+        if (loginId.length < 2) {
+          alert('아이디는 2자 이상 입력해 주세요. (이메일 형식 불필요)');
+          return;
+        }
+        if (pw.length < 4) {
+          alert('비밀번호는 4자 이상 입력해 주세요.');
           return;
         }
         if (pw !== pwConfirm) {
           alert('비밀번호와 비밀번호 확인이 일치하지 않습니다.');
           return;
         }
+        if (!name) {
+          alert('이름(실명)을 입력해 주세요.');
+          return;
+        }
+        const duplicate = registeredPlayers.find(
+          p => (p.username && p.username.toLowerCase() === normalizedId) || (p.email && p.email.toLowerCase() === normalizedId)
+        );
+        if (duplicate) {
+          alert('이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.');
+          return;
+        }
 
-        const newPlayer = { id: 'p_' + Date.now(), name, grade, gender, role: 'member', email };
+        const newPlayer = {
+          id: 'p_' + Date.now(),
+          username: loginId,
+          name,
+          grade,
+          gender,
+          phone,
+          password: pw,
+          role: 'member',
+          email: loginId,
+          isGuest: false
+        };
         registeredPlayers.unshift(newPlayer);
         adminSelectedPlayerIds.push(newPlayer.id);
+        currentUserRole = 'member';
         document.getElementById('headerMemberName').innerText = name + ' 회원님';
         document.getElementById('headerMemberGrade').innerText = grade;
-        renderAdminUsers();
+        applyRoleVisibility();
+        switchTab('courts');
         closeAuthScreenModal();
-        alert(`🎉 환영합니다, ${name} 회원님! [${grade}] 등급으로 회원가입 및 로그인이 완료되었습니다.`);
+        alert(`🎉 환영합니다, ${name} 회원님! 아이디 [${loginId}] / [${grade}] 등급으로 회원가입 및 로그인이 완료되었습니다.`);
       } else {
-        const matched = registeredPlayers.find(p => p.email === email || p.name === email.split('@')[0]);
-        const name = matched ? matched.name : (email.split('@')[0] || '김철수');
+        if (!loginId) {
+          alert('아이디를 입력해 주세요.');
+          return;
+        }
+        const isAdminAccount =
+          normalizedId === 'admin' ||
+          normalizedId === 'admin@suntc.kr' ||
+          normalizedId === '관리자' ||
+          normalizedId === '운영자' ||
+          normalizedId === '공유';
+        const matched = registeredPlayers.find(
+          p =>
+            (p.username && p.username.toLowerCase() === normalizedId) ||
+            (p.email && p.email.toLowerCase() === normalizedId) ||
+            p.name === loginId
+        );
+        if (matched && matched.password && pw && matched.password !== pw) {
+          alert('비밀번호가 일치하지 않습니다.');
+          return;
+        }
+
+        const resolvedRole = isAdminAccount || matched?.role === 'admin' ? 'admin' : 'member';
+        currentUserRole = resolvedRole;
+        const name = matched ? matched.name : (isAdminAccount ? '공유' : loginId);
         const grade = matched ? matched.grade : '금배';
-        document.getElementById('headerMemberName').innerText = name + ' 회원님';
+        document.getElementById('headerMemberName').innerText = resolvedRole === 'admin' ? `${name} 관리자님` : `${name} 회원님`;
         document.getElementById('headerMemberGrade').innerText = grade;
+        applyRoleVisibility();
+        if (resolvedRole === 'admin') {
+          renderAdminUsers();
+          switchTab('admin');
+        } else {
+          switchTab('courts');
+        }
         closeAuthScreenModal();
       }
     }
 
     // 초기 실행
     updateTournamentHeaderUI();
+    applyRoleVisibility();
     renderCourts();
   </script>
 </body>
