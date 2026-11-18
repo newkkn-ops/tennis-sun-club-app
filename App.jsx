@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import AdminTournamentManager, {
   TournamentConfig,
@@ -7,6 +7,8 @@ import AdminTournamentManager, {
 } from './components/AdminTournamentManager';
 import AdminUserManagement, { ManagedMember } from './components/AdminUserManagement';
 import KdkCourtOperations from './components/KdkCourtOperations';
+import AppBackExitOverlay from './components/AppBackExitOverlay';
+import { useAppBackHandler } from './hooks/useAppBackHandler';
 import { generateKDKSchedule, GRADE_WEIGHTS } from './lib/kdk';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
@@ -127,7 +129,94 @@ export default function TennisApp() {
   ]);
 
   // 현재 진행 중인 대회
+  const EMPTY_TOURNAMENT: TournamentRecord = {
+    id: 'tour-empty',
+    name: '개설된 대회가 없습니다',
+    date: new Date().toISOString().split('T')[0],
+    format: 'kdk',
+    courtCount: 0,
+    status: 'completed',
+  };
   const [currentTournament, setCurrentTournament] = useState<TournamentRecord>(tournamentHistory[0]);
+  const [adminTourFilter, setAdminTourFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('sun_tennis_tournaments');
+      if (raw) {
+        const parsed: TournamentRecord[] = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setTournamentHistory(parsed);
+          setCurrentTournament(parsed[0] || EMPTY_TOURNAMENT);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const persistTournamentHistory = (nextList: TournamentRecord[]) => {
+    try {
+      localStorage.setItem('sun_tennis_tournaments', JSON.stringify(nextList));
+    } catch {}
+  };
+
+  const handleDeleteTournament = (tourId: string) => {
+    if (!isAdmin) return;
+    const target = tournamentHistory.find((t) => t.id === tourId);
+    if (!target) return;
+    const statusLabel = target.status === 'completed' ? '종료된 대회' : '진행 중인 대회';
+    if (
+      !window.confirm(
+        `⚠️ [${target.name}] (${target.date} · ${statusLabel}) 기록을 삭제하시겠습니까?\n\n삭제된 대회는 목록에서 즉시 제거됩니다.`
+      )
+    ) {
+      return;
+    }
+    const nextList = tournamentHistory.filter((t) => t.id !== tourId);
+    setTournamentHistory(nextList);
+    persistTournamentHistory(nextList);
+    if (currentTournament.id === tourId) {
+      setCurrentTournament(nextList[0] || EMPTY_TOURNAMENT);
+    }
+    alert(`🗑️ [${target.name}] 대회가 삭제되었습니다.`);
+  };
+
+  const handleToggleTournamentStatus = (tourId: string) => {
+    if (!isAdmin) return;
+    const nextList: TournamentRecord[] = tournamentHistory.map((t) =>
+      t.id === tourId
+        ? { ...t, status: t.status === 'completed' ? 'in_progress' : 'completed' }
+        : t
+    );
+    setTournamentHistory(nextList);
+    persistTournamentHistory(nextList);
+    if (currentTournament.id === tourId) {
+      const updated = nextList.find((t) => t.id === tourId);
+      if (updated) setCurrentTournament(updated);
+    }
+  };
+
+  const handleDeleteCompletedTournaments = () => {
+    if (!isAdmin) return;
+    const completedList = tournamentHistory.filter((t) => t.status === 'completed');
+    if (completedList.length === 0) {
+      alert('삭제할 종료된 대회가 없습니다.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `⚠️ 종료된 대회 총 ${completedList.length}건을 모두 일괄 삭제하시겠습니까?\n\n(${completedList.map((t) => t.name).join(', ')})`
+      )
+    ) {
+      return;
+    }
+    const nextList = tournamentHistory.filter((t) => t.status !== 'completed');
+    setTournamentHistory(nextList);
+    persistTournamentHistory(nextList);
+    if (currentTournament.status === 'completed') {
+      setCurrentTournament(nextList[0] || EMPTY_TOURNAMENT);
+    }
+    alert(`🗑️ 종료된 대회 ${completedList.length}건이 일괄 삭제되었습니다.`);
+  };
 
   // 새 대회 개설 모달 상태 (가입회원/미가입회원 선택 + 임의선수 등록 + 실력균형 자동/수동 배정)
   const [showNewTourModal, setShowNewTourModal] = useState<boolean>(false);
@@ -205,7 +294,11 @@ export default function TennisApp() {
       status: 'in_progress',
     };
 
-    setTournamentHistory((prev) => [newTour, ...prev]);
+    setTournamentHistory((prev) => {
+      const next = [newTour, ...prev];
+      persistTournamentHistory(next);
+      return next;
+    });
     setCurrentTournament(newTour);
     setParticipantsInput(selectedPool.map((p) => p.name).join(', '));
 
@@ -918,6 +1011,147 @@ export default function TennisApp() {
   };
 
   // ============================================================================
+  // [백버튼 단계별 뒤로가기 히스토리 스택 & 2회 연속 입력 시 앱 종료 확인 알람]
+  // ============================================================================
+  const navHistoryRef = useRef<
+    Array<{ tab: 'courts' | 'kdk' | 'tournament' | 'mypage' | 'admin'; phase: 'qualifying' | 'main' }>
+  >([]);
+  const prevRouteRef = useRef<{
+    tab: 'courts' | 'kdk' | 'tournament' | 'mypage' | 'admin';
+    phase: 'qualifying' | 'main';
+  }>({ tab: activeTab, phase: tourPhase });
+  const isGoingBackRef = useRef<boolean>(false);
+  const [navHistoryCount, setNavHistoryCount] = useState<number>(0);
+
+  // 로그인 상태가 바뀔 때(로그인/로그아웃) 이전 화면 히스토리 초기화
+  useEffect(() => {
+    navHistoryRef.current = [];
+    setNavHistoryCount(0);
+    prevRouteRef.current = { tab: activeTab, phase: tourPhase };
+  }, [currentUser?.id]);
+
+  // 탭 또는 토너먼트 단계가 변경될 때마다 이전 단계 자동 기록
+  useEffect(() => {
+    if (!currentUser) return;
+    if (isGoingBackRef.current) {
+      isGoingBackRef.current = false;
+      prevRouteRef.current = { tab: activeTab, phase: tourPhase };
+      return;
+    }
+    const prev = prevRouteRef.current;
+    if (prev.tab !== activeTab || prev.phase !== tourPhase) {
+      navHistoryRef.current = [...navHistoryRef.current.slice(-29), prev];
+      setNavHistoryCount(navHistoryRef.current.length);
+      prevRouteRef.current = { tab: activeTab, phase: tourPhase };
+    }
+  }, [activeTab, tourPhase, currentUser]);
+
+  const handleGoPreviousStep = useCallback((): boolean => {
+    if (showAdminLoginModal) {
+      setShowAdminLoginModal(false);
+      return true;
+    }
+    if (selectedCourt) {
+      setSelectedCourt(null);
+      return true;
+    }
+    if (courtEditTarget) {
+      setCourtEditTarget(null);
+      return true;
+    }
+    if (showNewTourModal) {
+      setShowNewTourModal(false);
+      return true;
+    }
+
+    if (!currentUser) {
+      if (isSignUp) {
+        setIsSignUp(false);
+        setAuthMessage(null);
+        return true;
+      }
+      return false;
+    }
+
+    if (navHistoryRef.current.length > 0) {
+      const nextStack = [...navHistoryRef.current];
+      const prevStep = nextStack.pop()!;
+      navHistoryRef.current = nextStack;
+      setNavHistoryCount(nextStack.length);
+      isGoingBackRef.current = true;
+      const safeTab = prevStep.tab === 'admin' && !isAdmin ? 'courts' : prevStep.tab;
+      setActiveTab(safeTab);
+      setTourPhase(prevStep.phase);
+      return true;
+    }
+
+    if (activeTab === 'tournament' && tourPhase === 'main') {
+      isGoingBackRef.current = true;
+      setTourPhase('qualifying');
+      return true;
+    }
+
+    const homeTab = isAdmin ? 'admin' : 'courts';
+    if (activeTab !== homeTab) {
+      isGoingBackRef.current = true;
+      setActiveTab(homeTab);
+      return true;
+    }
+
+    return false;
+  }, [
+    showAdminLoginModal,
+    selectedCourt,
+    courtEditTarget,
+    showNewTourModal,
+    currentUser,
+    isSignUp,
+    isAdmin,
+    activeTab,
+    tourPhase,
+  ]);
+
+  const {
+    showExitConfirmModal,
+    backToastMessage,
+    isAppExited,
+    triggerBackAction,
+    cancelExitApp,
+    confirmExitApp,
+    restartApp,
+  } = useAppBackHandler({
+    onGoPreviousStep: handleGoPreviousStep,
+    doublePressWindowMs: 2500,
+  });
+
+  if (isAppExited) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="w-full max-w-xs bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-2xl shadow-lg">
+            ☀️
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-black text-white">앱이 종료되었습니다</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              썬 테니스 클럽 앱을 이용해 주셔서 감사합니다.
+              <br />
+              브라우저 탭을 닫거나 아래 버튼으로 다시 실행할 수 있습니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={restartApp}
+            className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer"
+          >
+            🔄 앱 다시 실행하기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
   // [로그인 & 회원가입 화면]: 로그인하지 않은 경우 첫 화면으로 표시
   // ============================================================================
   if (!currentUser) {
@@ -1287,6 +1521,13 @@ export default function TennisApp() {
             </div>
           </div>
         )}
+
+        <AppBackExitOverlay
+          backToastMessage={backToastMessage}
+          showExitConfirmModal={showExitConfirmModal}
+          onCancelExit={cancelExitApp}
+          onConfirmExit={confirmExitApp}
+        />
       </div>
     );
   }
@@ -1350,8 +1591,21 @@ export default function TennisApp() {
             </div>
 
             {/* 대회 히스토리 셀렉터 */}
-            <div className="pt-2 border-t border-slate-800">
-              <label className="text-[10px] font-bold text-slate-400 block mb-1">📜 이전 대회 기록 관리 ({tournamentHistory.length}개)</label>
+            <div className="pt-2 border-t border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-slate-400">
+                  📜 대회 기록 관리 ({tournamentHistory.length}개)
+                </label>
+                {isAdmin && tournamentHistory.length > 0 && currentTournament.id !== 'tour-empty' && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTournament(currentTournament.id)}
+                    className="text-[10px] px-2 py-0.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold cursor-pointer transition"
+                  >
+                    🗑️ 선택 대회 삭제
+                  </button>
+                )}
+              </div>
               <select
                 value={currentTournament.id}
                 onChange={(e) => {
@@ -1360,11 +1614,15 @@ export default function TennisApp() {
                 }}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none"
               >
-                {tournamentHistory.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.date})
-                  </option>
-                ))}
+                {tournamentHistory.length === 0 ? (
+                  <option value="tour-empty">개설된 대회가 없습니다</option>
+                ) : (
+                  tournamentHistory.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      [{t.status === 'completed' ? '종료' : '진행중'}] {t.name} ({t.date})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -1467,8 +1725,16 @@ export default function TennisApp() {
           
           {/* 상단 썬 클럽 모바일 헤더 */}
           <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex justify-between items-center shadow-lg">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 text-lg">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={triggerBackAction}
+                title={navHistoryCount > 0 ? '이전 단계로 이동' : '뒤로가기 (2회 누르면 앱 종료 확인)'}
+                className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 hover:text-amber-300 flex items-center justify-center text-sm font-black transition cursor-pointer shrink-0"
+              >
+                ←
+              </button>
+              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 text-lg shrink-0">
                 ☀️
               </div>
               <div>
@@ -2233,6 +2499,162 @@ export default function TennisApp() {
             {/* ---------------------------------------------------- */}
             {isAdmin && activeTab === 'admin' && (
               <div className="space-y-4">
+                {/* 0. 생성된 대회 & 종료된 대회 목록 관리 (상태 전환 및 삭제) */}
+                <div className="bg-slate-900 border border-amber-500/35 rounded-2xl p-4 shadow-xl space-y-3">
+                  <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-2.5">
+                    <div>
+                      <h3 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
+                        <span>🏆</span> 생성된 대회 & 종료된 대회 관리 ({tournamentHistory.length}개)
+                      </h3>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        관리자 권한으로 진행 중인 대회를 종료 처리하거나, 생성/종료된 대회를 삭제할 수 있습니다.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewTourModal(true)}
+                        className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-[11px] cursor-pointer"
+                      >
+                        + 새 대회 개설
+                      </button>
+                      {tournamentHistory.some((t) => t.status === 'completed') && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteCompletedTournaments}
+                          className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-[11px] cursor-pointer"
+                        >
+                          🗑️ 종료 대회 일괄삭제
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setAdminTourFilter('all')}
+                      className={`py-1.5 rounded-lg cursor-pointer transition ${
+                        adminTourFilter === 'all'
+                          ? 'bg-amber-400 text-slate-950 font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      전체 ({tournamentHistory.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminTourFilter('in_progress')}
+                      className={`py-1.5 rounded-lg cursor-pointer transition ${
+                        adminTourFilter === 'in_progress'
+                          ? 'bg-emerald-500 text-slate-950 font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🔴 진행중 ({tournamentHistory.filter((t) => t.status !== 'completed').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdminTourFilter('completed')}
+                      className={`py-1.5 rounded-lg cursor-pointer transition ${
+                        adminTourFilter === 'completed'
+                          ? 'bg-slate-600 text-white font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🏁 종료됨 ({tournamentHistory.filter((t) => t.status === 'completed').length})
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
+                    {tournamentHistory.filter((t) =>
+                      adminTourFilter === 'all'
+                        ? true
+                        : adminTourFilter === 'completed'
+                        ? t.status === 'completed'
+                        : t.status !== 'completed'
+                    ).length === 0 ? (
+                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-xs text-slate-400">
+                        해당 조건의 대회가 없습니다.
+                      </div>
+                    ) : (
+                      tournamentHistory
+                        .filter((t) =>
+                          adminTourFilter === 'all'
+                            ? true
+                            : adminTourFilter === 'completed'
+                            ? t.status === 'completed'
+                            : t.status !== 'completed'
+                        )
+                        .map((t) => {
+                          const isCurrent = currentTournament.id === t.id;
+                          const isCompleted = t.status === 'completed';
+                          return (
+                            <div
+                              key={t.id}
+                              className={`p-3 rounded-xl border space-y-2 text-xs transition ${
+                                isCurrent
+                                  ? 'bg-amber-950/30 border-amber-500/50'
+                                  : 'bg-slate-950 border-slate-800'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                                        isCompleted
+                                          ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      }`}
+                                    >
+                                      {isCompleted ? '🏁 종료됨' : '🔴 진행중'}
+                                    </span>
+                                    {isCurrent && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black">
+                                        현재 선택
+                                      </span>
+                                    )}
+                                    <span className="font-black text-white truncate">{t.name}</span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    📅 {t.date} · {t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · {t.courtCount}코트
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-1.5 pt-1.5 border-t border-slate-800/80">
+                                {!isCurrent && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCurrentTournament(t)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] cursor-pointer"
+                                  >
+                                    보기 선택
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleTournamentStatus(t.id)}
+                                  className="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer"
+                                >
+                                  {isCompleted ? '🔄 진행중으로 복원' : '🏁 대회 종료 처리'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTournament(t.id)}
+                                  className="px-3 py-1.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-black text-[11px] cursor-pointer"
+                                >
+                                  🗑️ 삭제
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </div>
+
                 {/* 1. 회원가입 승인 · 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
                 <AdminUserManagement
                   externalUsers={registeredPlayers}
@@ -2327,7 +2749,11 @@ export default function TennisApp() {
                       courtCount: config.selectedCourts.length || 3,
                       status: 'in_progress',
                     };
-                    setTournamentHistory((prev) => [newTour, ...prev]);
+                    setTournamentHistory((prev) => {
+      const next = [newTour, ...prev];
+      persistTournamentHistory(next);
+      return next;
+    });
                     setCurrentTournament(newTour);
 
                     const mappedCourts: CourtMatch[] = config.matches.map((m, idx) => ({
@@ -2987,6 +3413,14 @@ export default function TennisApp() {
           </div>
         </div>
       )}
+
+      {/* 백버튼 뒤로가기 안내 토스트 & 2회 연속 입력 앱 종료 확인 모달 */}
+      <AppBackExitOverlay
+        backToastMessage={backToastMessage}
+        showExitConfirmModal={showExitConfirmModal}
+        onCancelExit={cancelExitApp}
+        onConfirmExit={confirmExitApp}
+      />
     </div>
   );
 }
