@@ -121,6 +121,27 @@ export default function AdminTournamentManager({
   const [manualTeamB1, setManualTeamB1] = useState<string>('');
   const [manualTeamB2, setManualTeamB2] = useState<string>('');
 
+  // 단계별 및 매치별 접기/펼치기 아코디언 상태 (기본값: 접힌 상태, 항목 클릭 시 펼쳐서 수정)
+  const [openSteps, setOpenSteps] = useState<Record<'step1' | 'step2' | 'step3' | 'step4', boolean>>({
+    step1: false,
+    step2: false,
+    step3: false,
+    step4: false,
+  });
+  const [expandedMatchIds, setExpandedMatchIds] = useState<Record<string, boolean>>({});
+
+  const toggleStep = (stepKey: 'step1' | 'step2' | 'step3' | 'step4') => {
+    setOpenSteps((prev) => ({ ...prev, [stepKey]: !prev[stepKey] }));
+  };
+
+  const toggleAllSteps = (expand: boolean) => {
+    setOpenSteps({ step1: expand, step2: expand, step3: expand, step4: expand });
+  };
+
+  const toggleMatchItem = (matchId: string) => {
+    setExpandedMatchIds((prev) => ({ ...prev, [matchId]: !prev[matchId] }));
+  };
+
   // 전체 선택 가능한 선수 풀 (가입회원 + 미가입회원/임의선수)
   const allAvailablePlayers: ParticipantPlayer[] = [
     ...registeredUsers.map((u) => ({
@@ -446,193 +467,236 @@ export default function AdminTournamentManager({
     onApplyTournament(config);
   };
 
+  const allStepsOpen = openSteps.step1 && openSteps.step2 && openSteps.step3 && openSteps.step4;
+
   return (
-    <div className="space-y-4">
-      {/* 상단 안내 배너 */}
-      <div className="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-4 shadow-xl">
-        <div className="flex items-center justify-between">
+    <div className="space-y-3">
+      {/* 상단 안내 배너 & 전체 펼치기/접기 */}
+      <div className="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-3.5 shadow-xl">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
               NEW TOURNAMENT
             </span>
             <span className="text-xs font-extrabold text-amber-300">
-              새 대회 개설 · 참여선수(가입/미가입/임의) & 실력균형 배정
+              새 대회 개설 · 코트/선수 배정 (항목을 누르면 펼쳐서 수정)
             </span>
           </div>
-          {currentUser && (
-            <span className="text-[10px] text-slate-300 bg-slate-950/80 px-2 py-0.5 rounded-lg border border-slate-800">
-              👑 {currentUser.name} 관리자
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() => toggleAllSteps(!allStepsOpen)}
+            className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-slate-950/90 hover:bg-slate-800 text-amber-300 border border-amber-500/30 cursor-pointer transition"
+          >
+            {allStepsOpen ? '📁 단계 모두 접기 ▲' : '📂 단계 모두 펼치기 ▼'}
+          </button>
         </div>
         <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-          새로운 대회 개설 시 <strong>가입회원 및 미가입 회원을 선택하거나 임의 선수 이름을 직접 등록</strong>할 수 있으며, <strong>KDK 경기 실력 차이가 없도록 맞춘 자동배정</strong>과 <strong>수동배정</strong>을 모두 지원합니다.
+          아래 각 단계(①대회명 ➔ ②방식 ➔ ③참여선수 ➔ ④코트·선수배정) 항목을 클릭하면 펼쳐져서 내용을 수정할 수 있습니다.
         </p>
       </div>
 
       {/* ================================================================= */}
-      {/* STEP 1. 대회명 생성 */}
+      {/* STEP 1. 대회명 생성 (접기/펼치기) */}
       {/* ================================================================= */}
-      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">
+      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+        <button
+          type="button"
+          onClick={() => toggleStep('step1')}
+          className="w-full flex items-center justify-between text-left cursor-pointer"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
               1
             </span>
-            <h3 className="text-sm font-black text-white">새 대회명 입력</h3>
+            <div className="min-w-0">
+              <h3 className="text-sm font-black text-white">새 대회명 입력</h3>
+              <p className="text-[10px] text-amber-300 truncate">{tournamentTitle || '미입력'}</p>
+            </div>
           </div>
-          {isTitleConfirmed && (
-            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
-              ✓ 대회명 설정됨
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isTitleConfirmed && (
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                ✓ 설정됨
+              </span>
+            )}
+            <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">
+              {openSteps.step1 ? '접기 ▲' : '수정 ▼'}
             </span>
-          )}
-        </div>
+          </div>
+        </button>
 
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            '2026년 11월 정기 월례회',
-            '제5회 썬 테니스 클럽 챔피언십',
-            '주말 번개 KDK 실력균형 대회',
-          ].map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => {
-                setTournamentTitle(preset);
-                setIsTitleConfirmed(true);
-              }}
-              className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
-            >
-              + {preset}
-            </button>
-          ))}
-        </div>
+        {openSteps.step1 && (
+          <div className="space-y-3 pt-2.5 border-t border-slate-800">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                '2026년 11월 정기 월례회',
+                '제5회 썬 테니스 클럽 챔피언십',
+                '주말 번개 KDK 실력균형 대회',
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    setTournamentTitle(preset);
+                    setIsTitleConfirmed(true);
+                  }}
+                  className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
+                >
+                  + {preset}
+                </button>
+              ))}
+            </div>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={tournamentTitle}
-            onChange={(e) => setTournamentTitle(e.target.value)}
-            placeholder="생성할 대회명을 입력하세요"
-            className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400 font-bold"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (!tournamentTitle.trim()) {
-                alert('대회명을 입력해 주세요.');
-                return;
-              }
-              setIsTitleConfirmed(true);
-            }}
-            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer shrink-0"
-          >
-            대회명 확정
-          </button>
-        </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={tournamentTitle}
+                onChange={(e) => setTournamentTitle(e.target.value)}
+                placeholder="생성할 대회명을 입력하세요"
+                className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400 font-bold"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!tournamentTitle.trim()) {
+                    alert('대회명을 입력해 주세요.');
+                    return;
+                  }
+                  setIsTitleConfirmed(true);
+                }}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer shrink-0"
+              >
+                대회명 확정
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ================================================================= */}
-      {/* STEP 2. 대회방식 선택 (토너먼트 vs KDK 버튼) */}
+      {/* STEP 2. 대회방식 선택 (접기/펼치기) */}
       {/* ================================================================= */}
-      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+        <button
+          type="button"
+          onClick={() => toggleStep('step2')}
+          className="w-full flex items-center justify-between text-left cursor-pointer"
+        >
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">
+            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
               2
             </span>
             <h3 className="text-sm font-black text-white">대회 방식 선택 (토너먼트 / KDK)</h3>
           </div>
-          <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-400/30">
-            선택됨: {tournamentMode === 'TOURNAMENT' ? '🏆 토너먼트' : '🔄 KDK 실력균형 리그'}
-          </span>
-        </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-400/30">
+              {tournamentMode === 'TOURNAMENT' ? '🏆 토너먼트' : '🔄 KDK 리그'}
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">
+              {openSteps.step2 ? '접기 ▲' : '수정 ▼'}
+            </span>
+          </div>
+        </button>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setTournamentMode('TOURNAMENT');
-              setManualRoundName('토너먼트 본선');
-            }}
-            className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
-              tournamentMode === 'TOURNAMENT'
-                ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-orange-500/10 border-amber-400 shadow-lg shadow-amber-500/15 scale-[1.01]'
-                : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 text-slate-400'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-2xl">🏆</span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                  tournamentMode === 'TOURNAMENT'
-                    ? 'bg-amber-400 text-slate-950'
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {tournamentMode === 'TOURNAMENT' ? '✓ 선택됨' : '선택하기'}
-              </span>
-            </div>
-            <p className="text-sm font-black text-white">토너먼트 (Tournament)</p>
-            <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-              고정 파트너 복식조 · 조별 예선 및 본선 4강/결승 브래킷
-            </p>
-          </button>
+        {openSteps.step2 && (
+          <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => {
+                setTournamentMode('TOURNAMENT');
+                setManualRoundName('토너먼트 본선');
+              }}
+              className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                tournamentMode === 'TOURNAMENT'
+                  ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-orange-500/10 border-amber-400 shadow-lg shadow-amber-500/15 scale-[1.01]'
+                  : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 text-slate-400'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-2xl">🏆</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                    tournamentMode === 'TOURNAMENT'
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {tournamentMode === 'TOURNAMENT' ? '✓ 선택됨' : '선택하기'}
+                </span>
+              </div>
+              <p className="text-sm font-black text-white">토너먼트 (Tournament)</p>
+              <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                고정 파트너 복식조 · 조별 예선 및 본선 4강/결승 브래킷
+              </p>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setTournamentMode('KDK');
-              setManualRoundName('제 1 라운드');
-            }}
-            className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
-              tournamentMode === 'KDK'
-                ? 'bg-gradient-to-br from-emerald-500/20 via-slate-900 to-teal-500/10 border-emerald-400 shadow-lg shadow-emerald-500/15 scale-[1.01]'
-                : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 text-slate-400'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-2xl">🔄</span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                  tournamentMode === 'KDK'
-                    ? 'bg-emerald-400 text-slate-950'
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {tournamentMode === 'KDK' ? '✓ 선택됨' : '선택하기'}
-              </span>
-            </div>
-            <p className="text-sm font-black text-white">KDK (실력균형 순환 리그)</p>
-            <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-              팀 간 경기 실력 차이가 없도록 파트너/상대 자동 밸런싱 매칭
-            </p>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setTournamentMode('KDK');
+                setManualRoundName('제 1 라운드');
+              }}
+              className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                tournamentMode === 'KDK'
+                  ? 'bg-gradient-to-br from-emerald-500/20 via-slate-900 to-teal-500/10 border-emerald-400 shadow-lg shadow-emerald-500/15 scale-[1.01]'
+                  : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 text-slate-400'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-2xl">🔄</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                    tournamentMode === 'KDK'
+                      ? 'bg-emerald-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {tournamentMode === 'KDK' ? '✓ 선택됨' : '선택하기'}
+                </span>
+              </div>
+              <p className="text-sm font-black text-white">KDK (실력균형 순환 리그)</p>
+              <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                팀 간 경기 실력 차이가 없도록 파트너/상대 자동 밸런싱 매칭
+              </p>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ================================================================= */}
-      {/* STEP 3. 참여선수 선택 (가입회원 + 미가입회원 선택 & 임의 선수 이름 등록) */}
+      {/* STEP 3. 참여선수 선택 (접기/펼치기) */}
       {/* ================================================================= */}
-      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3.5">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3.5">
+        <button
+          type="button"
+          onClick={() => toggleStep('step3')}
+          className="w-full flex items-center justify-between text-left cursor-pointer"
+        >
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">
+            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
               3
             </span>
             <div>
               <h3 className="text-sm font-black text-white">
-                참여선수 선택 (가입회원 · 미가입회원 · 임의선수 등록)
+                참여선수 선택 (가입 · 미가입 · 임의선수)
               </h3>
               <p className="text-[10px] text-slate-400">
-                가입회원 및 미가입회원을 클릭해 선택하거나, 임의 선수 이름을 바로 등록하세요.
+                항목을 눌러 참여 선수를 선택하거나 임의 선수를 등록하세요.
               </p>
             </div>
           </div>
-          <span className="text-xs font-black text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/30">
-            참가 확정: {selectedParticipants.length}명
-          </span>
-        </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[11px] font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/30">
+              {selectedParticipants.length}명
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">
+              {openSteps.step3 ? '접기 ▲' : '수정 ▼'}
+            </span>
+          </div>
+        </button>
+
+        {openSteps.step3 && (
+          <div className="space-y-3.5 pt-2.5 border-t border-slate-800">
 
         {/* 가입회원 / 미가입회원 필터 탭 & 전체 선택 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -804,28 +868,44 @@ export default function AdminTournamentManager({
             </div>
           )}
         </div>
+          </div>
+        )}
       </div>
 
       {/* ================================================================= */}
-      {/* STEP 4. 코트 배정 및 실력균형 자동배정 / 수동배정 */}
+      {/* STEP 4. 코트 배정 및 실력균형 자동배정 / 수동배정 (접기/펼치기) */}
       {/* ================================================================= */}
-      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3.5">
+        <button
+          type="button"
+          onClick={() => toggleStep('step4')}
+          className="w-full flex items-center justify-between text-left cursor-pointer"
+        >
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">
+            <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
               4
             </span>
             <div>
               <h3 className="text-sm font-black text-white">
-                코트 배정 및 선수 배치 (실력균형 자동방식 / 수동방식)
+                코트 배정 및 선수 배치 (자동방식 / 수동방식)
               </h3>
               <p className="text-[10px] text-slate-400">
-                KDK 자동배정 시 두 팀의 경기 실력 차이가 0이 되도록 최적의 파트너로 자동 매칭합니다.
+                항목을 눌러 코트 지정 및 자동·수동 배정을 실행/수정하세요.
               </p>
             </div>
           </div>
-        </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-black text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-400/30">
+              {selectedCourts.length}코트·{assignedMatches.length}경기
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">
+              {openSteps.step4 ? '접기 ▲' : '수정 ▼'}
+            </span>
+          </div>
+        </button>
 
+        {openSteps.step4 && (
+          <div className="space-y-4 pt-2.5 border-t border-slate-800">
         {/* 가용 코트 번호 선택 및 코트 수 조절 (+/-) */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
           <div className="flex justify-between items-center">
@@ -1105,92 +1185,122 @@ export default function AdminTournamentManager({
                 const wA = m.teamAWeight ?? getPlayerWeight(m.teamA[0]) + getPlayerWeight(m.teamA[1]);
                 const wB = m.teamBWeight ?? getPlayerWeight(m.teamB[0]) + getPlayerWeight(m.teamB[1]);
                 const diff = Math.abs(wA - wB);
+                const isMatchExpanded = Boolean(expandedMatchIds[m.id]);
                 return (
                   <div
                     key={m.id}
-                    className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs"
+                    className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-2 text-xs"
                   >
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <select
-                          value={m.courtNumber}
-                          onChange={(e) => handleUpdateMatchCourt(m.id, Number(e.target.value))}
-                          className="bg-amber-400 text-slate-950 font-black text-[11px] px-2 py-0.5 rounded-lg cursor-pointer"
-                        >
-                          {[1, 2, 3, 4, 5, 6].map((c) => (
-                            <option key={c} value={c}>
-                              {c}번 코트
-                            </option>
-                          ))}
-                        </select>
-                        <span className="font-bold text-slate-300 text-[11px]">{m.roundName}</span>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold border ${
-                            diff <= 2
-                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                          }`}
-                        >
-                          ⚖️ 전력 {wA}점 vs {wB}점 (실력차 {diff}점)
+                    {/* 접힌 요약 헤더: 항목을 누르면 펴져서 코트/선수 수정 가능 */}
+                    <button
+                      type="button"
+                      onClick={() => toggleMatchItem(m.id)}
+                      className="w-full flex justify-between items-center gap-2 text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-lg shrink-0">
+                          {m.courtNumber}번 코트
+                        </span>
+                        <span className="font-bold text-emerald-300 truncate">
+                          {m.teamA[0]?.name}/{m.teamA[1]?.name}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-black">VS</span>
+                        <span className="font-bold text-amber-300 truncate">
+                          {m.teamB[0]?.name}/{m.teamB[1]?.name}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMatch(m.id)}
-                        className="text-[10px] text-slate-500 hover:text-red-400 font-bold cursor-pointer"
-                      >
-                        삭제 ✕
-                      </button>
-                    </div>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-amber-300 shrink-0">
+                        {isMatchExpanded ? '접기 ▲' : '수정 ▼'}
+                      </span>
+                    </button>
 
-                    {/* 각 팀 선수 확인 및 클릭 시 수동 변경 가능한 드롭다운 */}
-                    <div className="grid grid-cols-11 gap-1.5 items-center">
-                      <div className="col-span-5 space-y-1">
-                        {[0, 1].map((slot) => (
-                          <select
-                            key={slot}
-                            value={m.teamA[slot as 0 | 1]?.id || ''}
-                            onChange={(e) =>
-                              handleUpdateMatchPlayer(m.id, 'teamA', slot as 0 | 1, e.target.value)
-                            }
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-emerald-300 font-bold truncate"
+                    {isMatchExpanded && (
+                      <div className="space-y-2 pt-2 border-t border-slate-800">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <select
+                              value={m.courtNumber}
+                              onChange={(e) => handleUpdateMatchCourt(m.id, Number(e.target.value))}
+                              className="bg-amber-400 text-slate-950 font-black text-[11px] px-2 py-0.5 rounded-lg cursor-pointer"
+                            >
+                              {[1, 2, 3, 4, 5, 6].map((c) => (
+                                <option key={c} value={c}>
+                                  {c}번 코트
+                                </option>
+                              ))}
+                            </select>
+                            <span className="font-bold text-slate-300 text-[11px]">{m.roundName}</span>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold border ${
+                                diff <= 2
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              }`}
+                            >
+                              ⚖️ 전력 {wA}점 vs {wB}점 (실력차 {diff}점)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMatch(m.id)}
+                            className="text-[10px] text-slate-500 hover:text-red-400 font-bold cursor-pointer"
                           >
-                            {selectedParticipants.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} ({p.grade}·{getPlayerWeight(p)}점){p.isGuest ? ' [미가입]' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        ))}
-                      </div>
+                            삭제 ✕
+                          </button>
+                        </div>
 
-                      <div className="col-span-1 text-center font-black text-slate-500 text-[10px]">
-                        VS
-                      </div>
-
-                      <div className="col-span-5 space-y-1">
-                        {[0, 1].map((slot) => (
-                          <select
-                            key={slot}
-                            value={m.teamB[slot as 0 | 1]?.id || ''}
-                            onChange={(e) =>
-                              handleUpdateMatchPlayer(m.id, 'teamB', slot as 0 | 1, e.target.value)
-                            }
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-300 font-bold truncate"
-                          >
-                            {selectedParticipants.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} ({p.grade}·{getPlayerWeight(p)}점){p.isGuest ? ' [미가입]' : ''}
-                              </option>
+                        {/* 각 팀 선수 확인 및 클릭 시 수동 변경 가능한 드롭다운 */}
+                        <div className="grid grid-cols-11 gap-1.5 items-center">
+                          <div className="col-span-5 space-y-1">
+                            {[0, 1].map((slot) => (
+                              <select
+                                key={slot}
+                                value={m.teamA[slot as 0 | 1]?.id || ''}
+                                onChange={(e) =>
+                                  handleUpdateMatchPlayer(m.id, 'teamA', slot as 0 | 1, e.target.value)
+                                }
+                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-emerald-300 font-bold truncate"
+                              >
+                                {selectedParticipants.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} ({p.grade}·{getPlayerWeight(p)}점){p.isGuest ? ' [미가입]' : ''}
+                                  </option>
+                                ))}
+                              </select>
                             ))}
-                          </select>
-                        ))}
+                          </div>
+
+                          <div className="col-span-1 text-center font-black text-slate-500 text-[10px]">
+                            VS
+                          </div>
+
+                          <div className="col-span-5 space-y-1">
+                            {[0, 1].map((slot) => (
+                              <select
+                                key={slot}
+                                value={m.teamB[slot as 0 | 1]?.id || ''}
+                                onChange={(e) =>
+                                  handleUpdateMatchPlayer(m.id, 'teamB', slot as 0 | 1, e.target.value)
+                                }
+                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-300 font-bold truncate"
+                              >
+                                {selectedParticipants.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} ({p.grade}·{getPlayerWeight(p)}점){p.isGuest ? ' [미가입]' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}
             </div>
+          </div>
+        )}
           </div>
         )}
 

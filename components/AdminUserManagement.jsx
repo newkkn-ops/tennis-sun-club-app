@@ -41,6 +41,14 @@ export default function AdminUserManagement({
 
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [isPendingSectionOpen, setIsPendingSectionOpen] = useState(false);
+  const [isMemberSectionOpen, setIsMemberSectionOpen] = useState(false);
+  const [expandedMemberIds, setExpandedMemberIds] = useState({});
+
+  const toggleExpandMember = (memberId) => {
+    setExpandedMemberIds((prev) => ({ ...prev, [memberId]: !prev[memberId] }));
+  };
+
   const [editingMember, setEditingMember] = useState(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -400,105 +408,151 @@ export default function AdminUserManagement({
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div
-        className={`rounded-2xl p-4 shadow-xl space-y-3 border ${
+        className={`rounded-2xl p-3.5 shadow-xl space-y-3 border ${
           pendingUsers.length > 0
             ? 'bg-gradient-to-br from-amber-950/60 via-slate-900 to-slate-900 border-amber-500/50'
             : 'bg-slate-900 border-slate-800'
         }`}
       >
-        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+        <button
+          type="button"
+          onClick={() => setIsPendingSectionOpen((prev) => !prev)}
+          className="w-full flex justify-between items-center text-left cursor-pointer"
+        >
           <div>
             <h2 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
               <span>⏳</span> 회원가입 승인 대기 목록
-              {pendingUsers.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black animate-pulse">
-                  {pendingUsers.length}명 대기
-                </span>
-              )}
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  pendingUsers.length > 0
+                    ? 'bg-amber-400 text-slate-950 animate-pulse'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {pendingUsers.length}명 대기
+              </span>
             </h2>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              신규 가입 신청 회원을 운영자가 확인 후 승인하면 정회원으로 등록되어 앱에 접속할 수 있습니다.
+              항목을 누르면 펼쳐져서 신규 가입 신청 회원을 확인·승인할 수 있습니다.
             </p>
           </div>
-        </div>
+          <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0">
+            {isPendingSectionOpen ? '접기 ▲' : '펼치기 ▼'}
+          </span>
+        </button>
 
-        {pendingUsers.length === 0 ? (
-          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-center text-[11px] text-slate-400">
-            현재 승인 대기 중인 회원가입 신청이 없습니다.
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {pendingUsers.map((u) => (
-              <div
-                key={u.id}
-                className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-3 space-y-2.5 text-xs shadow-md"
-              >
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-black text-white">{u.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                        {u.grade}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
-                      </span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black">
-                        승인 대기중
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                      <span>신청 ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
-                      {u.phone && <span>· 연락처: {u.phone}</span>}
-                      {u.requestedAt && <span>· 신청일시: {u.requestedAt}</span>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-1 border-t border-slate-800/80">
-                  <button
-                    type="button"
-                    onClick={() => handleApproveMember(u)}
-                    className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-[11px] shadow-md transition flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <span>✅</span>
-                    <span>가입 승인 (접속 허용)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRejectMember(u)}
-                    className="py-2 px-3 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <span>❌</span>
-                    <span>거절</span>
-                  </button>
-                </div>
+        {isPendingSectionOpen && (
+          <div className="pt-2.5 border-t border-slate-800">
+            {pendingUsers.length === 0 ? (
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-center text-[11px] text-slate-400">
+                현재 승인 대기 중인 회원가입 신청이 없습니다.
               </div>
-            ))}
+            ) : (
+              <div className="space-y-2">
+                {pendingUsers.map((u) => {
+                  const isExpanded = Boolean(expandedMemberIds[u.id]);
+                  return (
+                    <div
+                      key={u.id}
+                      className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-2.5 space-y-2 text-xs shadow-md"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandMember(u.id)}
+                        className="w-full flex justify-between items-center gap-2 text-left cursor-pointer"
+                      >
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm font-black text-white">{u.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                            {u.grade}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black">
+                            승인 대기중
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-amber-300 shrink-0">
+                          {isExpanded ? '접기 ▲' : '확인·승인 ▼'}
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                          <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
+                            <span>신청 ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
+                            {u.phone && <span>· 연락처: {u.phone}</span>}
+                            {u.requestedAt && <span>· 신청일시: {u.requestedAt}</span>}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleApproveMember(u)}
+                              className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-[11px] shadow-md transition flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <span>✅</span>
+                              <span>가입 승인 (접속 허용)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRejectMember(u)}
+                              className="py-2 px-3 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <span>❌</span>
+                              <span>거절</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3.5">
-        <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
-          <div>
-            <h2 className="text-sm font-black text-red-400 flex items-center gap-1.5">
-              <span>👑</span> 가입회원 정보 수정 & 회원가입 취소 관리
-            </h2>
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              관리자 권한으로 회원의 이름·성별·등급·권한을 수정하거나 회원가입을 취소(탈퇴)할 수 있습니다.
-            </p>
-          </div>
+      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+        <div className="flex justify-between items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black rounded-xl text-[11px] shadow-md shrink-0 cursor-pointer"
+            onClick={() => setIsMemberSectionOpen((prev) => !prev)}
+            className="flex-1 text-left cursor-pointer"
           >
-            {showAddForm ? '닫기' : '+ 회원 직접 등록'}
+            <h2 className="text-sm font-black text-red-400 flex items-center gap-1.5 flex-wrap">
+              <span>👑</span> 가입회원 정보 수정 & 회원가입 취소 관리
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 border border-amber-500/30 font-black">
+                총 {approvedUsers.length}명
+              </span>
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              항목을 눌러 펼친 뒤, 수정할 회원을 클릭하면 등급·권한·비밀번호 수정 및 탈퇴 처리가 가능합니다.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsMemberSectionOpen((prev) => !prev)}
+            className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0 cursor-pointer"
+          >
+            {isMemberSectionOpen ? '접기 ▲' : '펼치기 ▼'}
           </button>
         </div>
+
+        {isMemberSectionOpen && (
+          <div className="space-y-3 pt-2.5 border-t border-slate-800">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black rounded-xl text-[11px] shadow-md shrink-0 cursor-pointer"
+              >
+                {showAddForm ? '신규 등록 닫기 ▲' : '+ 회원 직접 등록 ▼'}
+              </button>
+            </div>
 
         {showAddForm && (
           <form
@@ -593,89 +647,116 @@ export default function AdminUserManagement({
           </span>
         </div>
 
-        <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
           {filteredUsers.map((u) => {
             const isMe = currentUserId && String(u.id) === String(currentUserId);
+            const isExpanded = Boolean(expandedMemberIds[u.id]);
             return (
               <div
                 key={u.id}
-                className="bg-slate-950 p-3 rounded-2xl border border-slate-800 hover:border-slate-700 transition space-y-2.5 text-xs"
+                className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 hover:border-slate-700 transition space-y-2 text-xs"
               >
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <div className="font-bold text-white flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-black">{u.name}</span>
-                      <span className="text-[10px] text-slate-400">
-                        ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
-                      </span>
-                      {u.isGuest && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                          임의추가
-                        </span>
-                      )}
-                      {isMe && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
-                          현재 로그인
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
-                      <span>ID: {u.username || u.email || '미등록'}</span>
-                      {u.phone && <span>· {u.phone}</span>}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-1.5 items-center shrink-0">
-                    <select
-                      value={u.grade}
-                      onChange={(e) => handleQuickGradeChange(u, e.target.value)}
-                      className="bg-slate-900 border border-slate-700 text-amber-300 text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
-                    >
-                      {GRADE_OPTIONS.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleQuickRoleChange(u, e.target.value)}
-                      className={`border text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer ${
+                <button
+                  type="button"
+                  onClick={() => toggleExpandMember(u.id)}
+                  className="w-full flex justify-between items-center gap-2 text-left cursor-pointer"
+                >
+                  <div className="font-bold text-white flex items-center gap-1.5 flex-wrap min-w-0">
+                    <span className="text-sm font-black truncate">{u.name}</span>
+                    <span className="text-[10px] text-slate-400">
+                      ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-extrabold">
+                      {u.grade}
+                    </span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
                         u.role === 'admin'
-                          ? 'bg-red-950/80 text-red-300 border-red-500/40'
-                          : 'bg-slate-900 text-slate-300 border-slate-700'
+                          ? 'bg-red-950/80 text-red-300 border border-red-500/40'
+                          : 'bg-slate-900 text-slate-400 border border-slate-800'
                       }`}
                     >
-                      <option value="member">일반회원</option>
-                      <option value="admin">👑 관리자</option>
-                    </select>
+                      {u.role === 'admin' ? '👑 관리자' : '일반회원'}
+                    </span>
+                    {u.isGuest && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                        임의추가
+                      </span>
+                    )}
+                    {isMe && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                        본인
+                      </span>
+                    )}
                   </div>
-                </div>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 shrink-0">
+                    {isExpanded ? '접기 ▲' : '수정 ▼'}
+                  </span>
+                </button>
 
-                <div className="flex gap-2 pt-1.5 border-t border-slate-900">
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(u)}
-                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <span>✎</span>
-                    <span>회원정보 수정</span>
-                  </button>
+                {isExpanded && (
+                  <div className="space-y-2.5 pt-2 border-t border-slate-800/90">
+                    <div className="flex justify-between items-center gap-2 flex-wrap">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                        <span>ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
+                        {u.phone && <span>· {u.phone}</span>}
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleCancelUserMembership(u)}
-                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-500/30 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <span>🗑️</span>
-                    <span>회원가입 취소 (탈퇴)</span>
-                  </button>
-                </div>
+                      <div className="flex gap-1.5 items-center shrink-0">
+                        <select
+                          value={u.grade}
+                          onChange={(e) => handleQuickGradeChange(u, e.target.value)}
+                          className="bg-slate-900 border border-slate-700 text-amber-300 text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
+                        >
+                          {GRADE_OPTIONS.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleQuickRoleChange(u, e.target.value)}
+                          className={`border text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer ${
+                            u.role === 'admin'
+                              ? 'bg-red-950/80 text-red-300 border-red-500/40'
+                              : 'bg-slate-900 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          <option value="member">일반회원</option>
+                          <option value="admin">👑 관리자</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(u)}
+                        className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <span>✎</span>
+                        <span>상세 정보·비밀번호 수정</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCancelUserMembership(u)}
+                        className="flex-1 py-1.5 px-2.5 rounded-xl bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-500/30 font-bold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <span>🗑️</span>
+                        <span>회원가입 취소 (탈퇴)</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
+          </div>
+        )}
       </div>
 
       {editingMember && (
