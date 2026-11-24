@@ -547,18 +547,71 @@
             </div>
           </div>
 
-          <!-- 내 정보 수정 (회원 본인 계정 수정 전용) -->
+          <!-- 내 계정 정보 카드 (기본 열람 상태 · '✏️ 내 정보 수정' 버튼 클릭 시에만 수정 폼 활성화) -->
           <div class="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 shadow-xl space-y-3">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                <span>✏️</span> 내 정보 수정 (본인 계정 관리)
-              </span>
-              <span id="mypageMemberIdBadge" class="text-[10px] text-slate-400 font-bold">ID: chulsoo</span>
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2.5">
+              <div>
+                <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                  <span>👤</span> 내 계정 정보
+                </span>
+                <p id="myProfileDescText" class="text-[10px] text-slate-400 mt-0.5">
+                  정보 변경이 필요할 때 우측 수정 버튼을 눌러 활성화하세요.
+                </p>
+              </div>
+              <button
+                type="button"
+                id="btnToggleMyProfileEdit"
+                onclick="toggleHtmlMyProfileEdit()"
+                class="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer shrink-0 transition"
+              >
+                ✏️ 내 정보 수정
+              </button>
             </div>
-            <p class="text-[11px] text-slate-400">
-              회원 모드에서는 본인 정보 수정만 가능하며, 코트 현황·KDK·토너먼트는 확인 전용으로 제공됩니다.
-            </p>
-            <form onsubmit="saveHtmlMyProfile(event)" class="space-y-2.5 text-xs">
+
+            <div id="myProfileSavedMsg" class="hidden text-[11px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-3 py-2 rounded-xl"></div>
+
+            <!-- 기본 열람 전용 요약 카드 -->
+            <div id="myProfileReadView" class="grid grid-cols-2 gap-2 text-xs">
+              <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 block">로그인 아이디 (ID)</span>
+                <span id="mypageMemberIdBadge" class="font-black text-amber-300 mt-0.5 block truncate">chulsoo</span>
+              </div>
+              <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 block">비밀번호</span>
+                <span class="font-bold text-slate-300 mt-0.5 block">•••••••• <span class="text-[10px] text-slate-500">(변경 가능)</span></span>
+              </div>
+              <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 block">이름 / 성별</span>
+                <span id="mypageReadNameGender" class="font-bold text-white mt-0.5 block">김철수 (남)</span>
+              </div>
+              <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 block">테니스 등급 / 연락처</span>
+                <span id="mypageReadGradePhone" class="font-bold text-emerald-300 mt-0.5 block truncate">금배 · 미등록</span>
+              </div>
+            </div>
+
+            <!-- 수정 버튼 클릭 시에만 열리는 내 정보 수정 폼 -->
+            <form id="myProfileEditForm" onsubmit="saveHtmlMyProfile(event)" class="hidden space-y-3 text-xs">
+              <div class="bg-slate-950/90 border border-amber-500/35 rounded-xl p-3 space-y-2.5">
+                <span class="text-[11px] font-black text-amber-300 flex items-center gap-1">
+                  <span>🔐</span> 아이디 · 비밀번호 변경
+                </span>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-400 mb-1">아이디 (ID) <span class="text-amber-400">*</span> <span class="font-normal text-slate-500">(이메일 형식 불필요)</span></label>
+                  <input type="text" id="myProfileUsername" minlength="2" required placeholder="사용할 아이디 입력 (2자 이상)" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">새 비밀번호 <span class="text-slate-500 font-normal">(변경 시)</span></label>
+                    <input type="password" id="myProfilePassword" placeholder="4자 이상 (미입력 시 유지)" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-emerald-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-400 mb-1">새 비밀번호 확인</label>
+                    <input type="password" id="myProfileConfirmPassword" placeholder="새 비밀번호 다시 입력" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-emerald-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                </div>
+              </div>
+
               <div class="grid grid-cols-2 gap-2.5">
                 <div>
                   <label class="block text-[11px] font-bold text-slate-400 mb-1">이름</label>
@@ -590,14 +643,14 @@
                   <input type="tel" id="myProfilePhone" placeholder="010-0000-0000" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
                 </div>
               </div>
-              <div>
-                <label class="block text-[11px] font-bold text-slate-400 mb-1">새 비밀번호 변경 <span class="text-slate-500 font-normal">(변경 시에만 입력, 4자 이상)</span></label>
-                <input type="password" id="myProfilePassword" placeholder="변경하지 않으려면 비워두세요" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
+              <div class="flex gap-2 pt-1">
+                <button type="button" onclick="toggleHtmlMyProfileEdit(false)" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs cursor-pointer">
+                  취소
+                </button>
+                <button type="submit" class="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer">
+                  💾 내 정보 수정 저장
+                </button>
               </div>
-              <div id="myProfileSavedMsg" class="hidden text-[11px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-3 py-2 rounded-xl"></div>
-              <button type="submit" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer">
-                💾 내 정보 저장하기
-              </button>
             </form>
           </div>
 
@@ -3293,51 +3346,110 @@
       renderKdk();
     }
 
-    function populateHtmlMyProfile() {
+    let htmlIsEditingMyProfile = false;
+
+    function toggleHtmlMyProfileEdit(forceState) {
+      htmlIsEditingMyProfile = typeof forceState === 'boolean' ? forceState : !htmlIsEditingMyProfile;
+      const readView = document.getElementById('myProfileReadView');
+      const editForm = document.getElementById('myProfileEditForm');
+      const toggleBtn = document.getElementById('btnToggleMyProfileEdit');
+      const descText = document.getElementById('myProfileDescText');
+      if (readView) readView.classList.toggle('hidden', htmlIsEditingMyProfile);
+      if (editForm) editForm.classList.toggle('hidden', !htmlIsEditingMyProfile);
+      if (toggleBtn) {
+        if (htmlIsEditingMyProfile) {
+          toggleBtn.innerText = '✕ 닫기';
+          toggleBtn.className = 'px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold rounded-xl text-[11px] cursor-pointer shrink-0 transition';
+        } else {
+          toggleBtn.innerText = '✏️ 내 정보 수정';
+          toggleBtn.className = 'px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer shrink-0 transition';
+        }
+      }
+      if (descText) {
+        descText.innerText = htmlIsEditingMyProfile
+          ? '아이디, 비밀번호 및 개인정보를 수정한 뒤 저장해 주세요.'
+          : '정보 변경이 필요할 때 우측 수정 버튼을 눌러 활성화하세요.';
+      }
+    }
+
+    function populateHtmlMyProfile(keepSavedMsg = false) {
       const me = registeredPlayers.find(p => p.id === currentHtmlUserId) || registeredPlayers[0];
       if (!me) return;
       const nameTitle = document.getElementById('mypageMemberName');
       const gradeBadge = document.getElementById('mypageMemberGrade');
       const roleBadge = document.getElementById('mypageMemberRoleBadge');
       const idBadge = document.getElementById('mypageMemberIdBadge');
+      const readNameGender = document.getElementById('mypageReadNameGender');
+      const readGradePhone = document.getElementById('mypageReadGradePhone');
       if (nameTitle) nameTitle.innerText = isAdminUser() ? `👑 ${me.name} 관리자님` : `☀️ ${me.name} 회원님`;
       if (gradeBadge) gradeBadge.innerText = me.grade || '테린이';
       if (roleBadge) roleBadge.innerText = isAdminUser() ? '관리자 모드' : '회원 모드';
-      if (idBadge) idBadge.innerText = `ID: ${me.username || me.email || me.id}`;
+      if (idBadge) idBadge.innerText = me.username || me.email || me.id;
+      if (readNameGender) readNameGender.innerText = `${me.name} (${me.gender === 'F' ? '여' : '남'})`;
+      if (readGradePhone) readGradePhone.innerText = `${me.grade || '테린이'} · ${me.phone || '미등록'}`;
 
+      const usernameInput = document.getElementById('myProfileUsername');
       const nameInput = document.getElementById('myProfileName');
       const genderInput = document.getElementById('myProfileGender');
       const gradeInput = document.getElementById('myProfileGrade');
       const phoneInput = document.getElementById('myProfilePhone');
       const pwInput = document.getElementById('myProfilePassword');
+      const pwConfirmInput = document.getElementById('myProfileConfirmPassword');
       const msgEl = document.getElementById('myProfileSavedMsg');
+      if (usernameInput) usernameInput.value = me.username || me.email || '';
       if (nameInput) nameInput.value = me.name || '';
       if (genderInput) genderInput.value = me.gender === 'F' ? 'F' : 'M';
       if (gradeInput) gradeInput.value = me.grade || '테린이';
       if (phoneInput) phoneInput.value = me.phone || '';
       if (pwInput) pwInput.value = '';
-      if (msgEl) msgEl.classList.add('hidden');
+      if (pwConfirmInput) pwConfirmInput.value = '';
+      if (msgEl && !keepSavedMsg) msgEl.classList.add('hidden');
+      toggleHtmlMyProfileEdit(false);
     }
 
     function saveHtmlMyProfile(e) {
       e.preventDefault();
       const me = registeredPlayers.find(p => p.id === currentHtmlUserId);
       if (!me) return;
+      const newUsername = (document.getElementById('myProfileUsername')?.value || '').trim();
       const newName = (document.getElementById('myProfileName')?.value || '').trim();
       const newGender = document.getElementById('myProfileGender')?.value || 'M';
       const newGrade = document.getElementById('myProfileGrade')?.value || '테린이';
       const newPhone = (document.getElementById('myProfilePhone')?.value || '').trim();
       const newPw = (document.getElementById('myProfilePassword')?.value || '').trim();
+      const newPwConfirm = (document.getElementById('myProfileConfirmPassword')?.value || '').trim();
 
+      if (newUsername.length < 2) {
+        alert('아이디(ID)는 최소 2자 이상 입력해 주세요. (이메일 형식 불필요)');
+        return;
+      }
+      const isDup = registeredPlayers.some(
+        p => p.id !== me.id && (
+          (p.username && p.username.toLowerCase() === newUsername.toLowerCase()) ||
+          (p.email && p.email.toLowerCase() === newUsername.toLowerCase())
+        )
+      );
+      if (isDup) {
+        alert(`이미 다른 회원이 사용 중인 아이디(${newUsername})입니다.`);
+        return;
+      }
       if (!newName) {
         alert('이름을 입력해 주세요.');
         return;
       }
-      if (newPw.length > 0 && newPw.length < 4) {
-        alert('비밀번호는 최소 4자 이상 입력해 주세요.');
-        return;
+      if (newPw.length > 0) {
+        if (newPw.length < 4) {
+          alert('새 비밀번호는 최소 4자 이상 입력해 주세요.');
+          return;
+        }
+        if (newPw !== newPwConfirm) {
+          alert('새 비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+          return;
+        }
       }
 
+      me.username = newUsername;
+      me.email = newUsername.includes('@') ? newUsername : (me.email || '');
       me.name = newName;
       me.gender = newGender === 'F' ? 'F' : 'M';
       me.grade = newGrade;
@@ -3347,12 +3459,12 @@
       syncHtmlUsersToStorage();
       document.getElementById('headerMemberName').innerText = isAdminUser() ? `${me.name} 관리자님` : `${me.name} 회원님`;
       document.getElementById('headerMemberGrade').innerText = me.grade;
-      populateHtmlMyProfile();
+      populateHtmlMyProfile(true);
       saveHtmlSessionState();
 
       const msgEl = document.getElementById('myProfileSavedMsg');
       if (msgEl) {
-        msgEl.innerText = '✅ 내 정보가 성공적으로 수정되어 저장되었습니다!';
+        msgEl.innerText = `✅ 내 정보가 저장되었습니다! (아이디: ${me.username}${newPw ? ' · 비밀번호 변경 완료' : ''})`;
         msgEl.classList.remove('hidden');
       }
     }
@@ -4103,7 +4215,13 @@
             (u.email && u.email.toLowerCase() === adminId))
       );
 
+      const defaultAdminRecord = registeredPlayers.find(u => u.id === 'p10');
+      const isDefaultAdminUnchanged =
+        !defaultAdminRecord?.password &&
+        (!defaultAdminRecord?.username || defaultAdminRecord.username.toLowerCase() === 'admin');
+
       const isDefaultAdminValid =
+        isDefaultAdminUnchanged &&
         (adminId === 'admin' || adminId === 'admin@suntc.kr') && adminPw === 'admin1234';
 
       const isMatchedAdminValid =
