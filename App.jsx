@@ -141,6 +141,27 @@ export default function TennisApp() {
   };
   const [currentTournament, setCurrentTournament] = useState<TournamentRecord>(tournamentHistory[0]);
   const [adminTourFilter, setAdminTourFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
+  const [openAdminTourSection, setOpenAdminTourSection] = useState<boolean>(false);
+  const [expandedAdminTourIds, setExpandedAdminTourIds] = useState<Record<string, boolean>>({});
+
+  const toggleExpandAdminTour = (tourId: string) => {
+    setExpandedAdminTourIds((prev) => ({ ...prev, [tourId]: !prev[tourId] }));
+  };
+
+  const handleUpdateTournamentField = (
+    tourId: string,
+    field: 'name' | 'date' | 'format' | 'courtCount',
+    value: any
+  ) => {
+    setTournamentHistory((prev) => {
+      const next = prev.map((t) => (t.id === tourId ? { ...t, [field]: value } : t));
+      persistTournamentHistory(next);
+      return next;
+    });
+    if (currentTournament.id === tourId) {
+      setCurrentTournament((prev) => ({ ...prev, [field]: value }));
+    }
+  };
 
   // 로컬 스토리지에서 저장된 대회 기록 불러오기
   useEffect(() => {
@@ -1570,7 +1591,7 @@ export default function TennisApp() {
               </button>
 
               <p className="text-[10px] text-center text-slate-500 pt-0.5">
-                💡 일반 로그인 시 회원모드(열람 및 본인 정보 수정)로 접속되며, 관리자 모드는 관리자 계정 인증 후 입장 가능합니다.
+                💡 일반 로그인 시 회원전용으로 접속되며, 관리자 모드는 관리자 계정 인증 후 입장 가능합니다.
               </p>
             </div>
           </div>
@@ -1887,7 +1908,7 @@ export default function TennisApp() {
                     : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 }`}
               >
-                {isAdmin ? '👑 관리자 모드' : '👤 회원 모드 (열람전용)'}
+                {isAdmin ? '👑 관리자 모드' : '👤 회원전용'}
               </span>
               <button
                 onClick={handleLogout}
@@ -1924,8 +1945,32 @@ export default function TennisApp() {
                   <span>📅 진행일: <strong className="text-amber-300">{currentTournament.date}</strong></span>
                   <span>•</span>
                   <span>방식: <strong className="text-emerald-300">{currentTournament.format === 'kdk' ? 'KDK 순환' : '예선/본선'}</strong></span>
+                  <span>•</span>
+                  <span className={currentTournament.status === 'completed' ? 'text-slate-400 font-bold' : 'text-emerald-400 font-bold'}>
+                    {currentTournament.status === 'completed' ? '🏁 종료됨' : '🔴 진행중'}
+                  </span>
                 </div>
               </div>
+
+              {tournamentHistory.length > 1 && (
+                <div className="pt-1.5 border-t border-slate-800/80 flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">📜 대회 기록 보기:</span>
+                  <select
+                    value={currentTournament.id}
+                    onChange={(e) => {
+                      const selected = tournamentHistory.find((t) => t.id === e.target.value);
+                      if (selected) setCurrentTournament(selected);
+                    }}
+                    className="flex-1 bg-slate-950/90 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-200 font-bold focus:outline-none"
+                  >
+                    {tournamentHistory.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        [{t.status === 'completed' ? '과거/종료' : '현재진행'}] {t.name} ({t.date})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* ---------------------------------------------------- */}
@@ -2064,13 +2109,22 @@ export default function TennisApp() {
 
                 {/* 코트 카드 리스트 (동적 생성된 모든 코트 출력) */}
                 <div className="space-y-3">
-                  {courts.map((court) => (
+                  {courts.map((court) => {
+                    const isMyAssignedCourt =
+                      Boolean(currentUser?.name) &&
+                      (court.teamA.some((m) => m.includes(currentUser.name)) ||
+                        court.teamB.some((m) => m.includes(currentUser.name)));
+                    return (
                     <div
                       key={court.id}
-                      className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3 relative overflow-hidden transition-all hover:border-slate-700"
+                      className={`bg-slate-900/90 border rounded-2xl p-4 shadow-xl space-y-3 relative overflow-hidden transition-all ${
+                        isMyAssignedCourt
+                          ? 'border-emerald-500/50 ring-1 ring-emerald-500/20'
+                          : 'border-slate-800 hover:border-slate-700'
+                      }`}
                     >
                       <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2 py-0.5 rounded-lg text-xs font-black bg-amber-400 text-slate-950">
                             {court.courtNumber}번 코트
                           </span>
@@ -2085,6 +2139,11 @@ export default function TennisApp() {
                           >
                             {court.status === 'playing' ? '🔴 LIVE 경기 중' : court.status === 'completed' ? '🏁 경기 완료' : '⚪ 대기 중'}
                           </span>
+                          {isMyAssignedCourt && (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950">
+                              🎾 내 배정 코트
+                            </span>
+                          )}
                         </div>
 
                         {isAdmin && (
@@ -2168,7 +2227,8 @@ export default function TennisApp() {
                         </button>
                       )}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
             )}
@@ -2704,199 +2764,443 @@ export default function TennisApp() {
                   )}
                 </div>
 
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                      <span>📊</span> 공식 대회 누적 전적 ({currentTournament.name})
-                    </span>
-                    <span className="text-xs font-extrabold text-amber-400">승률 75.0%</span>
-                  </div>
-                  <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
-                    <div className="bg-gradient-to-r from-amber-400 to-emerald-400 h-2.5 rounded-full" style={{ width: '75%' }} />
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 pt-1 text-center text-xs">
-                    <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
-                      <p className="text-[10px] text-slate-400">총 경기</p>
-                      <p className="text-base font-black text-white">12</p>
-                    </div>
-                    <div className="bg-emerald-950/40 p-2 rounded-xl border border-emerald-500/20">
-                      <p className="text-[10px] text-emerald-400 font-bold">승리</p>
-                      <p className="text-base font-black text-emerald-300">9</p>
-                    </div>
-                    <div className="bg-red-950/40 p-2 rounded-xl border border-red-500/20">
-                      <p className="text-[10px] text-red-400 font-bold">패배</p>
-                      <p className="text-base font-black text-red-300">3</p>
-                    </div>
-                    <div className="bg-amber-950/40 p-2 rounded-xl border border-amber-500/20">
-                      <p className="text-[10px] text-amber-400 font-bold">득실차</p>
-                      <p className="text-base font-black text-amber-300">+21</p>
-                    </div>
-                  </div>
-                </div>
+                {/* 2. 내 코트 배정 & 실시간 게임 진행사항 / 스코어 (운영자 배정 연동) */}
+                {(() => {
+                  const myName = currentUser.name;
+                  const myCourts = courts.filter(
+                    (c) =>
+                      c.teamA.some((m) => m.includes(myName)) ||
+                      c.teamB.some((m) => m.includes(myName))
+                  );
+                  const myKdkMatches = kdkRounds.flatMap((r) =>
+                    r.matches
+                      .filter((m) => m.teamA.includes(myName) || m.teamB.includes(myName))
+                      .map((m) => ({ ...m, roundName: r.name }))
+                  );
+                  const myStanding = kdkStandings.find((s) => s.name === myName);
+
+                  return (
+                    <>
+                      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                            <span>🏟️</span> 내 코트 배정 & 실시간 게임 진행사항
+                          </span>
+                          <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                            {myCourts.length > 0 ? `${myCourts.length}개 코트 배정됨` : '전체 코트 보기 가능'}
+                          </span>
+                        </div>
+
+                        {myCourts.length === 0 ? (
+                          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+                            <span>현재 코트에 직접 배정된 경기가 없습니다.</span>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('courts')}
+                              className="text-[11px] font-bold text-amber-300 underline cursor-pointer"
+                            >
+                              코트현황 보기 ➔
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {myCourts.map((mc) => {
+                              const inTeamA = mc.teamA.some((m) => m.includes(myName));
+                              return (
+                                <div
+                                  key={mc.id}
+                                  className="bg-slate-950 p-3 rounded-xl border border-emerald-500/40 space-y-1.5 text-xs"
+                                >
+                                  <div className="flex justify-between items-center">
+                                    <span className="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-[11px]">
+                                      {mc.courtNumber}번 코트 ({inTeamA ? 'TEAM A' : 'TEAM B'})
+                                    </span>
+                                    <span className="text-[10px] font-extrabold text-emerald-300">
+                                      {mc.status === 'playing'
+                                        ? '🔴 LIVE 경기 진행중'
+                                        : mc.status === 'completed'
+                                        ? '🏁 경기 완료'
+                                        : '⚪ 경기 대기중'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center pt-1">
+                                    <span className={`font-bold truncate flex-1 ${inTeamA ? 'text-amber-300' : 'text-slate-200'}`}>
+                                      {mc.teamA.join(' / ')}
+                                    </span>
+                                    <span className="px-2.5 py-0.5 rounded-lg bg-slate-900 border border-slate-700 font-black text-sm text-white mx-2">
+                                      {mc.scoreA} : {mc.scoreB}
+                                    </span>
+                                    <span className={`font-bold truncate flex-1 text-right ${!inTeamA ? 'text-amber-300' : 'text-slate-200'}`}>
+                                      {mc.teamB.join(' / ')}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {myKdkMatches.length > 0 && (
+                          <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                            <span className="text-[11px] font-bold text-slate-400 block">
+                              🔄 내 라운드별 대진 & 스코어 기록 ({myKdkMatches.length}경기)
+                            </span>
+                            {myKdkMatches.map((m, idx) => (
+                              <div
+                                key={idx}
+                                className="bg-slate-950/80 px-3 py-2 rounded-xl border border-slate-800 flex justify-between items-center text-[11px]"
+                              >
+                                <span className="text-amber-400 font-bold shrink-0">
+                                  {m.court}코트
+                                </span>
+                                <span className="text-slate-200 font-bold truncate mx-2">
+                                  {m.teamA} vs {m.teamB}
+                                </span>
+                                <span className="font-black text-emerald-300 shrink-0">
+                                  {m.scoreA} : {m.scoreB} ({m.completed ? '완료' : '진행'})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3. 현재 대회 본인 성적 & 누적 전적 */}
+                      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                            <span>📊</span> 현재 본인 성적 & 대회 전적 ({currentTournament.name})
+                          </span>
+                          <span className="text-xs font-extrabold text-amber-400">
+                            {myStanding ? `현재 ${myStanding.rank}위 · 승점 ${myStanding.pts}점` : '승률 75.0%'}
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                          <div className="bg-gradient-to-r from-amber-400 to-emerald-400 h-2.5 rounded-full" style={{ width: '75%' }} />
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 pt-1 text-center text-xs">
+                          <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
+                            <p className="text-[10px] text-slate-400">출전 경기</p>
+                            <p className="text-base font-black text-white">
+                              {myStanding ? myStanding.matches : 12}
+                            </p>
+                          </div>
+                          <div className="bg-emerald-950/40 p-2 rounded-xl border border-emerald-500/20">
+                            <p className="text-[10px] text-emerald-400 font-bold">승리</p>
+                            <p className="text-base font-black text-emerald-300">
+                              {myStanding ? myStanding.wins : 9}
+                            </p>
+                          </div>
+                          <div className="bg-red-950/40 p-2 rounded-xl border border-red-500/20">
+                            <p className="text-[10px] text-red-400 font-bold">패배</p>
+                            <p className="text-base font-black text-red-300">
+                              {myStanding ? myStanding.losses : 3}
+                            </p>
+                          </div>
+                          <div className="bg-amber-950/40 p-2 rounded-xl border border-amber-500/20">
+                            <p className="text-[10px] text-amber-400 font-bold">득실차</p>
+                            <p className="text-base font-black text-amber-300">
+                              {myStanding
+                                ? myStanding.diff >= 0
+                                  ? `+${myStanding.diff}`
+                                  : myStanding.diff
+                                : '+21'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. 과거 대회 및 게임 기록 · 성적 히스토리 */}
+                      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                            <span>📜</span> 과거 대회 기록 & 게임 성적 히스토리
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            총 {tournamentHistory.length}개 대회 기록
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">
+                          {tournamentHistory.map((t, idx) => {
+                            const isCur = currentTournament.id === t.id;
+                            return (
+                              <div
+                                key={t.id}
+                                className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                                  isCur
+                                    ? 'bg-amber-950/30 border-amber-500/40'
+                                    : 'bg-slate-950 border-slate-800'
+                                }`}
+                              >
+                                <div className="flex justify-between items-center gap-2">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${
+                                        t.status === 'completed'
+                                          ? 'bg-slate-800 text-slate-300'
+                                          : 'bg-emerald-500/20 text-emerald-300'
+                                      }`}
+                                    >
+                                      {t.status === 'completed' ? '🏁 종료' : '🔴 진행중'}
+                                    </span>
+                                    <span className="font-black text-white truncate">{t.name}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCurrentTournament(t);
+                                      setActiveTab(t.format === 'kdk' ? 'kdk' : 'tournament');
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer"
+                                  >
+                                    기록·대진 보기 ➔
+                                  </button>
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] text-slate-400">
+                                  <span>
+                                    📅 {t.date} · {t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · {t.courtCount}코트
+                                  </span>
+                                  <span className="text-emerald-300 font-bold">
+                                    {idx === 0
+                                      ? '본인 성적: 3승 0패 (+8 · 1위)'
+                                      : idx === 1
+                                      ? '본인 성적: 4승 1패 (+9 · 준우승)'
+                                      : '본인 성적: 2승 1패 (+4 · 3위)'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 5]: 운영자 관리 센터 (관리자 로그인 시에만 표시) */}
+            {/* [탭 5]: 운영자 관리 센터 (관리자 로그인 시에만 표시 · 항목 클릭 시 펼쳐서 수정) */}
             {/* ---------------------------------------------------- */}
             {isAdmin && activeTab === 'admin' && (
-              <div className="space-y-4">
-                {/* 0. 생성된 대회 & 종료된 대회 목록 관리 (상태 전환 및 삭제) */}
-                <div className="bg-slate-900 border border-amber-500/35 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-2.5">
-                    <div>
-                      <h3 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
-                        <span>🏆</span> 생성된 대회 & 종료된 대회 관리 ({tournamentHistory.length}개)
+              <div className="space-y-3">
+                {/* 0. 생성된 대회 & 종료된 대회 목록 관리 (접기/펼치기 + 항목 클릭 시 펼쳐서 수정/종료/삭제) */}
+                <div className="bg-slate-900 border border-amber-500/35 rounded-2xl p-3.5 shadow-xl space-y-3">
+                  <div className="flex justify-between items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOpenAdminTourSection((prev) => !prev)}
+                      className="flex-1 text-left cursor-pointer"
+                    >
+                      <h3 className="text-sm font-black text-amber-300 flex items-center gap-1.5 flex-wrap">
+                        <span>🏆</span> 생성된 대회 & 종료된 대회 관리
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 border border-amber-500/30 font-black">
+                          {tournamentHistory.length}개
+                        </span>
                       </h3>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        관리자 권한으로 진행 중인 대회를 종료 처리하거나, 생성/종료된 대회를 삭제할 수 있습니다.
+                        항목을 눌러 펼친 뒤, 각 대회를 클릭하면 대회명·방식·날짜 수정 및 종료/삭제가 가능합니다.
                       </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setShowNewTourModal(true)}
-                        className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-[11px] cursor-pointer"
-                      >
-                        + 새 대회 개설
-                      </button>
-                      {tournamentHistory.some((t) => t.status === 'completed') && (
-                        <button
-                          type="button"
-                          onClick={handleDeleteCompletedTournaments}
-                          className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-[11px] cursor-pointer"
-                        >
-                          🗑️ 종료 대회 일괄삭제
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 상태 필터 탭 */}
-                  <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setAdminTourFilter('all')}
-                      className={`py-1.5 rounded-lg cursor-pointer transition ${
-                        adminTourFilter === 'all'
-                          ? 'bg-amber-400 text-slate-950 font-black'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      전체 ({tournamentHistory.length})
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAdminTourFilter('in_progress')}
-                      className={`py-1.5 rounded-lg cursor-pointer transition ${
-                        adminTourFilter === 'in_progress'
-                          ? 'bg-emerald-500 text-slate-950 font-black'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
+                      onClick={() => setOpenAdminTourSection((prev) => !prev)}
+                      className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0 cursor-pointer"
                     >
-                      🔴 진행중 ({tournamentHistory.filter((t) => t.status !== 'completed').length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAdminTourFilter('completed')}
-                      className={`py-1.5 rounded-lg cursor-pointer transition ${
-                        adminTourFilter === 'completed'
-                          ? 'bg-slate-600 text-white font-black'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      🏁 종료됨 ({tournamentHistory.filter((t) => t.status === 'completed').length})
+                      {openAdminTourSection ? '접기 ▲' : '펼치기 ▼'}
                     </button>
                   </div>
 
-                  {/* 대회 목록 */}
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
-                    {tournamentHistory.filter((t) =>
-                      adminTourFilter === 'all'
-                        ? true
-                        : adminTourFilter === 'completed'
-                        ? t.status === 'completed'
-                        : t.status !== 'completed'
-                    ).length === 0 ? (
-                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-xs text-slate-400">
-                        해당 조건의 대회가 없습니다.
+                  {openAdminTourSection && (
+                    <div className="space-y-3 pt-2.5 border-t border-slate-800">
+                      <div className="flex flex-wrap justify-between items-center gap-1.5">
+                        <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px] font-bold flex-1">
+                          <button
+                            type="button"
+                            onClick={() => setAdminTourFilter('all')}
+                            className={`py-1.5 px-2 rounded-lg cursor-pointer transition ${
+                              adminTourFilter === 'all'
+                                ? 'bg-amber-400 text-slate-950 font-black'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            전체 ({tournamentHistory.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminTourFilter('in_progress')}
+                            className={`py-1.5 px-2 rounded-lg cursor-pointer transition ${
+                              adminTourFilter === 'in_progress'
+                                ? 'bg-emerald-500 text-slate-950 font-black'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            🔴 진행중 ({tournamentHistory.filter((t) => t.status !== 'completed').length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminTourFilter('completed')}
+                            className={`py-1.5 px-2 rounded-lg cursor-pointer transition ${
+                              adminTourFilter === 'completed'
+                                ? 'bg-slate-600 text-white font-black'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            🏁 종료됨 ({tournamentHistory.filter((t) => t.status === 'completed').length})
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setShowNewTourModal(true)}
+                            className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-[10px] cursor-pointer"
+                          >
+                            + 새 대회
+                          </button>
+                          {tournamentHistory.some((t) => t.status === 'completed') && (
+                            <button
+                              type="button"
+                              onClick={handleDeleteCompletedTournaments}
+                              className="px-2 py-1.5 bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-[10px] cursor-pointer"
+                            >
+                              🗑️ 종료 일괄삭제
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      tournamentHistory
-                        .filter((t) =>
+
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-0.5">
+                        {tournamentHistory.filter((t) =>
                           adminTourFilter === 'all'
                             ? true
                             : adminTourFilter === 'completed'
                             ? t.status === 'completed'
                             : t.status !== 'completed'
-                        )
-                        .map((t) => {
-                          const isCurrent = currentTournament.id === t.id;
-                          const isCompleted = t.status === 'completed';
-                          return (
-                            <div
-                              key={t.id}
-                              className={`p-3 rounded-xl border space-y-2 text-xs transition ${
-                                isCurrent
-                                  ? 'bg-amber-950/30 border-amber-500/50'
-                                  : 'bg-slate-950 border-slate-800'
-                              }`}
-                            >
-                              <div className="flex justify-between items-start gap-2">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span
-                                      className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
-                                        isCompleted
-                                          ? 'bg-slate-800 text-slate-300 border border-slate-700'
-                                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                      }`}
-                                    >
-                                      {isCompleted ? '🏁 종료됨' : '🔴 진행중'}
-                                    </span>
-                                    {isCurrent && (
-                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black">
-                                        현재 선택
-                                      </span>
-                                    )}
-                                    <span className="font-black text-white truncate">{t.name}</span>
-                                  </div>
-                                  <p className="text-[10px] text-slate-400 mt-1">
-                                    📅 {t.date} · {t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · {t.courtCount}코트
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex gap-1.5 pt-1.5 border-t border-slate-800/80">
-                                {!isCurrent && (
+                        ).length === 0 ? (
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-xs text-slate-400">
+                            해당 조건의 대회가 없습니다.
+                          </div>
+                        ) : (
+                          tournamentHistory
+                            .filter((t) =>
+                              adminTourFilter === 'all'
+                                ? true
+                                : adminTourFilter === 'completed'
+                                ? t.status === 'completed'
+                                : t.status !== 'completed'
+                            )
+                            .map((t) => {
+                              const isCurrent = currentTournament.id === t.id;
+                              const isCompleted = t.status === 'completed';
+                              const isExpanded = Boolean(expandedAdminTourIds[t.id]);
+                              return (
+                                <div
+                                  key={t.id}
+                                  className={`p-2.5 rounded-xl border space-y-2 text-xs transition ${
+                                    isCurrent
+                                      ? 'bg-amber-950/30 border-amber-500/50'
+                                      : 'bg-slate-950 border-slate-800'
+                                  }`}
+                                >
                                   <button
                                     type="button"
-                                    onClick={() => setCurrentTournament(t)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] cursor-pointer"
+                                    onClick={() => toggleExpandAdminTour(t.id)}
+                                    className="w-full flex justify-between items-center gap-2 text-left cursor-pointer"
                                   >
-                                    보기 선택
+                                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                      <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${
+                                          isCompleted
+                                            ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                        }`}
+                                      >
+                                        {isCompleted ? '🏁 종료됨' : '🔴 진행중'}
+                                      </span>
+                                      {isCurrent && (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black shrink-0">
+                                          현재 선택
+                                        </span>
+                                      )}
+                                      <span className="font-black text-white truncate">{t.name}</span>
+                                    </div>
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 shrink-0">
+                                      {isExpanded ? '접기 ▲' : '수정 ▼'}
+                                    </span>
                                   </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleTournamentStatus(t.id)}
-                                  className="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer"
-                                >
-                                  {isCompleted ? '🔄 진행중으로 복원' : '🏁 대회 종료 처리'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteTournament(t.id)}
-                                  className="px-3 py-1.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-black text-[11px] cursor-pointer"
-                                >
-                                  🗑️ 삭제
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                    )}
-                  </div>
+
+                                  {isExpanded && (
+                                    <div className="space-y-2 pt-2 border-t border-slate-800/90">
+                                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
+                                        <input
+                                          type="text"
+                                          value={t.name}
+                                          onChange={(e) =>
+                                            handleUpdateTournamentField(t.id, 'name', e.target.value)
+                                          }
+                                          placeholder="대회명 수정"
+                                          className="sm:col-span-6 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-bold"
+                                        />
+                                        <input
+                                          type="date"
+                                          value={t.date}
+                                          onChange={(e) =>
+                                            handleUpdateTournamentField(t.id, 'date', e.target.value)
+                                          }
+                                          className="sm:col-span-3 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-amber-300 font-mono"
+                                        />
+                                        <select
+                                          value={t.format}
+                                          onChange={(e) =>
+                                            handleUpdateTournamentField(
+                                              t.id,
+                                              'format',
+                                              e.target.value as 'kdk' | 'tournament'
+                                            )
+                                          }
+                                          className="sm:col-span-3 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-emerald-300 font-bold"
+                                        >
+                                          <option value="kdk">KDK 순환</option>
+                                          <option value="tournament">토너먼트</option>
+                                        </select>
+                                      </div>
+
+                                      <div className="flex gap-1.5">
+                                        {!isCurrent && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setCurrentTournament(t)}
+                                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] cursor-pointer"
+                                          >
+                                            보기 선택
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleTournamentStatus(t.id)}
+                                          className="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer"
+                                        >
+                                          {isCompleted ? '🔄 진행중으로 복원' : '🏁 대회 종료 처리'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteTournament(t.id)}
+                                          className="px-3 py-1.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-black text-[11px] cursor-pointer"
+                                        >
+                                          🗑️ 삭제
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 1. 회원가입 승인 · 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}

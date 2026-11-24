@@ -1371,15 +1371,12 @@ export default function KdkCourtOperations({
             <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-3.5 space-y-2">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-xs font-black text-emerald-300">
-                  👤 회원 모드 (열람 전용 · 수정 불가)
+                  🎾 {activeCourt.courtNumber}번 코트 배정 선수 및 운영 현황
                 </span>
                 <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
                   {activeCourt.players.length}명 참여 · 1인 필수 {activeCourt.minGamesPerPlayer}G (총 {activeCourt.games.length}경기)
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">
-                코트 추가·삭제, 참여인원 선정, 게임수 및 대진 수정은 운영자(관리자) 전용입니다.
-              </p>
               <div className="flex flex-wrap gap-1 pt-0.5">
                 {activeCourt.players.map((p) => (
                   <span
@@ -1395,7 +1392,7 @@ export default function KdkCourtOperations({
           )}
 
           {/* ========================================================== */}
-          {/* 2. 코트별 게임 진행 및 스코어 입력 (관리자: 편집 / 회원: 열람 전용) */}
+          {/* 2. 코트별 게임 진행 및 스코어 */}
           {/* ========================================================== */}
           <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -1405,7 +1402,7 @@ export default function KdkCourtOperations({
                 </h4>
                 <p className="text-[10px] text-slate-400">
                   {!isAdmin
-                    ? '실시간 경기 진행 현황 및 스코어 (확인 전용)'
+                    ? '운영자가 배정한 실시간 경기 진행 현황 및 스코어'
                     : activeCourt.assignMode === 'MANUAL'
                     ? '수동모드: 각 게임의 출전 선수를 드롭다운으로 직접 변경할 수 있습니다.'
                     : activeCourt.assignMode === 'SEED_AUTO'

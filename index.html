@@ -182,7 +182,7 @@
 
         <div class="flex items-center gap-1.5">
           <span id="roleStatusBadge" class="px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40">
-            👤 회원 모드 (열람전용)
+            👤 회원전용
           </span>
           <button onclick="openAuthScreenModal()" id="authActionBtn" class="px-2 py-1 rounded-xl text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700 hover:text-white transition cursor-pointer">
             로그아웃
@@ -212,6 +212,11 @@
               <span>•</span>
               <span>방식: <strong id="mobileTourFormat" class="text-emerald-300">KDK 순환</strong></span>
             </div>
+          </div>
+
+          <div class="pt-1.5 border-t border-slate-800/80 flex items-center gap-2">
+            <span class="text-[10px] font-bold text-slate-400 shrink-0">📜 대회 기록 보기:</span>
+            <select id="mobileTourHistorySelect" onchange="switchTournament(this.value)" class="flex-1 bg-slate-950/90 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-200 font-bold focus:outline-none"></select>
           </div>
         </div>
 
@@ -654,9 +659,21 @@
             </form>
           </div>
 
+          <!-- 2. 내 코트 배정 & 실시간 게임 진행사항 / 스코어 (운영자 배정 연동) -->
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <span class="text-xs font-bold text-slate-300">📊 공식 대회 누적 전적</span>
+              <span class="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                <span>🏟️</span> 내 코트 배정 & 실시간 게임 진행사항
+              </span>
+              <span id="mypageMyCourtsCountBadge" class="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">확인</span>
+            </div>
+            <div id="mypageMyCourtsList" class="space-y-2 text-xs"></div>
+          </div>
+
+          <!-- 3. 현재 본인 성적 & 공식 대회 누적 전적 -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+              <span class="text-xs font-bold text-slate-300">📊 현재 본인 성적 & 공식 대회 전적</span>
               <span class="text-xs font-extrabold text-amber-400">승률 75.0%</span>
             </div>
             <div class="grid grid-cols-4 gap-2 pt-1 text-center text-xs">
@@ -666,75 +683,96 @@
               <div class="bg-amber-950/40 p-2 rounded-xl border border-amber-500/20"><p class="text-[10px] text-amber-400 font-bold">득실차</p><p class="text-base font-black text-amber-300">+21</p></div>
             </div>
           </div>
+
+          <!-- 4. 과거 대회 기록 & 게임 성적 히스토리 -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+              <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                <span>📜</span> 과거 대회 기록 & 게임 성적 히스토리
+              </span>
+              <span id="mypageHistoryCountBadge" class="text-[10px] text-slate-400">대회 기록</span>
+            </div>
+            <div id="mypageHistoryList" class="space-y-2 max-h-64 overflow-y-auto"></div>
+          </div>
         </div>
 
         <!-- ---------------------------------------------------- -->
-        <!-- [탭 5]: 운영자 대회 생성 & 코트/선수 자동·수동 배치 센터 -->
+        <!-- [탭 5]: 운영자 대회 생성 & 코트/선수 자동·수동 배치 센터 (항목 클릭 시 펼쳐서 수정) -->
         <!-- ---------------------------------------------------- -->
-        <div id="tabContentAdmin" class="space-y-4 hidden">
-          <!-- 상단 안내 배너 -->
-          <div class="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-4 shadow-xl">
-            <div class="flex items-center justify-between">
+        <div id="tabContentAdmin" class="space-y-3 hidden">
+          <!-- 상단 안내 배너 & 전체 펼치기/접기 -->
+          <div class="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-3.5 shadow-xl">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
               <div class="flex items-center gap-2">
                 <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">ADMIN CONSOLE</span>
-                <span class="text-xs font-extrabold text-amber-300">관리자 대회 생성 & 코트/선수 배치</span>
+                <span class="text-xs font-extrabold text-amber-300">운영관리 센터 (항목을 누르면 펼쳐서 수정)</span>
               </div>
-              <span class="text-[10px] text-slate-300 bg-slate-950/80 px-2 py-0.5 rounded-lg border border-slate-800">👑 관리자 전용</span>
+              <button type="button" id="btnToggleAllAdminSecs" onclick="toggleAllHtmlAdminSections()" class="text-[10px] font-black px-2.5 py-1 rounded-xl bg-slate-950/90 hover:bg-slate-800 text-amber-300 border border-amber-500/30 cursor-pointer transition">
+                📂 전체 항목 펼치기 ▼
+              </button>
             </div>
             <p class="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-              ① 대회명 생성 ➔ ② 대회방식(토너먼트 / KDK) 선택 ➔ ③ 선수 배치(로그인 회원 선택 + 미로그인 선수 이름 직접 입력) ➔ ④ 코트 및 선수 배정(자동/수동) 후 경기를 시작하면 앱 전체에 즉시 자동 연동됩니다.
+              각 관리 항목이 접혀 있습니다. 원하는 항목을 클릭하면 펼쳐져서 내용을 수정·관리할 수 있습니다.
             </p>
           </div>
 
-          <!-- STEP 1: 대회명 생성 -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <!-- STEP 1: 대회명 생성 (접기/펼치기) -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+            <button type="button" onclick="toggleHtmlAdminSection('step1')" class="w-full flex items-center justify-between text-left cursor-pointer">
               <div class="flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">1</span>
                 <h3 class="text-sm font-black text-white">대회명 생성</h3>
               </div>
-              <span id="adminTitleConfirmBadge" class="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                ✓ 설정됨
-              </span>
-            </div>
+              <div class="flex items-center gap-1.5">
+                <span id="adminTitleConfirmBadge" class="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  ✓ 설정됨
+                </span>
+                <span id="adminSecArrow_step1" class="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">수정 ▼</span>
+              </div>
+            </button>
 
-            <div class="flex flex-wrap gap-1.5">
-              <button type="button" onclick="setAdminTourTitle('2026년 11월 정기 월례회')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">+ 2026년 11월 정기 월례회</button>
-              <button type="button" onclick="setAdminTourTitle('제5회 썬 테니스 클럽 챔피언십')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">+ 제5회 썬 테니스 클럽 챔피언십</button>
-              <button type="button" onclick="setAdminTourTitle('주말 번개 KDK 친선대회')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">+ 주말 번개 KDK 친선대회</button>
-            </div>
+            <div id="adminSecBody_step1" class="hidden space-y-3 pt-2.5 border-t border-slate-800">
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="setAdminTourTitle('2026년 11월 정기 월례회')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">+ 2026년 11월 정기 월례회</button>
+                <button type="button" onclick="setAdminTourTitle('제5회 썬 테니스 클럽 챔피언십')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">+ 제5회 썬 테니스 클럽 챔피언십</button>
+                <button type="button" onclick="setAdminTourTitle('주말 번개 KDK 친선대회')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">+ 주말 번개 KDK 친선대회</button>
+              </div>
 
-            <div class="flex gap-2">
-              <input
-                type="text"
-                id="adminTourTitleInput"
-                value="2026 썬 테니스 11월 공식 월례 챔피언십"
-                placeholder="생성할 대회명을 입력하세요"
-                class="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-bold focus:outline-none focus:ring-2 focus:ring-amber-400"
-              />
-              <button
-                type="button"
-                onclick="confirmAdminTourTitle()"
-                class="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-md shrink-0 cursor-pointer"
-              >
-                대회명 확정
-              </button>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="adminTourTitleInput"
+                  value="2026 썬 테니스 11월 공식 월례 챔피언십"
+                  placeholder="생성할 대회명을 입력하세요"
+                  class="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-bold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+                <button
+                  type="button"
+                  onclick="confirmAdminTourTitle()"
+                  class="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-md shrink-0 cursor-pointer"
+                >
+                  대회명 확정
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- STEP 2: 대회 방식 선택 (토너먼트 vs KDK 버튼) -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <!-- STEP 2: 대회 방식 선택 (접기/펼치기) -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+            <button type="button" onclick="toggleHtmlAdminSection('step2')" class="w-full flex items-center justify-between text-left cursor-pointer">
               <div class="flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">2</span>
                 <h3 class="text-sm font-black text-white">대회 방식 선택 (토너먼트 / KDK)</h3>
               </div>
-              <span id="adminSelectedModeBadge" class="text-[10px] font-black text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-400/30">
-                선택됨: 🔄 KDK 방식
-              </span>
-            </div>
+              <div class="flex items-center gap-1.5">
+                <span id="adminSelectedModeBadge" class="text-[10px] font-black text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                  🔄 KDK 방식
+                </span>
+                <span id="adminSecArrow_step2" class="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">수정 ▼</span>
+              </div>
+            </button>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div id="adminSecBody_step2" class="hidden grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-800">
               <button
                 type="button"
                 id="btnAdminModeTournament"
@@ -765,183 +803,191 @@
             </div>
           </div>
 
-          <!-- STEP 3: 선수 배치 (로그인 회원 선택 + 미로그인 임의 이름 직접 입력) -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3.5">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <!-- STEP 3: 선수 배치 (접기/펼치기) -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+            <button type="button" onclick="toggleHtmlAdminSection('step3')" class="w-full flex items-center justify-between text-left cursor-pointer">
               <div class="flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">3</span>
                 <div>
                   <h3 class="text-sm font-black text-white">선수 구성 및 참가자 배치</h3>
-                  <p class="text-[10px] text-slate-400">로그인 회원을 선택하거나, 미로그인 선수는 이름을 직접 입력해 추가하세요.</p>
+                  <p class="text-[10px] text-slate-400">항목을 눌러 참가 회원을 선택하거나 임의 선수를 추가하세요.</p>
                 </div>
               </div>
-              <span id="adminSelectedPlayersCount" class="text-xs font-black text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/30">
-                참가 확정: 8명
-              </span>
-            </div>
+              <div class="flex items-center gap-1.5">
+                <span id="adminSelectedPlayersCount" class="text-[11px] font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/30">
+                  참가 확정: 8명
+                </span>
+                <span id="adminSecArrow_step3" class="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300">수정 ▼</span>
+              </div>
+            </button>
 
-            <!-- 3-A. 로그인된 회원 선택 -->
-            <div class="space-y-2">
-              <div class="flex justify-between items-center">
-                <span class="text-xs font-extrabold text-emerald-300">🟢 로그인 / 등록된 클럽 회원 선택</span>
-                <button type="button" onclick="toggleSelectAllAdminPlayers()" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold cursor-pointer">전체 선택/해제</button>
+            <div id="adminSecBody_step3" class="hidden space-y-3.5 pt-2.5 border-t border-slate-800">
+              <!-- 3-A. 로그인된 회원 선택 -->
+              <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-extrabold text-emerald-300">🟢 로그인 / 등록된 클럽 회원 선택</span>
+                  <button type="button" onclick="toggleSelectAllAdminPlayers()" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold cursor-pointer">전체 선택/해제</button>
+                </div>
+                <div id="adminAvailablePlayersGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1"></div>
               </div>
-              <div id="adminAvailablePlayersGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1"></div>
-            </div>
 
-            <!-- 3-B. 로그인을 못하는 선수(비로그인/임의 선수) 이름 추가 -->
-            <div class="bg-slate-950/90 border border-amber-500/30 rounded-2xl p-3.5 space-y-2.5">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-extrabold text-amber-300">✍️ 로그인을 못하는 선수 (관리자 임의 이름 직접 추가)</span>
-                <span class="text-[10px] text-slate-400">쉼표(,) 구분 복수 입력 가능</span>
+              <!-- 3-B. 로그인을 못하는 선수(비로그인/임의 선수) 이름 추가 -->
+              <div class="bg-slate-950/90 border border-amber-500/30 rounded-2xl p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-extrabold text-amber-300">✍️ 로그인을 못하는 선수 (관리자 임의 이름 직접 추가)</span>
+                  <span class="text-[10px] text-slate-400">쉼표(,) 구분 복수 입력 가능</span>
+                </div>
+                <div class="grid grid-cols-12 gap-2">
+                  <input
+                    type="text"
+                    id="adminGuestNameInput"
+                    placeholder="이름 입력 (예: 홍길동 또는 홍길동, 이순신)"
+                    class="col-span-6 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+                  />
+                  <select id="adminGuestGradeSelect" class="col-span-3 px-2 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300 font-bold">
+                    <option value="금배">금배</option>
+                    <option value="은배" selected>은배</option>
+                    <option value="동배">동배</option>
+                    <option value="국화">국화</option>
+                    <option value="개나리">개나리</option>
+                    <option value="테린이">테린이</option>
+                  </select>
+                  <button
+                    type="button"
+                    onclick="addAdminGuestPlayer()"
+                    class="col-span-3 py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
+                  >
+                    + 임의 선수 추가
+                  </button>
+                </div>
+                <div id="adminSelectedPlayerTags" class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80"></div>
               </div>
-              <div class="grid grid-cols-12 gap-2">
-                <input
-                  type="text"
-                  id="adminGuestNameInput"
-                  placeholder="이름 입력 (예: 홍길동 또는 홍길동, 이순신)"
-                  class="col-span-6 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
-                />
-                <select id="adminGuestGradeSelect" class="col-span-3 px-2 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300 font-bold">
-                  <option value="금배">금배</option>
-                  <option value="은배" selected>은배</option>
-                  <option value="동배">동배</option>
-                  <option value="국화">국화</option>
-                  <option value="개나리">개나리</option>
-                  <option value="테린이">테린이</option>
-                </select>
-                <button
-                  type="button"
-                  onclick="addAdminGuestPlayer()"
-                  class="col-span-3 py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
-                >
-                  + 임의 선수 추가
-                </button>
-              </div>
-              <div id="adminSelectedPlayerTags" class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/80"></div>
             </div>
           </div>
 
-          <!-- STEP 4: 코트 배정 및 선수 배치 (자동 방식 vs 수동 방식) -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <!-- STEP 4: 코트 배정 및 선수 배치 (접기/펼치기) -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+            <button type="button" onclick="toggleHtmlAdminSection('step4')" class="w-full flex items-center justify-between text-left cursor-pointer">
               <div class="flex items-center gap-2">
                 <span class="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">4</span>
                 <div>
                   <h3 class="text-sm font-black text-white">코트 배정 및 선수 배치 (자동 / 수동)</h3>
-                  <p class="text-[10px] text-slate-400">자동 배정과 수동 배정 두 가지 방식 모두 지원합니다.</p>
+                  <p class="text-[10px] text-slate-400">항목을 눌러 코트 지정 및 자동·수동 배정을 실행/수정하세요.</p>
                 </div>
               </div>
-            </div>
+              <span id="adminSecArrow_step4" class="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0">수정 ▼</span>
+            </button>
 
-            <!-- 가용 코트 선택 및 코트 수 조절 (+/-) -->
-            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
-              <div class="flex justify-between items-center">
-                <span class="text-xs font-bold text-slate-300">🎾 사용할 코트 지정</span>
-                <div class="flex items-center gap-1.5">
-                  <span id="adminSelectedCourtsLabel" class="text-[11px] font-extrabold text-amber-400">선택 코트: 1번, 2번, 3번</span>
-                  <button
-                    type="button"
-                    onclick="removeAdminCourtStepper()"
-                    title="코트 1개 줄이기 (-)"
-                    class="w-7 h-7 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 flex items-center justify-center font-black text-sm cursor-pointer"
-                  >
-                    －
-                  </button>
-                  <button
-                    type="button"
-                    onclick="addAdminCourtStepper()"
-                    title="코트 1개 늘리기 (+)"
-                    class="w-7 h-7 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-black text-sm cursor-pointer"
-                  >
-                    ＋
-                  </button>
+            <div id="adminSecBody_step4" class="hidden space-y-4 pt-2.5 border-t border-slate-800">
+              <!-- 가용 코트 선택 및 코트 수 조절 (+/-) -->
+              <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">🎾 사용할 코트 지정</span>
+                  <div class="flex items-center gap-1.5">
+                    <span id="adminSelectedCourtsLabel" class="text-[11px] font-extrabold text-amber-400">선택 코트: 1번, 2번, 3번</span>
+                    <button
+                      type="button"
+                      onclick="removeAdminCourtStepper()"
+                      title="코트 1개 줄이기 (-)"
+                      class="w-7 h-7 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 flex items-center justify-center font-black text-sm cursor-pointer"
+                    >
+                      －
+                    </button>
+                    <button
+                      type="button"
+                      onclick="addAdminCourtStepper()"
+                      title="코트 1개 늘리기 (+)"
+                      class="w-7 h-7 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-black text-sm cursor-pointer"
+                    >
+                      ＋
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div id="adminCourtButtonsGrid" class="grid grid-cols-6 gap-1.5"></div>
-            </div>
-
-            <!-- 자동 방식 vs 수동 방식 탭 버튼 -->
-            <div class="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-              <button
-                type="button"
-                id="btnAssignAuto"
-                onclick="switchAdminAssignType('AUTO')"
-                class="py-2.5 rounded-xl text-xs font-black transition bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md cursor-pointer"
-              >
-                ⚡ 자동 방식 (코트·선수 자동배정)
-              </button>
-              <button
-                type="button"
-                id="btnAssignManual"
-                onclick="switchAdminAssignType('MANUAL')"
-                class="py-2.5 rounded-xl text-xs font-black transition text-slate-400 hover:text-white cursor-pointer"
-              >
-                🖐️ 수동 방식 (코트·선수 직접배치)
-              </button>
-            </div>
-
-            <!-- 자동 방식 패널 -->
-            <div id="adminAutoAssignPanel" class="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
-              <p class="text-[11px] text-slate-300">선택한 코트와 참가 선수(로그인 회원 + 임의 추가 선수)를 바탕으로 최적의 대진과 코트를 자동 배치합니다.</p>
-              <button
-                type="button"
-                onclick="runAdminAutoAssign()"
-                class="w-full py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 font-black rounded-xl text-xs shadow-lg cursor-pointer"
-              >
-                ⚡ 코트 및 선수 자동 배정 실행하기
-              </button>
-            </div>
-
-            <!-- 수동 방식 패널 -->
-            <div id="adminManualAssignPanel" class="hidden bg-slate-950/90 border border-amber-500/30 rounded-2xl p-3.5 space-y-3">
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-400 mb-1">배정 코트 선택</label>
-                  <select id="manualCourtSelect" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300 font-bold">
-                    <option value="1">1번 코트</option>
-                    <option value="2">2번 코트</option>
-                    <option value="3">3번 코트</option>
-                    <option value="4">4번 코트</option>
-                    <option value="5">5번 코트</option>
-                    <option value="6">6번 코트</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-400 mb-1">라운드 / 경기명</label>
-                  <input type="text" id="manualRoundNameInput" value="제 1 라운드" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-bold" />
-                </div>
+                <div id="adminCourtButtonsGrid" class="grid grid-cols-6 gap-1.5"></div>
               </div>
 
-              <div class="grid grid-cols-2 gap-3">
-                <div class="bg-slate-900 p-2.5 rounded-xl border border-emerald-500/30 space-y-2">
-                  <span class="text-[10px] font-black text-emerald-400 block">TEAM A 선수 2명</span>
-                  <select id="manualPlayerA1" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
-                  <select id="manualPlayerA2" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
-                </div>
-                <div class="bg-slate-900 p-2.5 rounded-xl border border-amber-500/30 space-y-2">
-                  <span class="text-[10px] font-black text-amber-400 block">TEAM B 선수 2명</span>
-                  <select id="manualPlayerB1" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
-                  <select id="manualPlayerB2" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
-                </div>
+              <!-- 자동 방식 vs 수동 방식 탭 버튼 -->
+              <div class="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                <button
+                  type="button"
+                  id="btnAssignAuto"
+                  onclick="switchAdminAssignType('AUTO')"
+                  class="py-2.5 rounded-xl text-xs font-black transition bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md cursor-pointer"
+                >
+                  ⚡ 자동 방식 (코트·선수 자동배정)
+                </button>
+                <button
+                  type="button"
+                  id="btnAssignManual"
+                  onclick="switchAdminAssignType('MANUAL')"
+                  class="py-2.5 rounded-xl text-xs font-black transition text-slate-400 hover:text-white cursor-pointer"
+                >
+                  🖐️ 수동 방식 (코트·선수 직접배치)
+                </button>
               </div>
 
-              <button
-                type="button"
-                onclick="addAdminManualMatch()"
-                class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
-              >
-                + 이 코트 대진 수동 추가하기
-              </button>
-            </div>
-
-            <!-- 배정된 매치 목록 -->
-            <div class="space-y-2 pt-2 border-t border-slate-800">
-              <div class="flex justify-between items-center">
-                <span id="adminAssignedMatchesTitle" class="text-xs font-black text-white">📋 배정된 코트 & 선수 매치업 (0경기)</span>
-                <button type="button" onclick="clearAdminAssignedMatches()" class="text-[10px] text-red-400 font-bold cursor-pointer">전체 초기화</button>
+              <!-- 자동 방식 패널 -->
+              <div id="adminAutoAssignPanel" class="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
+                <p class="text-[11px] text-slate-300">선택한 코트와 참가 선수(로그인 회원 + 임의 추가 선수)를 바탕으로 최적의 대진과 코트를 자동 배치합니다.</p>
+                <button
+                  type="button"
+                  onclick="runAdminAutoAssign()"
+                  class="w-full py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 font-black rounded-xl text-xs shadow-lg cursor-pointer"
+                >
+                  ⚡ 코트 및 선수 자동 배정 실행하기
+                </button>
               </div>
-              <div id="adminAssignedMatchesList" class="space-y-2 max-h-72 overflow-y-auto"></div>
+
+              <!-- 수동 방식 패널 -->
+              <div id="adminManualAssignPanel" class="hidden bg-slate-950/90 border border-amber-500/30 rounded-2xl p-3.5 space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="block text-[10px] font-bold text-slate-400 mb-1">배정 코트 선택</label>
+                    <select id="manualCourtSelect" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300 font-bold">
+                      <option value="1">1번 코트</option>
+                      <option value="2">2번 코트</option>
+                      <option value="3">3번 코트</option>
+                      <option value="4">4번 코트</option>
+                      <option value="5">5번 코트</option>
+                      <option value="6">6번 코트</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-bold text-slate-400 mb-1">라운드 / 경기명</label>
+                    <input type="text" id="manualRoundNameInput" value="제 1 라운드" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-bold" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="bg-slate-900 p-2.5 rounded-xl border border-emerald-500/30 space-y-2">
+                    <span class="text-[10px] font-black text-emerald-400 block">TEAM A 선수 2명</span>
+                    <select id="manualPlayerA1" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
+                    <select id="manualPlayerA2" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
+                  </div>
+                  <div class="bg-slate-900 p-2.5 rounded-xl border border-amber-500/30 space-y-2">
+                    <span class="text-[10px] font-black text-amber-400 block">TEAM B 선수 2명</span>
+                    <select id="manualPlayerB1" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
+                    <select id="manualPlayerB2" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"></select>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onclick="addAdminManualMatch()"
+                  class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
+                >
+                  + 이 코트 대진 수동 추가하기
+                </button>
+              </div>
+
+              <!-- 배정된 매치 목록 -->
+              <div class="space-y-2 pt-2 border-t border-slate-800">
+                <div class="flex justify-between items-center">
+                  <span id="adminAssignedMatchesTitle" class="text-xs font-black text-white">📋 배정된 코트 & 선수 매치업 (0경기)</span>
+                  <button type="button" onclick="clearAdminAssignedMatches()" class="text-[10px] text-red-400 font-bold cursor-pointer">전체 초기화</button>
+                </div>
+                <div id="adminAssignedMatchesList" class="space-y-2 max-h-72 overflow-y-auto"></div>
+              </div>
             </div>
 
             <!-- 최종 대회 시작 및 앱 자동 연동 버튼 -->
@@ -955,26 +1001,41 @@
             </button>
           </div>
 
-          <!-- 생성된 대회 & 종료된 대회 관리 (관리자 전용: 종료 처리 및 삭제) -->
-          <div id="adminTournamentListBox" class="bg-slate-900 border border-amber-500/35 rounded-2xl p-4 shadow-xl space-y-3"></div>
+          <!-- 생성된 대회 & 종료된 대회 관리 (접기/펼치기 + 항목 클릭 시 수정/종료/삭제) -->
+          <div id="adminTournamentListBox" class="bg-slate-900 border border-amber-500/35 rounded-2xl p-3.5 shadow-xl space-y-3"></div>
 
-          <!-- 회원가입 승인 대기 목록 (운영자 확인 후 승인/거절) -->
-          <div id="adminPendingApprovalBox" class="bg-gradient-to-br from-amber-950/60 via-slate-900 to-slate-900 border border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-3">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 class="text-sm font-black text-amber-300 flex items-center gap-1.5">
-                <span>⏳</span> 회원가입 승인 대기 목록
-              </h3>
-              <span id="adminPendingCountBadge" class="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">대기 0명</span>
+          <!-- 회원가입 승인 대기 목록 (접기/펼치기 + 항목 클릭 시 승인/거절) -->
+          <div id="adminPendingApprovalBox" class="bg-gradient-to-br from-amber-950/60 via-slate-900 to-slate-900 border border-amber-500/40 rounded-2xl p-3.5 shadow-xl space-y-3">
+            <button type="button" onclick="toggleHtmlAdminSection('pending')" class="w-full flex justify-between items-center text-left cursor-pointer">
+              <div>
+                <h3 class="text-sm font-black text-amber-300 flex items-center gap-1.5">
+                  <span>⏳</span> 회원가입 승인 대기 목록
+                  <span id="adminPendingCountBadge" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">대기 0명</span>
+                </h3>
+                <p class="text-[10px] text-slate-400 mt-0.5">항목을 누르면 펼쳐져서 신규 가입 신청 회원을 확인·승인할 수 있습니다.</p>
+              </div>
+              <span id="adminSecArrow_pending" class="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0">펼치기 ▼</span>
+            </button>
+            <div id="adminSecBody_pending" class="hidden pt-2.5 border-t border-slate-800">
+              <div id="adminPendingUsersContainer" class="space-y-2"></div>
             </div>
-            <div id="adminPendingUsersContainer" class="space-y-2"></div>
           </div>
 
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 class="text-sm font-black text-red-400">👑 썬 클럽 등록 공식 선수 명부</h3>
-              <span class="text-[11px] text-slate-400">총 <span id="adminPlayersCount">14</span>명</span>
+          <!-- 썬 클럽 등록 공식 선수 명부 (접기/펼치기 + 개별 회원 클릭 시 펼쳐서 수정/탈퇴) -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
+            <button type="button" onclick="toggleHtmlAdminSection('members')" class="w-full flex justify-between items-center text-left cursor-pointer">
+              <div>
+                <h3 class="text-sm font-black text-red-400 flex items-center gap-1.5">
+                  <span>👑</span> 썬 클럽 등록 공식 선수 명부
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 border border-amber-500/30 font-black">총 <span id="adminPlayersCount">14</span>명</span>
+                </h3>
+                <p class="text-[10px] text-slate-400 mt-0.5">항목을 눌러 펼친 뒤, 수정할 회원을 클릭하면 회원정보 수정 및 탈퇴 처리가 가능합니다.</p>
+              </div>
+              <span id="adminSecArrow_members" class="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0">펼치기 ▼</span>
+            </button>
+            <div id="adminSecBody_members" class="hidden pt-2.5 border-t border-slate-800">
+              <div id="adminUserListContainer" class="space-y-2"></div>
             </div>
-            <div id="adminUserListContainer" class="divide-y divide-slate-800/80"></div>
           </div>
         </div>
       </div>
@@ -2182,6 +2243,68 @@
       alert(`🗑️ 종료된 대회 ${completed.length}건이 일괄 삭제되었습니다.`);
     }
 
+    let htmlAdminOpenSections = {
+      step1: false,
+      step2: false,
+      step3: false,
+      step4: false,
+      tourList: false,
+      pending: false,
+      members: false
+    };
+    let htmlExpandedTourIds = {};
+    let htmlExpandedMemberIds = {};
+
+    function toggleHtmlAdminSection(secKey) {
+      htmlAdminOpenSections[secKey] = !htmlAdminOpenSections[secKey];
+      if (secKey === 'tourList') {
+        renderAdminTournaments();
+        return;
+      }
+      const body = document.getElementById('adminSecBody_' + secKey);
+      const arrow = document.getElementById('adminSecArrow_' + secKey);
+      if (body) body.classList.toggle('hidden', !htmlAdminOpenSections[secKey]);
+      if (arrow) arrow.innerText = htmlAdminOpenSections[secKey] ? '접기 ▲' : (secKey.startsWith('step') ? '수정 ▼' : '펼치기 ▼');
+    }
+
+    function toggleAllHtmlAdminSections() {
+      const keys = Object.keys(htmlAdminOpenSections);
+      const allOpen = keys.every(k => htmlAdminOpenSections[k]);
+      const nextState = !allOpen;
+      keys.forEach(k => {
+        htmlAdminOpenSections[k] = nextState;
+        const body = document.getElementById('adminSecBody_' + k);
+        const arrow = document.getElementById('adminSecArrow_' + k);
+        if (body) body.classList.toggle('hidden', !nextState);
+        if (arrow) arrow.innerText = nextState ? '접기 ▲' : (k.startsWith('step') ? '수정 ▼' : '펼치기 ▼');
+      });
+      const btn = document.getElementById('btnToggleAllAdminSecs');
+      if (btn) btn.innerText = nextState ? '📁 전체 항목 접기 ▲' : '📂 전체 항목 펼치기 ▼';
+      renderAdminTournaments();
+    }
+
+    function toggleHtmlAdminTourItem(tourId) {
+      htmlExpandedTourIds[tourId] = !htmlExpandedTourIds[tourId];
+      renderAdminTournaments();
+    }
+
+    function toggleHtmlAdminMemberItem(userId) {
+      htmlExpandedMemberIds[userId] = !htmlExpandedMemberIds[userId];
+      renderAdminUsers();
+    }
+
+    function updateHtmlTournamentField(tourId, field, value) {
+      if (!isAdminUser()) return;
+      const t = tournamentHistory.find(x => x.id === tourId);
+      if (!t) return;
+      t[field] = value;
+      if (currentTournament && currentTournament.id === tourId) {
+        currentTournament[field] = value;
+      }
+      persistHtmlTournaments();
+      updateTournamentHeaderUI();
+    }
+
     function renderAdminTournaments() {
       const box = document.getElementById('adminTournamentListBox');
       if (!box) return;
@@ -2190,46 +2313,70 @@
       const filtered = tournamentHistory.filter(t =>
         htmlAdminTourFilter === 'all' ? true : htmlAdminTourFilter === 'completed' ? t.status === 'completed' : t.status !== 'completed'
       );
+      const isOpen = Boolean(htmlAdminOpenSections.tourList);
 
       box.innerHTML = `
-        <div class="flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-2.5">
+        <button type="button" onclick="toggleHtmlAdminSection('tourList')" class="w-full flex justify-between items-center gap-2 text-left cursor-pointer">
           <div>
-            <h3 class="text-sm font-black text-amber-300 flex items-center gap-1.5">
-              <span>🏆</span> 생성된 대회 & 종료된 대회 관리 (${tournamentHistory.length}개)
+            <h3 class="text-sm font-black text-amber-300 flex items-center gap-1.5 flex-wrap">
+              <span>🏆</span> 생성된 대회 & 종료된 대회 관리
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 border border-amber-500/30 font-black">${tournamentHistory.length}개</span>
             </h3>
-            <p class="text-[10px] text-slate-400 mt-0.5">관리자 권한으로 진행 중인 대회를 종료 처리하거나, 생성/종료된 대회를 삭제할 수 있습니다.</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">항목을 눌러 펼친 뒤, 대회를 클릭하면 대회명·날짜·방식 수정 및 종료/삭제가 가능합니다.</p>
           </div>
-          <div class="flex items-center gap-1.5">
-            <button type="button" onclick="openNewTourModal()" class="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-[11px] cursor-pointer">+ 새 대회 개설</button>
-            ${doneCount > 0 ? `<button type="button" onclick="deleteHtmlCompletedTournaments()" class="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-[11px] cursor-pointer">🗑️ 종료 대회 일괄삭제</button>` : ''}
-          </div>
-        </div>
-        <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
-          <button type="button" onclick="setHtmlAdminTourFilter('all')" class="py-1.5 rounded-lg cursor-pointer ${htmlAdminTourFilter === 'all' ? 'bg-amber-400 text-slate-950 font-black' : 'text-slate-400'}">전체 (${tournamentHistory.length})</button>
-          <button type="button" onclick="setHtmlAdminTourFilter('in_progress')" class="py-1.5 rounded-lg cursor-pointer ${htmlAdminTourFilter === 'in_progress' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-400'}">🔴 진행중 (${activeCount})</button>
-          <button type="button" onclick="setHtmlAdminTourFilter('completed')" class="py-1.5 rounded-lg cursor-pointer ${htmlAdminTourFilter === 'completed' ? 'bg-slate-600 text-white font-black' : 'text-slate-400'}">🏁 종료됨 (${doneCount})</button>
-        </div>
-        <div class="space-y-2 max-h-72 overflow-y-auto">
-          ${filtered.length === 0 ? `<div class="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-xs text-slate-400">해당 조건의 대회가 없습니다.</div>` : filtered.map(t => {
-            const isCur = currentTournament.id === t.id;
-            const isDone = t.status === 'completed';
-            return `
-              <div class="p-3 rounded-xl border space-y-2 text-xs ${isCur ? 'bg-amber-950/30 border-amber-500/50' : 'bg-slate-950 border-slate-800'}">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-[9px] px-1.5 py-0.5 rounded font-black ${isDone ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}">${isDone ? '🏁 종료됨' : '🔴 진행중'}</span>
-                  ${isCur ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black">현재 선택</span>` : ''}
-                  <span class="font-black text-white">${t.name}</span>
-                </div>
-                <p class="text-[10px] text-slate-400">📅 ${t.date} · ${t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · ${t.courtCount || 3}코트</p>
-                <div class="flex gap-1.5 pt-1.5 border-t border-slate-800/80">
-                  ${!isCur ? `<button type="button" onclick="switchTournament('${t.id}')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] cursor-pointer">보기 선택</button>` : ''}
-                  <button type="button" onclick="toggleHtmlTournamentStatus('${t.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer">${isDone ? '🔄 진행중으로 복원' : '🏁 대회 종료 처리'}</button>
-                  <button type="button" onclick="deleteHtmlTournament('${t.id}')" class="px-3 py-1.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-black text-[11px] cursor-pointer">🗑️ 삭제</button>
-                </div>
+          <span class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300 shrink-0">${isOpen ? '접기 ▲' : '펼치기 ▼'}</span>
+        </button>
+        ${isOpen ? `
+          <div class="space-y-3 pt-2.5 border-t border-slate-800">
+            <div class="flex flex-wrap justify-between items-center gap-1.5">
+              <div class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px] font-bold flex-1">
+                <button type="button" onclick="setHtmlAdminTourFilter('all')" class="py-1.5 rounded-lg cursor-pointer ${htmlAdminTourFilter === 'all' ? 'bg-amber-400 text-slate-950 font-black' : 'text-slate-400'}">전체 (${tournamentHistory.length})</button>
+                <button type="button" onclick="setHtmlAdminTourFilter('in_progress')" class="py-1.5 rounded-lg cursor-pointer ${htmlAdminTourFilter === 'in_progress' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-400'}">🔴 진행중 (${activeCount})</button>
+                <button type="button" onclick="setHtmlAdminTourFilter('completed')" class="py-1.5 rounded-lg cursor-pointer ${htmlAdminTourFilter === 'completed' ? 'bg-slate-600 text-white font-black' : 'text-slate-400'}">🏁 종료됨 (${doneCount})</button>
               </div>
-            `;
-          }).join('')}
-        </div>
+              <div class="flex items-center gap-1">
+                <button type="button" onclick="openNewTourModal()" class="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-[10px] cursor-pointer">+ 새 대회</button>
+                ${doneCount > 0 ? `<button type="button" onclick="deleteHtmlCompletedTournaments()" class="px-2 py-1.5 bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold rounded-xl text-[10px] cursor-pointer">🗑️ 종료 일괄삭제</button>` : ''}
+              </div>
+            </div>
+            <div class="space-y-2 max-h-72 overflow-y-auto">
+              ${filtered.length === 0 ? `<div class="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-xs text-slate-400">해당 조건의 대회가 없습니다.</div>` : filtered.map(t => {
+                const isCur = currentTournament.id === t.id;
+                const isDone = t.status === 'completed';
+                const isExp = Boolean(htmlExpandedTourIds[t.id]);
+                return `
+                  <div class="p-2.5 rounded-xl border space-y-2 text-xs ${isCur ? 'bg-amber-950/30 border-amber-500/50' : 'bg-slate-950 border-slate-800'}">
+                    <button type="button" onclick="toggleHtmlAdminTourItem('${t.id}')" class="w-full flex justify-between items-center gap-2 text-left cursor-pointer">
+                      <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span class="text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${isDone ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}">${isDone ? '🏁 종료됨' : '🔴 진행중'}</span>
+                        ${isCur ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black shrink-0">현재 선택</span>` : ''}
+                        <span class="font-black text-white truncate">${t.name}</span>
+                      </div>
+                      <span class="text-[10px] font-black px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 shrink-0">${isExp ? '접기 ▲' : '수정 ▼'}</span>
+                    </button>
+                    ${isExp ? `
+                      <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                        <div class="grid grid-cols-12 gap-1.5">
+                          <input type="text" value="${t.name}" onchange="updateHtmlTournamentField('${t.id}', 'name', this.value)" class="col-span-6 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-bold" />
+                          <input type="date" value="${t.date}" onchange="updateHtmlTournamentField('${t.id}', 'date', this.value)" class="col-span-3 px-1.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-amber-300 font-mono" />
+                          <select onchange="updateHtmlTournamentField('${t.id}', 'format', this.value)" class="col-span-3 px-1.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-emerald-300 font-bold">
+                            <option value="kdk" ${t.format === 'kdk' ? 'selected' : ''}>KDK 순환</option>
+                            <option value="tournament" ${t.format !== 'kdk' ? 'selected' : ''}>토너먼트</option>
+                          </select>
+                        </div>
+                        <div class="flex gap-1.5">
+                          ${!isCur ? `<button type="button" onclick="switchTournament('${t.id}')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] cursor-pointer">보기 선택</button>` : ''}
+                          <button type="button" onclick="toggleHtmlTournamentStatus('${t.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer">${isDone ? '🔄 진행중으로 복원' : '🏁 대회 종료 처리'}</button>
+                          <button type="button" onclick="deleteHtmlTournament('${t.id}')" class="px-3 py-1.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-black text-[11px] cursor-pointer">🗑️ 삭제</button>
+                        </div>
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
       `;
     }
 
@@ -2241,12 +2388,16 @@
       document.getElementById('mobileTourDate').innerText = currentTournament.date;
       document.getElementById('mobileTourFormat').innerText = currentTournament.format === 'kdk' ? 'KDK 순환' : '예선/본선';
 
-      const select = document.getElementById('pcTourHistorySelect');
-      select.innerHTML = tournamentHistory.length === 0
+      const optsHtml = tournamentHistory.length === 0
         ? `<option value="tour-empty">개설된 대회가 없습니다</option>`
-        : tournamentHistory.map(t => `<option value="${t.id}" ${t.id === currentTournament.id ? 'selected' : ''}>[${t.status === 'completed' ? '종료' : '진행중'}] ${t.name} (${t.date})</option>`).join('');
+        : tournamentHistory.map(t => `<option value="${t.id}" ${t.id === currentTournament.id ? 'selected' : ''}>[${t.status === 'completed' ? '과거/종료' : '현재진행'}] ${t.name} (${t.date})</option>`).join('');
+      const select = document.getElementById('pcTourHistorySelect');
+      if (select) select.innerHTML = optsHtml;
+      const mobileSelect = document.getElementById('mobileTourHistorySelect');
+      if (mobileSelect) mobileSelect.innerHTML = optsHtml;
       document.getElementById('pcTourHistoryCount').innerText = tournamentHistory.length;
       renderAdminTournaments();
+      populateHtmlMyProfile();
     }
 
     // 코트 렌더링
@@ -3063,10 +3214,9 @@
           ctrlEl.innerHTML = `
             <div class="space-y-2 text-xs">
               <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                <p class="font-black text-emerald-300">👤 회원 모드 (열람 전용 · 수정 불가)</p>
+                <p class="font-black text-emerald-300">🎾 ${activeCourt.courtNumber}번 코트 배정 선수 및 운영 현황</p>
                 <span class="px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-black shrink-0">${activeCourt.players.length}명 · 1인 필수 ${curMinPerPlayer}G (총 ${activeCourt.games.length}경기)</span>
               </div>
-              <p class="text-[11px] text-slate-400">코트 삭제, 코트별 참여인원 선정, 게임수 및 대진 수정은 운영자(관리자) 전용입니다.</p>
               <div class="flex flex-wrap gap-1 pt-0.5">
                 ${activeCourt.players.map(p => `<span class="text-[10px] px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 font-bold">${activeCourt.assignMode === 'SEED_AUTO' && seedIds.includes(p.id) ? '🌟 ' : ''}${p.name} <span class="text-amber-300">(${p.grade}·구력${p.experienceYears || 4}년)</span></span>`).join('')}
               </div>
@@ -3405,6 +3555,68 @@
       if (pwConfirmInput) pwConfirmInput.value = '';
       if (msgEl && !keepSavedMsg) msgEl.classList.add('hidden');
       toggleHtmlMyProfileEdit(false);
+
+      // 내 코트 배정 & 실시간 게임 진행사항 렌더링
+      const myCourts = courtsData.filter(c =>
+        (c.teamA || []).some(m => m.includes(me.name)) ||
+        (c.teamB || []).some(m => m.includes(me.name))
+      );
+      const myCourtsBadge = document.getElementById('mypageMyCourtsCountBadge');
+      if (myCourtsBadge) myCourtsBadge.innerText = myCourts.length > 0 ? `${myCourts.length}개 코트 배정됨` : '전체 코트 열람 가능';
+      const myCourtsList = document.getElementById('mypageMyCourtsList');
+      if (myCourtsList) {
+        if (myCourts.length === 0) {
+          myCourtsList.innerHTML = `
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-slate-400 flex items-center justify-between">
+              <span>현재 코트에 직접 배정된 경기가 없습니다.</span>
+              <button type="button" onclick="switchTab('courts')" class="text-[11px] font-bold text-amber-300 underline cursor-pointer">코트현황 보기 ➔</button>
+            </div>
+          `;
+        } else {
+          myCourtsList.innerHTML = myCourts.map(mc => {
+            const inA = (mc.teamA || []).some(m => m.includes(me.name));
+            return `
+              <div class="bg-slate-950 p-3 rounded-xl border border-emerald-500/40 space-y-1.5">
+                <div class="flex justify-between items-center">
+                  <span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-[11px]">${mc.courtNumber}번 코트 (${inA ? 'TEAM A' : 'TEAM B'})</span>
+                  <span class="text-[10px] font-extrabold text-emerald-300">${mc.status === 'playing' ? '🔴 LIVE 경기 진행중' : mc.status === 'completed' ? '🏁 경기 완료' : '⚪ 경기 대기중'}</span>
+                </div>
+                <div class="flex justify-between items-center pt-1">
+                  <span class="font-bold truncate flex-1 ${inA ? 'text-amber-300' : 'text-slate-200'}">${mc.teamA.join(' / ')}</span>
+                  <span class="px-2.5 py-0.5 rounded-lg bg-slate-900 border border-slate-700 font-black text-sm text-white mx-2">${mc.scoreA} : ${mc.scoreB}</span>
+                  <span class="font-bold truncate flex-1 text-right ${!inA ? 'text-amber-300' : 'text-slate-200'}">${mc.teamB.join(' / ')}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      // 과거 대회 기록 & 게임 성적 히스토리 렌더링
+      const histCount = document.getElementById('mypageHistoryCountBadge');
+      if (histCount) histCount.innerText = `총 ${tournamentHistory.length}개 대회 기록`;
+      const histList = document.getElementById('mypageHistoryList');
+      if (histList) {
+        histList.innerHTML = tournamentHistory.map((t, idx) => {
+          const isCur = currentTournament.id === t.id;
+          const resLabel = idx === 0 ? '본인 성적: 3승 0패 (+8 · 1위)' : idx === 1 ? '본인 성적: 4승 1패 (+9 · 준우승)' : '본인 성적: 2승 1패 (+4 · 3위)';
+          return `
+            <div class="p-3 rounded-xl border text-xs space-y-1.5 ${isCur ? 'bg-amber-950/30 border-amber-500/40' : 'bg-slate-950 border-slate-800'}">
+              <div class="flex justify-between items-center gap-2">
+                <div class="flex items-center gap-1.5 truncate">
+                  <span class="text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${t.status === 'completed' ? 'bg-slate-800 text-slate-300' : 'bg-emerald-500/20 text-emerald-300'}">${t.status === 'completed' ? '🏁 종료' : '🔴 진행중'}</span>
+                  <span class="font-black text-white truncate">${t.name}</span>
+                </div>
+                <button type="button" onclick="switchTournament('${t.id}'); switchTab('${t.format === 'kdk' ? 'kdk' : 'tournament'}');" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer">기록·대진 보기 ➔</button>
+              </div>
+              <div class="flex justify-between items-center text-[10px] text-slate-400">
+                <span>📅 ${t.date} · ${t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · ${t.courtCount || 3}코트</span>
+                <span class="text-emerald-300 font-bold">${resLabel}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
     }
 
     function saveHtmlMyProfile(e) {
@@ -3920,26 +4132,37 @@
       if (countEl) countEl.innerText = approvedList.length;
       const c = document.getElementById('adminUserListContainer');
       if (!c) return;
-      c.innerHTML = approvedList.map(u => `
-        <div class="py-3 flex flex-col gap-2 text-xs">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-white">${u.name}</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
-              <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) ${u.username ? `· ID: ${u.username}` : ''} ${u.isGuest ? '[임의추가]' : ''}</span>
-            </div>
-            <span class="text-[10px] text-amber-300 font-bold">${u.role === 'admin' ? '👑 관리자' : '일반회원'}</span>
-          </div>
-          <div class="flex gap-2">
-            <button type="button" onclick="editHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] cursor-pointer">
-              ✎ 회원정보 수정
+      c.innerHTML = approvedList.map(u => {
+        const isExp = Boolean(htmlExpandedMemberIds[u.id]);
+        return `
+          <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-2 text-xs">
+            <button type="button" onclick="toggleHtmlAdminMemberItem('${u.id}')" class="w-full flex items-center justify-between gap-2 text-left cursor-pointer">
+              <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+                <span class="font-bold text-white truncate">${u.name}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
+                <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'})</span>
+                <span class="text-[10px] text-amber-300 font-bold">${u.role === 'admin' ? '👑 관리자' : '일반회원'}</span>
+              </div>
+              <span class="text-[10px] font-black px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 shrink-0">${isExp ? '접기 ▲' : '수정 ▼'}</span>
             </button>
-            <button type="button" onclick="cancelHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-500/30 font-bold text-[11px] cursor-pointer">
-              🗑️ 회원가입 취소(탈퇴)
-            </button>
+            ${isExp ? `
+              <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                <div class="text-[10px] text-slate-400">
+                  ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong> ${u.phone ? `· ${u.phone}` : ''} ${u.isGuest ? '[임의추가]' : ''}
+                </div>
+                <div class="flex gap-2">
+                  <button type="button" onclick="editHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] cursor-pointer">
+                    ✎ 회원정보 수정
+                  </button>
+                  <button type="button" onclick="cancelHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-500/30 font-bold text-[11px] cursor-pointer">
+                    🗑️ 회원가입 취소(탈퇴)
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function approveHtmlMember(userId) {
@@ -4155,7 +4378,7 @@
           badge.innerText = '👑 관리자 모드';
           badge.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-red-500/20 text-red-300 border-red-500/40';
         } else {
-          badge.innerText = '👤 회원 모드 (열람전용)';
+          badge.innerText = '👤 회원전용';
           badge.className = 'px-2 py-1 rounded-xl text-[10px] font-extrabold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
         }
       }
