@@ -141,6 +141,15 @@ export default function TennisApp() {
   };
   const [currentTournament, setCurrentTournament] = useState<TournamentRecord>(tournamentHistory[0]);
   const [adminTourFilter, setAdminTourFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
+
+  // 선택한 대회 방식(KDK vs 토너먼트)에 연계된 화면만 노출되도록 탭 자동 동기화
+  useEffect(() => {
+    if (activeTab === 'tournament' && currentTournament.format === 'kdk') {
+      setActiveTab('kdk');
+    } else if (activeTab === 'kdk' && currentTournament.format === 'tournament') {
+      setActiveTab('tournament');
+    }
+  }, [currentTournament.format, activeTab]);
   const [openAdminTourSection, setOpenAdminTourSection] = useState<boolean>(false);
   const [expandedAdminTourIds, setExpandedAdminTourIds] = useState<Record<string, boolean>>({});
 
@@ -1796,35 +1805,39 @@ export default function TennisApp() {
                 </div>
               </button>
 
-              <button
-                onClick={() => setActiveTab('kdk')}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left ${
-                  activeTab === 'kdk'
-                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <span className="text-base">🔄</span>
-                <div className="flex-1">
-                  <p className="leading-tight">KDK 파트너 순환 진행</p>
-                  <p className="text-[10px] text-slate-500 font-normal">개인 승점제 월례회 대진표</p>
-                </div>
-              </button>
+              {currentTournament.format === 'kdk' && (
+                <button
+                  onClick={() => setActiveTab('kdk')}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left ${
+                    activeTab === 'kdk'
+                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-xs'
+                      : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="text-base">🔄</span>
+                  <div className="flex-1">
+                    <p className="leading-tight">KDK 파트너 순환 진행</p>
+                    <p className="text-[10px] text-slate-500 font-normal">개인 승점제 월례회 대진표</p>
+                  </div>
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveTab('tournament')}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left ${
-                  activeTab === 'tournament'
-                    ? 'bg-amber-500/15 text-amber-300 border border-amber-400/30 shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <span className="text-base">🏆</span>
-                <div className="flex-1">
-                  <p className="leading-tight">예선 & 본선 토너먼트</p>
-                  <p className="text-[10px] text-slate-500 font-normal">조별 풀리그 & 4강/결승</p>
-                </div>
-              </button>
+              {currentTournament.format === 'tournament' && (
+                <button
+                  onClick={() => setActiveTab('tournament')}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition text-left ${
+                    activeTab === 'tournament'
+                      ? 'bg-amber-500/15 text-amber-300 border border-amber-400/30 shadow-xs'
+                      : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="text-base">🏆</span>
+                  <div className="flex-1">
+                    <p className="leading-tight">예선 & 본선 토너먼트</p>
+                    <p className="text-[10px] text-slate-500 font-normal">조별 풀리그 & 4강/결승</p>
+                  </div>
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab('mypage')}
@@ -2080,31 +2093,45 @@ export default function TennisApp() {
                   </div>
                 )}
 
-                {/* 대진 방식 빠른 이동 버튼 2개 */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setActiveTab('kdk')}
-                    className="p-3 bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-2xl text-left transition group shadow-md"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-base">🔄</span>
-                      <span className="text-[10px] font-black bg-emerald-500 text-slate-950 px-1.5 py-0.2 rounded-md">바로가기</span>
-                    </div>
-                    <p className="text-xs font-black text-white group-hover:text-emerald-300">KDK 파트너 순환 진행</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">매 라운드 파트너 자동 변경</p>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('tournament')}
-                    className="p-3 bg-gradient-to-br from-amber-950/60 to-slate-900 border border-amber-500/30 hover:border-amber-400 rounded-2xl text-left transition group shadow-md"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-base">🏆</span>
-                      <span className="text-[10px] font-black bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded-md">바로가기</span>
-                    </div>
-                    <p className="text-xs font-black text-white group-hover:text-amber-300">예선 & 본선 토너먼트</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">조별리그 & 결승 브래킷</p>
-                  </button>
+                {/* 현재 선택된 대회 방식(KDK 또는 토너먼트)에 연계된 빠른 이동 버튼만 단독 노출 */}
+                <div>
+                  {currentTournament.format === 'kdk' ? (
+                    <button
+                      onClick={() => setActiveTab('kdk')}
+                      className="w-full p-3 bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-2xl text-left transition group shadow-md cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-black text-white group-hover:text-emerald-300 flex items-center gap-1.5">
+                          <span>🔄</span>
+                          <span>KDK 파트너 순환 대진표 & 순위 보기</span>
+                        </span>
+                        <span className="text-[10px] font-black bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-md">
+                          KDK 바로가기 ➔
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        현재 대회({currentTournament.name})는 KDK 방식으로 진행됩니다.
+                      </p>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setActiveTab('tournament')}
+                      className="w-full p-3 bg-gradient-to-br from-amber-950/60 to-slate-900 border border-amber-500/30 hover:border-amber-400 rounded-2xl text-left transition group shadow-md cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-black text-white group-hover:text-amber-300 flex items-center gap-1.5">
+                          <span>🏆</span>
+                          <span>예선 조별리그 & 본선 토너먼트 대진표 보기</span>
+                        </span>
+                        <span className="text-[10px] font-black bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md">
+                          토너먼트 바로가기 ➔
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        현재 대회({currentTournament.name})는 토너먼트 방식으로 진행됩니다.
+                      </p>
+                    </button>
+                  )}
                 </div>
 
                 {/* 코트 카드 리스트 (동적 생성된 모든 코트 출력) */}
@@ -2234,14 +2261,16 @@ export default function TennisApp() {
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 2]: KDK 코트별 운영 & 실력균등 자동/수동 · 최소 2게임 · 종료 시 1·2·3등 자동집계(동점 시 나이합산) */}
+            {/* [탭 2]: KDK 파트너 순환 진행 (KDK 방식 대회 선택 시에만 노출) */}
             {/* ---------------------------------------------------- */}
-            {activeTab === 'kdk' && (
+            {activeTab === 'kdk' && currentTournament.format === 'kdk' && (
               <div className="space-y-4">
                 <KdkCourtOperations
                   tournamentName={`${currentTournament.name} (${currentTournament.date})`}
                   availablePlayers={approvedPlayers}
                   isAdmin={isAdmin}
+                  viewMode="PLAY"
+                  onNavigateToTab={setActiveTab}
                   onSyncCourtsToApp={(syncedCourts) => {
                     setCourts(syncedCourts);
                   }}
@@ -2266,9 +2295,9 @@ export default function TennisApp() {
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 3]: 예선전 & 본선 토너먼트 진행 전용 화면 */}
+            {/* [탭 3]: 예선전 & 본선 토너먼트 진행 전용 화면 (토너먼트 방식 대회 선택 시에만 노출) */}
             {/* ---------------------------------------------------- */}
-            {activeTab === 'tournament' && (
+            {activeTab === 'tournament' && currentTournament.format === 'tournament' && (
               <div className="space-y-4">
                 <div className="flex justify-between items-center bg-gradient-to-r from-amber-950 via-slate-900 to-slate-900 p-3 rounded-2xl border border-amber-500/30 shadow-md">
                   <div>
@@ -2279,13 +2308,9 @@ export default function TennisApp() {
                       {currentTournament.name} ({currentTournament.date})
                     </p>
                   </div>
-                  <button
-                    onClick={() => setActiveTab('kdk')}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs cursor-pointer"
-                  >
-                    <span>🔄</span>
-                    <span>KDK 진행으로</span>
-                  </button>
+                  <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-[10px] font-black">
+                    예선/본선 토너먼트
+                  </span>
                 </div>
 
                 {/* 예선전 / 본선 토너먼트 서브 탭 버튼 2개 */}
@@ -2532,20 +2557,38 @@ export default function TennisApp() {
             )}
 
             {/* ---------------------------------------------------- */}
-            {/* [탭 4]: VIP 마이페이지 */}
+            {/* [탭 4]: VIP 마이페이지 (상단 이름 옆 수정 버튼 클릭 시에만 개인정보 확인/수정 창 노출) */}
             {/* ---------------------------------------------------- */}
             {activeTab === 'mypage' && (
               <div className="space-y-4">
                 <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 p-5 text-slate-950 shadow-2xl">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="space-y-1.5">
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-950/70 block">
                         SUN TENNIS VIP CLUB
                       </span>
-                      <h2 className="text-xl font-black text-slate-950 flex items-center gap-1.5">
-                        <span>{isAdmin ? '👑' : '☀️'}</span> {currentUser.name} {isAdmin ? '관리자님' : '회원님'}
-                      </h2>
-                      <div className="flex gap-1.5 pt-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-xl font-black text-slate-950 flex items-center gap-1.5">
+                          <span>{isAdmin ? '👑' : '☀️'}</span> {currentUser.name} {isAdmin ? '관리자님' : '회원님'}
+                        </h2>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isEditingMyProfile) {
+                              resetMyProfileFormFromUser(currentUser);
+                              setMyInfoSavedMsg('');
+                              setIsEditingMyProfile(true);
+                            } else {
+                              resetMyProfileFormFromUser(currentUser);
+                              setIsEditingMyProfile(false);
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-slate-950/90 hover:bg-slate-900 text-amber-300 border border-slate-800 shadow-md cursor-pointer transition shrink-0"
+                        >
+                          {isEditingMyProfile ? '✕ 수정 닫기' : '✏️ 내 정보 수정'}
+                        </button>
+                      </div>
+                      <div className="flex gap-1.5 pt-0.5">
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">
                           {currentUser.grade}
                         </span>
@@ -2554,90 +2597,47 @@ export default function TennisApp() {
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <span className="text-[10px] font-extrabold text-slate-950/70 block">승률 랭킹</span>
                       <span className="text-2xl font-black text-slate-950">TOP 3 🏆</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 내 계정 정보 카드 (기본 열람 상태 · '내 정보 수정' 버튼 클릭 시에만 수정 폼 활성화) */}
-                <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
-                    <div>
-                      <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                        <span>👤</span> 내 계정 정보 ({isAdmin ? '관리자' : '일반회원'})
-                      </span>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {isEditingMyProfile
-                          ? '아이디, 비밀번호 및 개인정보를 수정한 뒤 저장해 주세요.'
-                          : '정보 변경이 필요할 때 우측 수정 버튼을 눌러 활성화하세요.'}
-                      </p>
-                    </div>
-                    {!isEditingMyProfile ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          resetMyProfileFormFromUser(currentUser);
-                          setMyInfoSavedMsg('');
-                          setIsEditingMyProfile(true);
-                        }}
-                        className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer shrink-0 transition"
-                      >
-                        ✏️ 내 정보 수정
-                      </button>
-                    ) : (
+                {myInfoSavedMsg && (
+                  <div className="p-3 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold shadow-md">
+                    {myInfoSavedMsg}
+                  </div>
+                )}
+
+                {/* 상단 회원 이름 옆 [✏️ 내 정보 수정] 버튼을 눌렀을 때만 개인정보 확인 및 수정 창 노출 */}
+                {isEditingMyProfile && (
+                  <div className="bg-slate-900 border border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-3">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                      <div>
+                        <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                          <span>👤</span> 내 개인정보 확인 및 수정 ({isAdmin ? '관리자' : '일반회원'})
+                        </span>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          현재 아이디: <strong className="text-amber-300">{currentUser.username || currentUser.email || currentUser.id}</strong> · 정보를 확인하거나 수정한 뒤 저장하세요.
+                        </p>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
                           resetMyProfileFormFromUser(currentUser);
                           setIsEditingMyProfile(false);
                         }}
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold rounded-xl text-[11px] cursor-pointer shrink-0 transition"
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold rounded-xl text-[11px] cursor-pointer shrink-0 transition"
                       >
                         ✕ 닫기
                       </button>
-                    )}
-                  </div>
-
-                  {myInfoSavedMsg && (
-                    <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
-                      {myInfoSavedMsg}
                     </div>
-                  )}
 
-                  {!isEditingMyProfile ? (
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">로그인 아이디 (ID)</span>
-                        <span className="font-black text-amber-300 mt-0.5 block truncate">
-                          {currentUser.username || currentUser.email || currentUser.id}
-                        </span>
-                      </div>
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">비밀번호</span>
-                        <span className="font-bold text-slate-300 mt-0.5 block">
-                          •••••••• <span className="text-[10px] text-slate-500">(변경 가능)</span>
-                        </span>
-                      </div>
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">이름 / 성별</span>
-                        <span className="font-bold text-white mt-0.5 block">
-                          {currentUser.name} ({currentUser.gender === 'F' ? '여' : '남'})
-                        </span>
-                      </div>
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">테니스 등급 / 연락처</span>
-                        <span className="font-bold text-emerald-300 mt-0.5 block truncate">
-                          {currentUser.grade} · {currentUser.phone || '미등록'}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
                     <form onSubmit={handleSaveMyProfile} className="space-y-3 text-xs">
                       <div className="bg-slate-950/90 border border-amber-500/35 rounded-xl p-3 space-y-2.5">
                         <span className="text-[11px] font-black text-amber-300 flex items-center gap-1">
-                          <span>🔐</span> 아이디 · 비밀번호 변경
+                          <span>🔐</span> 아이디 · 비밀번호 확인 및 변경
                         </span>
                         <div>
                           <label className="block text-[11px] font-bold text-slate-400 mb-1">
@@ -2761,8 +2761,8 @@ export default function TennisApp() {
                         </button>
                       </div>
                     </form>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* 2. 내 코트 배정 & 실시간 게임 진행사항 / 스코어 (운영자 배정 연동) */}
                 {(() => {
@@ -3203,6 +3203,34 @@ export default function TennisApp() {
                   )}
                 </div>
 
+                {/* 0-B. KDK 코트별 참가인원 · 1인 필수 게임수 · 시드/자동/수동 설정 관리 (운영자 관리 센터로 이관) */}
+                <KdkCourtOperations
+                  tournamentName={`${currentTournament.name} (${currentTournament.date})`}
+                  availablePlayers={approvedPlayers}
+                  isAdmin={isAdmin}
+                  viewMode="ADMIN_CONFIG"
+                  onNavigateToTab={setActiveTab}
+                  onSyncCourtsToApp={(syncedCourts) => {
+                    setCourts(syncedCourts);
+                  }}
+                  onAddNewPlayerToClub={(newPlayer) => {
+                    setRegisteredPlayers((prev) => {
+                      if (prev.some((p) => p.id === newPlayer.id)) return prev;
+                      return [
+                        ...prev,
+                        {
+                          id: newPlayer.id,
+                          name: newPlayer.name,
+                          grade: newPlayer.grade,
+                          gender: newPlayer.gender === 'F' || newPlayer.gender === '여' ? 'F' : 'M',
+                          role: 'member',
+                          isGuest: true,
+                        },
+                      ];
+                    });
+                  }}
+                />
+
                 {/* 1. 회원가입 승인 · 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
                 <AdminUserManagement
                   externalUsers={registeredPlayers}
@@ -3367,29 +3395,33 @@ export default function TennisApp() {
               <span className="text-[10px] mt-0.5">코트현황</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('kdk')}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all ${
-                activeTab === 'kdk'
-                  ? 'text-emerald-400 font-bold scale-105 bg-emerald-400/10'
-                  : 'text-slate-400 hover:text-slate-200 font-medium'
-              }`}
-            >
-              <span className="text-base">🔄</span>
-              <span className="text-[10px] mt-0.5">KDK진행</span>
-            </button>
+            {currentTournament.format === 'kdk' && (
+              <button
+                onClick={() => setActiveTab('kdk')}
+                className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all ${
+                  activeTab === 'kdk'
+                    ? 'text-emerald-400 font-bold scale-105 bg-emerald-400/10'
+                    : 'text-slate-400 hover:text-slate-200 font-medium'
+                }`}
+              >
+                <span className="text-base">🔄</span>
+                <span className="text-[10px] mt-0.5">KDK진행</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('tournament')}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all ${
-                activeTab === 'tournament'
-                  ? 'text-amber-400 font-bold scale-105 bg-amber-400/10'
-                  : 'text-slate-400 hover:text-slate-200 font-medium'
-              }`}
-            >
-              <span className="text-base">🏆</span>
-              <span className="text-[10px] mt-0.5">토너먼트</span>
-            </button>
+            {currentTournament.format === 'tournament' && (
+              <button
+                onClick={() => setActiveTab('tournament')}
+                className={`flex flex-col items-center py-1 px-2 rounded-xl transition-all ${
+                  activeTab === 'tournament'
+                    ? 'text-amber-400 font-bold scale-105 bg-amber-400/10'
+                    : 'text-slate-400 hover:text-slate-200 font-medium'
+                }`}
+              >
+                <span className="text-base">🏆</span>
+                <span className="text-[10px] mt-0.5">토너먼트</span>
+              </button>
+            )}
 
             <button
               onClick={() => setActiveTab('mypage')}
