@@ -3,12 +3,15 @@
  */
 
 export type UserGrade = '금배' | '은배' | '국화' | '동배' | '개나리' | '테린이' | '고령자부';
+export type KdkAssignMode = 'AUTO' | 'SEED_AUTO' | 'MANUAL';
 
 export interface Player {
   id: string;
   name: string;
   grade: UserGrade | string;
-  age?: number; // 동점 시 나이/나이합산 타이브레이커용
+  age?: number; // 실력 종합지수 보정 및 동점 시 나이합산 타이브레이커용
+  experienceYears?: number; // 구력(년) — 실력 균등 자동모드·시드배정 반영
+  isSeed?: boolean; // 코트별 실력자 우선 시드 여부
   gender?: string;
   isGuest?: boolean;
 }
@@ -85,8 +88,129 @@ export const GRADE_WEIGHTS: Record<string, number> = {
   '테린이': 3,
 };
 
+// 종합 실력 지수 산출용 등급 기본 점수 (금배·은배·국화·동배·개나리·고령자부·테린이)
+export const GRADE_COMPOSITE_BASE: Record<string, number> = {
+  '금배': 100,
+  '은배': 84,
+  '국화': 76,
+  '동배': 68,
+  '개나리': 58,
+  '고령자부': 54,
+  '테린이': 36,
+};
+
+// 구력(년) 미입력 시 등급별 기본 추정 구력
+export const DEFAULT_EXPERIENCE_BY_GRADE: Record<string, number> = {
+  '금배': 10,
+  '은배': 7,
+  '국화': 7,
+  '동배': 5,
+  '개나리': 3,
+  '고령자부': 8,
+  '테린이': 1,
+};
+
 export function getPlayerWeight(grade: string): number {
   return GRADE_WEIGHTS[grade] || 6;
+}
+
+export function getPlayerExperienceYears(player: Pick<Player, 'grade' | 'experienceYears'>): number {
+  if (typeof player.experienceYears === 'number' && !isNaN(player.experienceYears)) {
+    return Math.max(0, Math.min(40, Math.round(player.experienceYears)));
+  }
+  return DEFAULT_EXPERIENCE_BY_GRADE[player.grade] ?? 4;
+}
+
+/**
+ * 종합 실력 지수 계산 (구력 + 등급[금배·은배·동배·국화·개나리·테린이·고령자부] + 나이 반영)
+ * - 등급 기본점수: 36 ~ 100점
+ * - 구력 가산점: 구력 1년당 +1.5점 (최대 +30점)
+ * - 나이 보정: 50세 기준, 젊을수록 체력 보정(+), 연장자 체력 보정(-) (-10 ~ +8점)
+ */
+export function getCompositeSkillScore(player: Pick<Player, 'grade' | 'age' | 'experienceYears'>): number {
+  const gradeBase = GRADE_COMPOSITE_BASE[player.grade] ?? 64;
+  const expYears = getPlayerExperienceYears(player);
+  const expBonus = Math.min(20, expYears) * 1.5;
+  const ageVal = typeof player.age === 'number' && !isNaN(player.age) ? player.age : 46;
+  const ageAdjust = Math.max(-10, Math.min(8, Math.round((50 - ageVal) * 0.28)));
+  return Math.max(20, Math.round(gradeBase + expBonus + ageAdjust));
+}
+
+/**
+ * 참여인원 수(N)와 1인 필수 최소 게임 수(M)를 바탕으로
+ * 모든 참여 인원이 필수로 M게임 이상 출전하기 위해 필요한 코트 총 경기 수 계산
+ * - 복식 1경기당 4명 출전 ➔ 필요 경기 수 = ceil(N * M / 4)
+ */
+export function calculateRequiredCourtGames(
+  playerCount: number,
+  minGamesPerPlayer: number = 2
+): number {
+  const safeMinPerPlayer = Math.max(2, Math.floor(minGamesPerPlayer || 2));
+  if (!playerCount || playerCount < 4) return safeMinPerPlayer;
+  return Math.max(safeMinPerPlayer, Math.ceil((playerCount * safeMinPerPlayer) / 4));
+}
+
+export interface GenerateCourtKdkOptions {
+  /** 참여인원 1인당 필수로 해야 하는 최소 게임 수 (기본 2게임) */
+  minGamesPerPlayer?: number;
+  /** 대진 편성 모드: 실력균등 자동('AUTO') | 실력자 시드우선 자동('SEED_AUTO') | 수동('MANUAL') */
+  assignMode?: KdkAssignMode;
+  /** SEED_AUTO 모드에서 코트별 실력자 우선 시드 선수 ID 목록 (미지정 시 종합실력 상위 2명 자동 시드) */
+  seedPlayerIds?: string[];
+  /** 운영자가 필요 최소 경기 수 이상으로 추가 경기를 늘리고 싶을 때 지정 */
+  overrideTotalGames?: number;
+}
+
+export interface SeedDistributedCourtResult {
+  courtNumber: number;
+  seedPlayerIds: string[];
+  players: Player[];
+}
+
+/**
+ * 전체 코트 대상: 코트별 실력자 우선 시드 배정 후 나머지 인원 자동 균등 배정
+ * 1단계: 종합 실력(등급+구력+나이) 최상위 실력자들을 각 코트의 1·2번 시드로 우선 분산 배치
+ * 2단계: 나머지 인원들을 스네이크 드래프트 방식으로 각 코트에 자동 균등 배정
+ */
+export function distributePlayersSeedFirstToCourts(
+  allPlayers: Player[],
+  courtNumbers: number[],
+  seedsPerCourt: number = 2
+): SeedDistributedCourtResult[] {
+  if (!courtNumbers || courtNumbers.length === 0) return [];
+  const sortedBySkill = [...allPlayers].sort(
+    (a, b) => getCompositeSkillScore(b) - getCompositeSkillScore(a)
+  );
+
+  const buckets: SeedDistributedCourtResult[] = courtNumbers.map((num) => ({
+    courtNumber: num,
+    seedPlayerIds: [],
+    players: [],
+  }));
+
+  const numCourts = buckets.length;
+  const maxSeeds = Math.min(sortedBySkill.length, numCourts * Math.max(1, seedsPerCourt));
+
+  // 1단계: 실력자 우선 시드 배정 (1번 시드 정순, 2번 시드 역순 스네이크)
+  for (let i = 0; i < maxSeeds; i++) {
+    const roundIdx = Math.floor(i / numCourts);
+    const posInRound = i % numCourts;
+    const courtIdx = roundIdx % 2 === 0 ? posInRound : numCourts - 1 - posInRound;
+    const p = { ...sortedBySkill[i], isSeed: true };
+    buckets[courtIdx].players.push(p);
+    buckets[courtIdx].seedPlayerIds.push(p.id);
+  }
+
+  // 2단계: 나머지 인원 자동 균등 배정 (스네이크 방식으로 코트별 인원·실력 균형)
+  const remaining = sortedBySkill.slice(maxSeeds);
+  remaining.forEach((rawPlayer, idx) => {
+    const roundIdx = Math.floor(idx / numCourts);
+    const posInRound = idx % numCourts;
+    const courtIdx = roundIdx % 2 === 0 ? posInRound : numCourts - 1 - posInRound;
+    buckets[courtIdx].players.push({ ...rawPlayer, isSeed: false });
+  });
+
+  return buckets;
 }
 
 interface PlayerStatTracking {
@@ -95,23 +219,55 @@ interface PlayerStatTracking {
   partners: Set<string>;
   opponents: Set<string>;
   weight: number;
+  isSeed: boolean;
 }
 
 /**
- * 단일 코트 전용 KDK 실력 균등 자동 대진 생성 함수
- * - 코트에 배정된 선수 인원 수(4명, 5명, 6명, 7명, 8명 등)와 설정 게임 수(최소 2게임 이상)에 맞춰
- *   출전 횟수 균등, 파트너 중복 최소화, 팀 간 실력 차이(Skill Gap) 0 지향 매칭 생성
+ * 단일 코트 전용 KDK 대진 자동 생성 함수
+ * - minGamesPerPlayer(참여인원 1인당 필수 최소 게임 수)를 모든 참여 선수가 필수로 채우도록 총 경기 수 자동 산출 및 출전 우선 배정
+ * - 실력 균등 자동모드('AUTO'): 구력 + 등급(금배·은배·동배·국화·개나리·테린이·고령자부) + 나이 종합 실력 지수 기반 팀 실력차 최소화
+ * - 시드 우선 자동모드('SEED_AUTO'): 코트별 실력자 시드를 양 팀 핵심으로 우선 배치하고 나머지 인원을 실력 균등 자동 매칭
  */
 export function generateCourtKDKGames(
   courtNumber: number,
   courtPlayers: Player[],
-  gameCount: number = 2
+  minGamesPerPlayer: number = 2,
+  options?: GenerateCourtKdkOptions
 ): CourtKdkGame[] {
   if (!courtPlayers || courtPlayers.length < 4) {
     throw new Error('코트별 KDK 경기를 진행하려면 최소 4명 이상의 선수가 필요합니다.');
   }
 
-  const safeGames = Math.max(2, Math.floor(gameCount));
+  const mandatoryPerPlayer = Math.max(
+    2,
+    Math.floor(options?.minGamesPerPlayer ?? minGamesPerPlayer ?? 2)
+  );
+  const requiredCourtGames = calculateRequiredCourtGames(
+    courtPlayers.length,
+    mandatoryPerPlayer
+  );
+  const totalGames = Math.max(
+    requiredCourtGames,
+    Math.floor(options?.overrideTotalGames ?? requiredCourtGames)
+  );
+  const mode: KdkAssignMode = options?.assignMode || 'AUTO';
+
+  // 시드 우선 모드 시드 선수 결정 (지정 시드가 있으면 우선 사용, 없으면 종합실력 상위 2명 자동 지정)
+  const sortedBySkill = [...courtPlayers].sort(
+    (a, b) => getCompositeSkillScore(b) - getCompositeSkillScore(a)
+  );
+  const explicitSeedIds = (options?.seedPlayerIds || []).filter((id) =>
+    courtPlayers.some((p) => p.id === id)
+  );
+  const autoSeedCount = courtPlayers.length >= 6 ? 2 : Math.min(2, courtPlayers.length);
+  const resolvedSeedSet = new Set<string>(
+    mode === 'SEED_AUTO'
+      ? explicitSeedIds.length > 0
+        ? explicitSeedIds
+        : sortedBySkill.slice(0, autoSeedCount).map((p) => p.id)
+      : []
+  );
+
   const stats: Record<string, PlayerStatTracking> = {};
   courtPlayers.forEach((p) => {
     stats[p.id] = {
@@ -119,24 +275,31 @@ export function generateCourtKDKGames(
       restCount: 0,
       partners: new Set<string>(),
       opponents: new Set<string>(),
-      weight: getPlayerWeight(p.grade),
+      weight: getCompositeSkillScore(p),
+      isSeed: resolvedSeedSet.has(p.id),
     };
   });
 
   const games: CourtKdkGame[] = [];
 
-  for (let gNum = 1; gNum <= safeGames; gNum++) {
-    // 출전 횟수가 가장 적은 선수 4명을 우선 선발 (인원수가 5명 이상일 때 공평한 순환 보장)
-    const sortedByPlays = [...courtPlayers].sort((a, b) => {
+  for (let gNum = 1; gNum <= totalGames; gNum++) {
+    // 1순위: 아직 1인 필수 최소 게임 수(mandatoryPerPlayer)를 못 채운 선수 최우선
+    // 2순위: 출전 횟수가 가장 적은 선수 우선
+    // 3순위: 휴식 횟수가 많은 선수 우선
+    const sortedByNeed = [...courtPlayers].sort((a, b) => {
+      const aNeedsMandatory = stats[a.id].playCount < mandatoryPerPlayer ? 0 : 1;
+      const bNeedsMandatory = stats[b.id].playCount < mandatoryPerPlayer ? 0 : 1;
+      if (aNeedsMandatory !== bNeedsMandatory) return aNeedsMandatory - bNeedsMandatory;
+
       const diff = stats[a.id].playCount - stats[b.id].playCount;
       if (diff !== 0) return diff;
-      // 동률일 때는 최근 휴식자가 먼저 나오도록
+
       const restDiff = stats[b.id].restCount - stats[a.id].restCount;
       if (restDiff !== 0) return restDiff;
+
       return Math.random() - 0.5;
     });
 
-    // 4명 조합 후보 중 실력 균형 + 파트너 비중복 최적 4인 및 팀 페어링 탐색
     let bestSelection: {
       teamA: [Player, Player];
       teamB: [Player, Player];
@@ -146,23 +309,22 @@ export function generateCourtKDKGames(
       penalty: number;
     } | null = null;
 
-    const minPlayCount = stats[sortedByPlays[0].id].playCount;
-    const mustInclude = sortedByPlays.filter((p) => stats[p.id].playCount === minPlayCount);
-    const attemptLimit = courtPlayers.length === 4 ? 1 : 250;
+    const minPlayCount = stats[sortedByNeed[0].id].playCount;
+    const mustInclude = sortedByNeed.filter((p) => stats[p.id].playCount === minPlayCount);
+    const attemptLimit = courtPlayers.length === 4 ? 1 : 260;
 
     for (let attempt = 0; attempt < attemptLimit; attempt++) {
       let active4: Player[];
       if (courtPlayers.length === 4) {
         active4 = [...courtPlayers].sort((a, b) => stats[b.id].weight - stats[a.id].weight);
       } else if (attempt === 0) {
-        active4 = sortedByPlays.slice(0, 4).sort((a, b) => stats[b.id].weight - stats[a.id].weight);
+        active4 = sortedByNeed.slice(0, 4).sort((a, b) => stats[b.id].weight - stats[a.id].weight);
       } else {
-        // 최소 출전 인원 그룹 내에서 랜덤 조합 시도
         const shuffledMin = [...mustInclude].sort(() => Math.random() - 0.5);
         if (shuffledMin.length >= 4) {
           active4 = shuffledMin.slice(0, 4);
         } else {
-          const remaining = sortedByPlays
+          const remaining = sortedByNeed
             .filter((p) => !shuffledMin.some((m) => m.id === p.id))
             .sort(() => Math.random() - 0.5);
           active4 = [...shuffledMin, ...remaining.slice(0, 4 - shuffledMin.length)];
@@ -184,14 +346,24 @@ export function generateCourtKDKGames(
         const wB = stats[teamB[0].id].weight + stats[teamB[1].id].weight;
         const skillDiff = Math.abs(wA - wB);
 
-        // 실력 차이 최소화 최우선 + 파트너 중복 방지
-        let penalty = skillDiff * 50 + skillDiff * skillDiff * 25;
-        if (stats[teamA[0].id].partners.has(teamA[1].id)) penalty += 160;
-        if (stats[teamB[0].id].partners.has(teamB[1].id)) penalty += 160;
+        // 종합 실력(등급+구력+나이) 차이 최소화 + 파트너 중복 방지
+        let penalty = skillDiff * 24 + skillDiff * skillDiff * 3;
+
+        // SEED_AUTO 모드: 시드 선수가 2명 이상 출전한 경기에서 시드끼리 한 팀에 몰리지 않고 양 팀으로 분산 배치
+        if (mode === 'SEED_AUTO') {
+          const seedsInA = (stats[teamA[0].id].isSeed ? 1 : 0) + (stats[teamA[1].id].isSeed ? 1 : 0);
+          const seedsInB = (stats[teamB[0].id].isSeed ? 1 : 0) + (stats[teamB[1].id].isSeed ? 1 : 0);
+          if ((seedsInA === 2 && seedsInB === 0) || (seedsInB === 2 && seedsInA === 0)) {
+            penalty += 900; // 실력자 시드 분리 최우선
+          }
+        }
+
+        if (stats[teamA[0].id].partners.has(teamA[1].id)) penalty += 320;
+        if (stats[teamB[0].id].partners.has(teamB[1].id)) penalty += 320;
 
         for (const pA of teamA) {
           for (const pB of teamB) {
-            if (stats[pA.id].opponents.has(pB.id)) penalty += 12;
+            if (stats[pA.id].opponents.has(pB.id)) penalty += 25;
           }
         }
 
@@ -420,7 +592,8 @@ export function generateKDKSchedule(
       restCount: 0,
       partners: new Set<string>(),
       opponents: new Set<string>(),
-      weight: GRADE_WEIGHTS[p.grade] || 6,
+      weight: getCompositeSkillScore(p),
+      isSeed: Boolean(p.isSeed),
     };
   });
 

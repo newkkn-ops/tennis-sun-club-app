@@ -951,46 +951,96 @@ export default function TennisApp() {
   const [adminLoginPw, setAdminLoginPw] = useState<string>('');
   const [adminLoginError, setAdminLoginError] = useState<string>('');
 
-  // 회원 마이페이지 내 정보 수정 상태
+  // 마이페이지 내 정보 수정 상태 (관리자/일반회원 공통 · 기본 비활성화, 수정 버튼 클릭 시 활성화)
+  const [isEditingMyProfile, setIsEditingMyProfile] = useState<boolean>(false);
+  const [editMyUsername, setEditMyUsername] = useState<string>('');
   const [editMyName, setEditMyName] = useState<string>('');
   const [editMyGender, setEditMyGender] = useState<'M' | 'F'>('M');
   const [editMyGrade, setEditMyGrade] = useState<string>('은배');
   const [editMyPhone, setEditMyPhone] = useState<string>('');
   const [editMyPassword, setEditMyPassword] = useState<string>('');
+  const [editMyConfirmPassword, setEditMyConfirmPassword] = useState<string>('');
+  const [showMyPassword, setShowMyPassword] = useState<boolean>(false);
   const [myInfoSavedMsg, setMyInfoSavedMsg] = useState<string>('');
+
+  const resetMyProfileFormFromUser = (user: RegisteredPlayer) => {
+    setEditMyUsername(user.username || user.email || '');
+    setEditMyName(user.name || '');
+    setEditMyGender(user.gender === 'F' ? 'F' : 'M');
+    setEditMyGrade(user.grade || '은배');
+    setEditMyPhone(user.phone || '');
+    setEditMyPassword('');
+    setEditMyConfirmPassword('');
+    setShowMyPassword(false);
+  };
 
   useEffect(() => {
     if (currentUser) {
-      setEditMyName(currentUser.name || '');
-      setEditMyGender(currentUser.gender === 'F' ? 'F' : 'M');
-      setEditMyGrade(currentUser.grade || '은배');
-      setEditMyPhone(currentUser.phone || '');
-      setEditMyPassword('');
+      resetMyProfileFormFromUser(currentUser);
+      setIsEditingMyProfile(false);
       setMyInfoSavedMsg('');
     }
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
-  // 회원 본인 정보 수정 저장 핸들러
+  // 본인 정보(아이디 · 비밀번호 · 이름 · 성별 · 등급 · 연락처) 수정 저장 핸들러 (관리자/회원 공통)
   const handleSaveMyProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
-    if (!editMyName.trim()) {
+
+    const trimmedId = editMyUsername.trim();
+    const trimmedName = editMyName.trim();
+    const trimmedPw = editMyPassword.trim();
+    const trimmedConfirmPw = editMyConfirmPassword.trim();
+
+    if (trimmedId.length < 2) {
+      alert('아이디(ID)는 최소 2자 이상 입력해 주세요. (이메일 형식 불필요)');
+      return;
+    }
+
+    const isDuplicateId = registeredPlayers.some(
+      (p) =>
+        p.id !== currentUser.id &&
+        ((p.username && p.username.toLowerCase() === trimmedId.toLowerCase()) ||
+          (p.email && p.email.toLowerCase() === trimmedId.toLowerCase()))
+    );
+    if (isDuplicateId) {
+      alert(`이미 다른 회원이 사용 중인 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.`);
+      return;
+    }
+
+    if (!trimmedName) {
       alert('이름을 입력해 주세요.');
       return;
     }
 
+    if (trimmedPw.length > 0) {
+      if (trimmedPw.length < 4) {
+        alert('새 비밀번호는 최소 4자 이상 입력해 주세요.');
+        return;
+      }
+      if (trimmedPw !== trimmedConfirmPw) {
+        alert('새 비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+        return;
+      }
+    }
+
     const updatedUser: RegisteredPlayer = {
       ...currentUser,
-      name: editMyName.trim(),
+      username: trimmedId,
+      email: trimmedId.includes('@') ? trimmedId : currentUser.email || '',
+      name: trimmedName,
       gender: editMyGender,
       grade: editMyGrade,
       phone: editMyPhone.trim(),
-      password: editMyPassword.trim() ? editMyPassword.trim() : currentUser.password,
+      password: trimmedPw ? trimmedPw : currentUser.password,
     };
 
     setCurrentUser(updatedUser);
     setRegisteredPlayers((prev) => {
-      const next = prev.map((p) => (p.id === updatedUser.id ? { ...p, ...updatedUser } : p));
+      const exists = prev.some((p) => p.id === updatedUser.id);
+      const next = exists
+        ? prev.map((p) => (p.id === updatedUser.id ? { ...p, ...updatedUser } : p))
+        : [updatedUser, ...prev];
       try {
         localStorage.setItem('sun_tennis_registered_users', JSON.stringify(next));
       } catch {}
@@ -1000,7 +1050,14 @@ export default function TennisApp() {
       localStorage.setItem('sun_tennis_current_user', JSON.stringify(updatedUser));
     } catch {}
     setEditMyPassword('');
-    setMyInfoSavedMsg('✅ 내 정보가 성공적으로 수정되었습니다!');
+    setEditMyConfirmPassword('');
+    setShowMyPassword(false);
+    setIsEditingMyProfile(false);
+    setMyInfoSavedMsg(
+      `✅ 내 정보가 저장되었습니다! (아이디: ${updatedUser.username}${
+        trimmedPw ? ' · 비밀번호 변경 완료' : ''
+      })`
+    );
   };
 
   // 관리자 아이디·비밀번호 엄격 인증 후 관리자 모드 입장
@@ -1015,14 +1072,20 @@ export default function TennisApp() {
       return;
     }
 
-    // 등록된 관리자 계정 또는 기본 관리자 계정(admin / admin1234) 검증
+    // 등록된 관리자 계정 또는 변경 전 기본 관리자 계정(admin / admin1234) 검증
     const matchedAdmin = registeredPlayers.find(
       (u) =>
         u.role === 'admin' &&
         (u.username?.toLowerCase() === trimmedAdminId || u.email?.toLowerCase() === trimmedAdminId)
     );
 
+    const defaultAdminRecord = registeredPlayers.find((u) => u.id === 'p10');
+    const isDefaultAdminUnchanged =
+      !defaultAdminRecord?.password &&
+      (!defaultAdminRecord?.username || defaultAdminRecord.username.toLowerCase() === 'admin');
+
     const isDefaultAdminValid =
+      isDefaultAdminUnchanged &&
       (trimmedAdminId === 'admin' || trimmedAdminId === 'admin@suntc.kr') &&
       trimmedAdminPw === 'admin1234';
 
@@ -2420,14 +2483,14 @@ export default function TennisApp() {
                         SUN TENNIS VIP CLUB
                       </span>
                       <h2 className="text-xl font-black text-slate-950 flex items-center gap-1.5">
-                        <span>☀️</span> {currentUser.name} 회원님
+                        <span>{isAdmin ? '👑' : '☀️'}</span> {currentUser.name} {isAdmin ? '관리자님' : '회원님'}
                       </h2>
                       <div className="flex gap-1.5 pt-1">
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">
                           {currentUser.grade}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/40 text-slate-950">
-                          정회원 ({currentUser.gender === 'F' ? '여' : '남'})
+                          {isAdmin ? '관리자 모드' : '정회원'} ({currentUser.gender === 'F' ? '여' : '남'})
                         </span>
                       </div>
                     </div>
@@ -2438,14 +2501,43 @@ export default function TennisApp() {
                   </div>
                 </div>
 
+                {/* 내 계정 정보 카드 (기본 열람 상태 · '내 정보 수정' 버튼 클릭 시에만 수정 폼 활성화) */}
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                    <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                      <span>✏️</span> 내 정보 수정 (본인 계정 관리)
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      ID: {currentUser.username || currentUser.id}
-                    </span>
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                    <div>
+                      <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                        <span>👤</span> 내 계정 정보 ({isAdmin ? '관리자' : '일반회원'})
+                      </span>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {isEditingMyProfile
+                          ? '아이디, 비밀번호 및 개인정보를 수정한 뒤 저장해 주세요.'
+                          : '정보 변경이 필요할 때 우측 수정 버튼을 눌러 활성화하세요.'}
+                      </p>
+                    </div>
+                    {!isEditingMyProfile ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetMyProfileFormFromUser(currentUser);
+                          setMyInfoSavedMsg('');
+                          setIsEditingMyProfile(true);
+                        }}
+                        className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] shadow-md cursor-pointer shrink-0 transition"
+                      >
+                        ✏️ 내 정보 수정
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetMyProfileFormFromUser(currentUser);
+                          setIsEditingMyProfile(false);
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold rounded-xl text-[11px] cursor-pointer shrink-0 transition"
+                      >
+                        ✕ 닫기
+                      </button>
+                    )}
                   </div>
 
                   {myInfoSavedMsg && (
@@ -2454,78 +2546,162 @@ export default function TennisApp() {
                     </div>
                   )}
 
-                  <form onSubmit={handleSaveMyProfile} className="space-y-3 text-xs">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">이름</label>
-                        <input
-                          type="text"
-                          value={editMyName}
-                          onChange={(e) => setEditMyName(e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          required
-                        />
+                  {!isEditingMyProfile ? (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">로그인 아이디 (ID)</span>
+                        <span className="font-black text-amber-300 mt-0.5 block truncate">
+                          {currentUser.username || currentUser.email || currentUser.id}
+                        </span>
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">성별</label>
-                        <select
-                          value={editMyGender}
-                          onChange={(e) => setEditMyGender(e.target.value as 'M' | 'F')}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">비밀번호</span>
+                        <span className="font-bold text-slate-300 mt-0.5 block">
+                          •••••••• <span className="text-[10px] text-slate-500">(변경 가능)</span>
+                        </span>
+                      </div>
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">이름 / 성별</span>
+                        <span className="font-bold text-white mt-0.5 block">
+                          {currentUser.name} ({currentUser.gender === 'F' ? '여' : '남'})
+                        </span>
+                      </div>
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">테니스 등급 / 연락처</span>
+                        <span className="font-bold text-emerald-300 mt-0.5 block truncate">
+                          {currentUser.grade} · {currentUser.phone || '미등록'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSaveMyProfile} className="space-y-3 text-xs">
+                      <div className="bg-slate-950/90 border border-amber-500/35 rounded-xl p-3 space-y-2.5">
+                        <span className="text-[11px] font-black text-amber-300 flex items-center gap-1">
+                          <span>🔐</span> 아이디 · 비밀번호 변경
+                        </span>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                            아이디 (ID) <span className="text-amber-400">*</span>{' '}
+                            <span className="font-normal text-slate-500">(이메일 형식 불필요)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={editMyUsername}
+                            onChange={(e) => setEditMyUsername(e.target.value)}
+                            placeholder="사용할 아이디 입력 (2자 이상)"
+                            minLength={2}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                              새 비밀번호 <span className="font-normal text-slate-500">(변경 시)</span>
+                            </label>
+                            <div className="flex gap-1">
+                              <input
+                                type={showMyPassword ? 'text' : 'password'}
+                                value={editMyPassword}
+                                onChange={(e) => setEditMyPassword(e.target.value)}
+                                placeholder="4자 이상 (미입력 시 유지)"
+                                className="flex-1 px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-emerald-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowMyPassword((prev) => !prev)}
+                                className="px-2 py-2 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-[10px] font-bold cursor-pointer shrink-0"
+                              >
+                                {showMyPassword ? '🙈' : '👁️'}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                              새 비밀번호 확인
+                            </label>
+                            <input
+                              type={showMyPassword ? 'text' : 'password'}
+                              value={editMyConfirmPassword}
+                              onChange={(e) => setEditMyConfirmPassword(e.target.value)}
+                              placeholder="새 비밀번호 다시 입력"
+                              className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-emerald-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">이름</label>
+                          <input
+                            type="text"
+                            value={editMyName}
+                            onChange={(e) => setEditMyName(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">성별</label>
+                          <select
+                            value={editMyGender}
+                            onChange={(e) => setEditMyGender(e.target.value as 'M' | 'F')}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                          >
+                            <option value="M">남성 (남)</option>
+                            <option value="F">여성 (여)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">테니스 등급(부수)</label>
+                          <select
+                            value={editMyGrade}
+                            onChange={(e) => setEditMyGrade(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-bold"
+                          >
+                            {GRADE_OPTIONS.map((g) => (
+                              <option key={g} value={g}>
+                                {g}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">휴대폰 번호</label>
+                          <input
+                            type="tel"
+                            value={editMyPhone}
+                            onChange={(e) => setEditMyPhone(e.target.value)}
+                            placeholder="010-0000-0000"
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetMyProfileFormFromUser(currentUser);
+                            setIsEditingMyProfile(false);
+                          }}
+                          className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs cursor-pointer"
                         >
-                          <option value="M">남성 (남)</option>
-                          <option value="F">여성 (여)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">테니스 등급(부수)</label>
-                        <select
-                          value={editMyGrade}
-                          onChange={(e) => setEditMyGrade(e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-bold"
+                          취소
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
                         >
-                          {GRADE_OPTIONS.map((g) => (
-                            <option key={g} value={g}>
-                              {g}
-                            </option>
-                          ))}
-                        </select>
+                          💾 내 정보 수정 저장
+                        </button>
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-1">휴대폰 번호</label>
-                        <input
-                          type="tel"
-                          value={editMyPhone}
-                          onChange={(e) => setEditMyPhone(e.target.value)}
-                          placeholder="010-0000-0000"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                        새 비밀번호 변경 <span className="font-normal text-slate-500">(변경 시에만 입력)</span>
-                      </label>
-                      <input
-                        type="password"
-                        value={editMyPassword}
-                        onChange={(e) => setEditMyPassword(e.target.value)}
-                        placeholder="새 비밀번호 입력 (미입력 시 기존 비밀번호 유지)"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer"
-                    >
-                      💾 내 정보 수정 저장
-                    </button>
-                  </form>
+                    </form>
+                  )}
                 </div>
 
                 <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
