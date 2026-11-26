@@ -1,12 +1,21 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { generateKDKSchedule, GRADE_WEIGHTS } from '../lib/kdk';
+import {
+  generateKDKSchedule,
+  GRADE_WEIGHTS,
+  getCompositeSkillScore,
+  resolvePlayerAge,
+} from '../lib/kdk';
+import { formatManAgeLabel } from '../lib/age';
 
 export interface ParticipantPlayer {
   id: string;
   name: string;
   grade: string;
   gender: string;
+  birthDate?: string; // 생년월일 (YYYY-MM-DD)
+  age?: number; // 만 나이 (실력 균등 자동 배정 반영)
+  experienceYears?: number; // 구력(년)
   isGuest?: boolean; // 미가입 회원 / 임의 등록 선수 여부
   isLoggedInUser?: boolean; // 가입회원 여부
 }
@@ -69,10 +78,10 @@ export default function AdminTournamentManager({
 
   // 기본 미가입 회원 샘플 풀 (새 대회 개설 시 바로 선택하거나 추가 가능)
   const [guestPool, setGuestPool] = useState<ParticipantPlayer[]>([
-    { id: 'guest_init_1', name: '김태희', grade: '개나리', gender: '여', isGuest: true, isLoggedInUser: false },
-    { id: 'guest_init_2', name: '정우성', grade: '은배', gender: '남', isGuest: true, isLoggedInUser: false },
-    { id: 'guest_init_3', name: '전지현', grade: '국화', gender: '여', isGuest: true, isLoggedInUser: false },
-    { id: 'guest_init_4', name: '현빈', grade: '동배', gender: '남', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_1', name: '김태희', grade: '개나리', gender: '여', birthDate: '1981-03-29', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_2', name: '정우성', grade: '은배', gender: '남', birthDate: '1973-03-20', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_3', name: '전지현', grade: '국화', gender: '여', birthDate: '1982-10-30', isGuest: true, isLoggedInUser: false },
+    { id: 'guest_init_4', name: '현빈', grade: '동배', gender: '남', birthDate: '1983-09-25', isGuest: true, isLoggedInUser: false },
   ]);
 
   // 선수 필터 탭: 'ALL' | 'MEMBER' (가입회원) | 'GUEST' (미가입/임의선수)
@@ -88,6 +97,9 @@ export default function AdminTournamentManager({
       name: u.name,
       grade: u.grade || '은배',
       gender: u.gender === 'F' || u.gender === '여' ? '여' : '남',
+      birthDate: u.birthDate,
+      age: resolvePlayerAge({ birthDate: u.birthDate, age: u.age }, 46),
+      experienceYears: u.experienceYears,
       isGuest: Boolean(u.isGuest),
       isLoggedInUser: !u.isGuest,
     }));
@@ -142,18 +154,53 @@ export default function AdminTournamentManager({
     setExpandedMatchIds((prev) => ({ ...prev, [matchId]: !prev[matchId] }));
   };
 
-  // 전체 선택 가능한 선수 풀 (가입회원 + 미가입회원/임의선수)
+  // 전체 선택 가능한 선수 풀 (가입회원 + 미가입회원/임의선수 · 생년월일 만 나이 자동 반영)
   const allAvailablePlayers: ParticipantPlayer[] = [
     ...registeredUsers.map((u) => ({
       id: String(u.id),
       name: u.name,
       grade: u.grade || '은배',
       gender: u.gender === 'F' || u.gender === '여' ? '여' : '남',
+      birthDate: u.birthDate,
+      age: resolvePlayerAge({ birthDate: u.birthDate, age: u.age }, 46),
+      experienceYears: u.experienceYears,
       isGuest: Boolean(u.isGuest),
       isLoggedInUser: !u.isGuest,
     })),
     ...guestPool.filter((g) => !registeredUsers.some((u) => String(u.id) === g.id)),
   ];
+
+  // 외부 회원정보(생년월일·만 나이·등급·이름) 수정 시 선택된 참가자 목록 실시간 동기화
+  useEffect(() => {
+    const byId = new Map(registeredUsers.map((u) => [String(u.id), u]));
+    setSelectedParticipants((prev) => {
+      let changed = false;
+      const next = prev.map((p) => {
+        const u = byId.get(p.id);
+        if (!u) return p;
+        const resolvedAge = resolvePlayerAge({ birthDate: u.birthDate, age: u.age }, p.age ?? 46);
+        if (
+          u.name !== p.name ||
+          (u.grade || '은배') !== p.grade ||
+          u.birthDate !== p.birthDate ||
+          resolvedAge !== p.age
+        ) {
+          changed = true;
+          return {
+            ...p,
+            name: u.name,
+            grade: u.grade || '은배',
+            gender: u.gender === 'F' || u.gender === '여' ? '여' : '남',
+            birthDate: u.birthDate,
+            age: resolvedAge,
+            experienceYears: u.experienceYears ?? p.experienceYears,
+          };
+        }
+        return p;
+      });
+      return changed ? next : prev;
+    });
+  }, [registeredUsers]);
 
   const filteredPlayers = allAvailablePlayers.filter((p) => {
     if (playerFilterTab === 'MEMBER') return !p.isGuest;
@@ -171,7 +218,9 @@ export default function AdminTournamentManager({
     }
   }, [selectedParticipants]);
 
-  const getPlayerWeight = (p?: ParticipantPlayer) => (p ? GRADE_WEIGHTS[p.grade] || 6 : 6);
+  // 등급 + 구력 + 만 나이 기반 종합 실력 지수 (실력 균등 자동 배정 반영)
+  const getPlayerWeight = (p?: ParticipantPlayer) =>
+    p ? getCompositeSkillScore(p) : 64;
 
   const calcMatchWeights = (teamA: [ParticipantPlayer, ParticipantPlayer], teamB: [ParticipantPlayer, ParticipantPlayer]) => {
     const wA = getPlayerWeight(teamA[0]) + getPlayerWeight(teamA[1]);
@@ -750,6 +799,7 @@ export default function AdminTournamentManager({
           {filteredPlayers.map((player) => {
             const isSelected = selectedParticipants.some((p) => p.id === player.id);
             const pt = getPlayerWeight(player);
+            const ageLabel = formatManAgeLabel(player.birthDate, player.age);
             return (
               <button
                 key={player.id}
@@ -775,7 +825,7 @@ export default function AdminTournamentManager({
                     )}
                   </div>
                   <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {player.grade} (실력 {pt}점)
+                    {player.grade}{ageLabel ? ` · ${ageLabel}` : ''} (실력 {pt}점)
                   </span>
                 </div>
                 <span

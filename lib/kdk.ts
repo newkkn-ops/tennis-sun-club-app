@@ -2,6 +2,8 @@
  * 테니스 어플 - KDK 대진표 자동 생성 및 코트별 실력균등·나이합산 순위 집계 엔진
  */
 
+import { calculateKoreanManAge } from './age';
+
 export type UserGrade = '금배' | '은배' | '국화' | '동배' | '개나리' | '테린이' | '고령자부';
 export type KdkAssignMode = 'AUTO' | 'SEED_AUTO' | 'MANUAL';
 
@@ -9,7 +11,8 @@ export interface Player {
   id: string;
   name: string;
   grade: UserGrade | string;
-  age?: number; // 실력 종합지수 보정 및 동점 시 나이합산 타이브레이커용
+  birthDate?: string; // 생년월일 (YYYY-MM-DD) — 만 나이 자동 계산 및 실력 균등 배정용
+  age?: number; // 만 나이 (실력 종합지수 보정 및 동점 시 나이합산 타이브레이커용)
   experienceYears?: number; // 구력(년) — 실력 균등 자동모드·시드배정 반영
   isSeed?: boolean; // 코트별 실력자 우선 시드 여부
   gender?: string;
@@ -122,16 +125,33 @@ export function getPlayerExperienceYears(player: Pick<Player, 'grade' | 'experie
 }
 
 /**
- * 종합 실력 지수 계산 (구력 + 등급[금배·은배·동배·국화·개나리·테린이·고령자부] + 나이 반영)
+ * 선수의 생년월일(birthDate) 기준 만 나이를 최우선 산출하고, 미입력 시 age 또는 기본값 반환
+ */
+export function resolvePlayerAge(
+  player: Pick<Player, 'birthDate' | 'age'>,
+  fallback: number = 46
+): number {
+  const fromBirth = calculateKoreanManAge(player.birthDate);
+  if (fromBirth !== null) return fromBirth;
+  if (typeof player.age === 'number' && !isNaN(player.age) && player.age > 0) {
+    return Math.round(player.age);
+  }
+  return fallback;
+}
+
+/**
+ * 종합 실력 지수 계산 (구력 + 등급[금배·은배·동배·국화·개나리·테린이·고령자부] + 만 나이 반영)
  * - 등급 기본점수: 36 ~ 100점
  * - 구력 가산점: 구력 1년당 +1.5점 (최대 +30점)
- * - 나이 보정: 50세 기준, 젊을수록 체력 보정(+), 연장자 체력 보정(-) (-10 ~ +8점)
+ * - 만 나이 보정: 만 50세 기준, 젊을수록 체력 보정(+), 연장자 체력 보정(-) (-10 ~ +8점)
  */
-export function getCompositeSkillScore(player: Pick<Player, 'grade' | 'age' | 'experienceYears'>): number {
+export function getCompositeSkillScore(
+  player: Pick<Player, 'grade' | 'age' | 'birthDate' | 'experienceYears'>
+): number {
   const gradeBase = GRADE_COMPOSITE_BASE[player.grade] ?? 64;
   const expYears = getPlayerExperienceYears(player);
   const expBonus = Math.min(20, expYears) * 1.5;
-  const ageVal = typeof player.age === 'number' && !isNaN(player.age) ? player.age : 46;
+  const ageVal = resolvePlayerAge(player, 46);
   const ageAdjust = Math.max(-10, Math.min(8, Math.round((50 - ageVal) * 0.28)));
   return Math.max(20, Math.round(gradeBase + expBonus + ageAdjust));
 }
@@ -427,7 +447,7 @@ export function calculateKdkStandingsWithAgeTiebreak(
   const map: Record<string, KdkStandingRow> = {};
 
   players.forEach((p) => {
-    const playerAge = typeof p.age === 'number' && !isNaN(p.age) ? p.age : 40;
+    const playerAge = resolvePlayerAge(p, 40);
     map[p.id] = {
       rank: 0,
       playerId: p.id,
@@ -450,7 +470,7 @@ export function calculateKdkStandingsWithAgeTiebreak(
   // 경기 내 등장한 선수 중 players 배열에 누락된 선수가 있으면 자동 보완
   const ensurePlayer = (p: Player) => {
     if (!map[p.id]) {
-      const playerAge = typeof p.age === 'number' && !isNaN(p.age) ? p.age : 40;
+      const playerAge = resolvePlayerAge(p, 40);
       map[p.id] = {
         rank: 0,
         playerId: p.id,
@@ -561,7 +581,7 @@ export function calculateKdkStandingsWithAgeTiebreak(
 
     if (tiedWithPrev || tiedWithNext) {
       row.tieBreakApplied = true;
-      row.tieBreakReason = `동점→나이합산(${row.ageSumWithPartners}세)`;
+      row.tieBreakReason = `동점→만 나이합산(${row.ageSumWithPartners}세)`;
     }
   });
 

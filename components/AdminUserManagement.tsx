@@ -1,6 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import BirthDateSelector from './BirthDateSelector';
+import {
+  calculateKoreanManAge,
+  formatBirthDateDisplay,
+  formatManAgeLabel,
+} from '../lib/age';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -26,6 +32,8 @@ export interface ManagedMember {
   grade: string;
   role: 'member' | 'admin';
   phone?: string;
+  birthDate?: string; // 생년월일 (YYYY-MM-DD)
+  age?: number; // 만 나이 (자동 계산)
   isGuest?: boolean;
   approvalStatus?: 'pending' | 'approved';
   requestedAt?: string;
@@ -52,15 +60,15 @@ export default function AdminUserManagement({
 }: AdminUserManagementProps) {
   const [users, setUsers] = useState<ManagedMember[]>(
     externalUsers || [
-      { id: 'p1', name: '김철수', email: 'chulsoo@suntc.kr', gender: 'M', grade: '금배', role: 'member' },
-      { id: 'p2', name: '강동원', email: 'dongwon@suntc.kr', gender: 'M', grade: '금배', role: 'member' },
-      { id: 'p3', name: '박민수', email: 'minsoo@suntc.kr', gender: 'M', grade: '은배', role: 'member' },
-      { id: 'p4', name: '정지훈', email: 'jihoon@suntc.kr', gender: 'M', grade: '동배', role: 'member' },
-      { id: 'p5', name: '이영희', email: 'younghee@suntc.kr', gender: 'F', grade: '국화', role: 'member' },
-      { id: 'p6', name: '한지민', email: 'jimin@suntc.kr', gender: 'F', grade: '은배', role: 'member' },
-      { id: 'p7', name: '최수진', email: 'sujin@suntc.kr', gender: 'F', grade: '개나리', role: 'member' },
-      { id: 'p8', name: '송중기', email: 'joongki@suntc.kr', gender: 'M', grade: '동배', role: 'member' },
-      { id: 'p10', name: '공유', email: 'admin@suntc.kr', gender: 'M', grade: '금배', role: 'admin' },
+      { id: 'p1', name: '김철수', email: 'chulsoo@suntc.kr', gender: 'M', grade: '금배', role: 'member', birthDate: '1972-05-14' },
+      { id: 'p2', name: '강동원', email: 'dongwon@suntc.kr', gender: 'M', grade: '금배', role: 'member', birthDate: '1981-01-18' },
+      { id: 'p3', name: '박민수', email: 'minsoo@suntc.kr', gender: 'M', grade: '은배', role: 'member', birthDate: '1975-03-22' },
+      { id: 'p4', name: '정지훈', email: 'jihoon@suntc.kr', gender: 'M', grade: '동배', role: 'member', birthDate: '1983-06-25' },
+      { id: 'p5', name: '이영희', email: 'younghee@suntc.kr', gender: 'F', grade: '국화', role: 'member', birthDate: '1974-08-10' },
+      { id: 'p6', name: '한지민', email: 'jimin@suntc.kr', gender: 'F', grade: '은배', role: 'member', birthDate: '1984-11-05' },
+      { id: 'p7', name: '최수진', email: 'sujin@suntc.kr', gender: 'F', grade: '개나리', role: 'member', birthDate: '1978-04-12' },
+      { id: 'p8', name: '송중기', email: 'joongki@suntc.kr', gender: 'M', grade: '동배', role: 'member', birthDate: '1987-09-19' },
+      { id: 'p10', name: '공유', email: 'admin@suntc.kr', gender: 'M', grade: '금배', role: 'admin', birthDate: '1979-07-10' },
     ]
   );
 
@@ -83,6 +91,7 @@ export default function AdminUserManagement({
   const [editPassword, setEditPassword] = useState<string>('');
   const [showEditPassword, setShowEditPassword] = useState<boolean>(true);
   const [editPhone, setEditPhone] = useState<string>('');
+  const [editBirthDate, setEditBirthDate] = useState<string>('');
   const [editGender, setEditGender] = useState<'M' | 'F'>('M');
   const [editGrade, setEditGrade] = useState<string>('은배');
   const [editRole, setEditRole] = useState<'member' | 'admin'>('member');
@@ -93,6 +102,7 @@ export default function AdminUserManagement({
   const [newEmail, setNewEmail] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [newPhone, setNewPhone] = useState<string>('');
+  const [newBirthDate, setNewBirthDate] = useState<string>('');
   const [newGender, setNewGender] = useState<'M' | 'F'>('M');
   const [newGrade, setNewGrade] = useState<string>('테린이');
   const [newRole, setNewRole] = useState<'member' | 'admin'>('member');
@@ -142,6 +152,7 @@ export default function AdminUserManagement({
     setEditPassword(resolvedPassword);
     setShowEditPassword(true);
     setEditPhone(member.phone || '');
+    setEditBirthDate(member.birthDate || '');
     setEditGender(member.gender === 'F' || member.gender === '여' ? 'F' : 'M');
     setEditGrade(member.grade || '은배');
     setEditRole(member.role || 'member');
@@ -182,6 +193,7 @@ export default function AdminUserManagement({
       return;
     }
 
+    const computedAge = calculateKoreanManAge(editBirthDate);
     const updated: ManagedMember = {
       ...editingMember,
       name: editName.trim(),
@@ -189,6 +201,8 @@ export default function AdminUserManagement({
       password: trimmedPw,
       email: trimmedId.includes('@') ? trimmedId : editingMember.email || '',
       phone: editPhone.trim(),
+      birthDate: editBirthDate || undefined,
+      age: computedAge !== null ? computedAge : editingMember.age,
       gender: editGender,
       grade: editGrade,
       role: editRole,
@@ -228,16 +242,18 @@ export default function AdminUserManagement({
             gender: updated.gender,
             grade: updated.grade,
             role: updated.role,
+            birth_date: updated.birthDate || null,
           })
           .eq('id', updated.id);
       } catch {}
     }
 
     setEditingMember(null);
+    const ageLabel = formatManAgeLabel(updated.birthDate, updated.age);
     alert(
       `✅ [${updated.name}] 회원의 정보가 수정되었습니다.\n아이디: ${updated.username || '미설정'} / 비밀번호: ${
         updated.password ? '변경(저장) 완료' : '미설정'
-      }`
+      }${ageLabel ? ` / 나이: ${ageLabel}` : ''}`
     );
   };
 
@@ -396,6 +412,7 @@ export default function AdminUserManagement({
       return;
     }
 
+    const computedAge = calculateKoreanManAge(newBirthDate);
     const created: ManagedMember = {
       id: `p_${Date.now()}`,
       username: newEmail.trim() || newName.trim(),
@@ -403,6 +420,8 @@ export default function AdminUserManagement({
       name: newName.trim(),
       email: newEmail.trim().includes('@') ? newEmail.trim() : '',
       phone: newPhone.trim(),
+      birthDate: newBirthDate || undefined,
+      age: computedAge !== null ? computedAge : undefined,
       gender: newGender,
       grade: newGrade,
       role: newRole,
@@ -426,8 +445,10 @@ export default function AdminUserManagement({
     setNewEmail('');
     setNewPassword('');
     setNewPhone('');
+    setNewBirthDate('');
     setShowAddForm(false);
-    alert(`🎉 [${created.name} (${created.grade})] 회원이 신규 등록되었습니다.`);
+    const ageSuffix = computedAge !== null ? ` · 만 ${computedAge}세` : '';
+    alert(`🎉 [${created.name} (${created.grade}${ageSuffix})] 회원이 신규 등록되었습니다.`);
   };
 
   const pendingUsers = users.filter((u) => u.approvalStatus === 'pending');
@@ -493,6 +514,8 @@ export default function AdminUserManagement({
               <div className="space-y-2">
                 {pendingUsers.map((u) => {
                   const isExpanded = Boolean(expandedMemberIds[u.id]);
+                  const manAgeBadge = formatManAgeLabel(u.birthDate, u.age);
+                  const birthStr = formatBirthDateDisplay(u.birthDate);
                   return (
                     <div
                       key={u.id}
@@ -511,6 +534,11 @@ export default function AdminUserManagement({
                           <span className="text-[10px] text-slate-400">
                             ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
                           </span>
+                          {manAgeBadge && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                              {manAgeBadge}
+                            </span>
+                          )}
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black">
                             승인 대기중
                           </span>
@@ -526,6 +554,11 @@ export default function AdminUserManagement({
                             <span>
                               신청 ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong>
                             </span>
+                            {birthStr && (
+                              <span>
+                                · 생년월일: <strong className="text-emerald-300">{birthStr} ({manAgeBadge})</strong>
+                              </span>
+                            )}
                             {u.phone && <span>· 연락처: {u.phone}</span>}
                             {u.requestedAt && <span>· 신청일시: {u.requestedAt}</span>}
                           </div>
@@ -643,6 +676,14 @@ export default function AdminUserManagement({
                 className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
               />
             </div>
+            <BirthDateSelector
+              value={newBirthDate}
+              onChange={setNewBirthDate}
+              compact
+              accent="emerald"
+              label="생년월일 (출생년·월·일 ➔ 만 나이 자동 계산)"
+              helperText="만 나이가 자동 계산되어 KDK·대회 실력 균등 배정에 반영됩니다."
+            />
             <div className="grid grid-cols-3 gap-2">
               <select
                 value={newGender}
@@ -700,6 +741,8 @@ export default function AdminUserManagement({
           {filteredUsers.map((u) => {
             const isMe = currentUserId && String(u.id) === String(currentUserId);
             const isExpanded = Boolean(expandedMemberIds[u.id]);
+            const manAgeBadge = formatManAgeLabel(u.birthDate, u.age);
+            const birthStr = formatBirthDateDisplay(u.birthDate);
             return (
               <div
                 key={u.id}
@@ -716,6 +759,11 @@ export default function AdminUserManagement({
                     <span className="text-[10px] text-slate-400">
                       ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
                     </span>
+                    {manAgeBadge && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                        {manAgeBadge}
+                      </span>
+                    )}
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-extrabold">
                       {u.grade}
                     </span>
@@ -747,8 +795,15 @@ export default function AdminUserManagement({
                 {isExpanded && (
                   <div className="space-y-2.5 pt-2 border-t border-slate-800/90">
                     <div className="flex justify-between items-center gap-2 flex-wrap">
-                      <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
                         <span>ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
+                        {birthStr ? (
+                          <span>
+                            · 생년월일: <strong className="text-emerald-300">{birthStr} ({manAgeBadge})</strong>
+                          </span>
+                        ) : (
+                          <span className="text-amber-400/80">· 생년월일 미등록</span>
+                        )}
                         {u.phone && <span>· {u.phone}</span>}
                       </div>
 
@@ -899,6 +954,15 @@ export default function AdminUserManagement({
                   required
                 />
               </div>
+
+              <BirthDateSelector
+                key={editingMember.id}
+                value={editBirthDate}
+                onChange={setEditBirthDate}
+                compact
+                label="생년월일 (출생년·월·일 ➔ 만 나이 자동 계산)"
+                helperText="생년월일 기준 만 나이가 자동 반영되어 KDK·대회 실력 균등 배정에 적용됩니다."
+              />
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>

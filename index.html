@@ -552,8 +552,9 @@
                 </div>
               </div>
               <div class="text-right shrink-0">
-                <span class="text-[10px] font-extrabold text-slate-950/70 block">승률 랭킹</span>
-                <span class="text-2xl font-black text-slate-950">TOP 3 🏆</span>
+                <span class="text-[10px] font-extrabold text-slate-950/70 block">전체 누적 랭킹</span>
+                <span id="mypageTopRankBadge" class="text-2xl font-black text-slate-950">TOP 2위 🏆</span>
+                <span id="mypageHeaderWinRate" class="text-[10px] font-black text-slate-950/80 block">누적 승률 70.0% (7승 3패)</span>
               </div>
             </div>
           </div>
@@ -655,29 +656,105 @@
             <div id="mypageMyCourtsList" class="space-y-2 text-xs"></div>
           </div>
 
-          <!-- 3. 현재 본인 성적 & 공식 대회 누적 전적 -->
+          <!-- 3. 전 대회 종합 개인 누적 성적 & 승률 집계 -->
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <span class="text-xs font-bold text-slate-300">📊 현재 본인 성적 & 공식 대회 전적</span>
-              <span class="text-xs font-extrabold text-amber-400">승률 75.0%</span>
+              <div>
+                <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                  <span>📊</span> 전 대회 종합 개인 누적 성적 & 승률 집계
+                </span>
+                <p id="mypageSummaryDesc" class="text-[10px] text-slate-400 mt-0.5">
+                  참가한 모든 공식 대회의 경기 결과가 누적으로 자동 합산되었습니다.
+                </p>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="text-[10px] text-slate-400 block">누적 승률</span>
+                <span id="mypageWinRateText" class="text-sm font-black text-amber-400">70.0%</span>
+              </div>
             </div>
+
+            <div class="space-y-1">
+              <div class="flex justify-between text-[11px] font-extrabold">
+                <span class="text-slate-400">누적 승률 달성도</span>
+                <span id="mypageWinRateProgressLabel" class="text-emerald-300">70.0% (7승 3패)</span>
+              </div>
+              <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+                <div id="mypageWinRateBar" class="bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-400 h-3 rounded-full transition-all duration-500" style="width: 70%;"></div>
+              </div>
+            </div>
+
             <div class="grid grid-cols-4 gap-2 pt-1 text-center text-xs">
-              <div class="bg-slate-950 p-2 rounded-xl border border-slate-800"><p class="text-[10px] text-slate-400">총 경기</p><p class="text-base font-black text-white">12</p></div>
-              <div class="bg-emerald-950/40 p-2 rounded-xl border border-emerald-500/20"><p class="text-[10px] text-emerald-400 font-bold">승리</p><p class="text-base font-black text-emerald-300">9</p></div>
-              <div class="bg-red-950/40 p-2 rounded-xl border border-red-500/20"><p class="text-[10px] text-red-400 font-bold">패배</p><p class="text-base font-black text-red-300">3</p></div>
-              <div class="bg-amber-950/40 p-2 rounded-xl border border-amber-500/20"><p class="text-[10px] text-amber-400 font-bold">득실차</p><p class="text-base font-black text-amber-300">+21</p></div>
+              <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <p class="text-[10px] text-slate-400">총 출전 경기</p>
+                <p id="mypageStatMatches" class="text-base font-black text-white">10전</p>
+              </div>
+              <div class="bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/20">
+                <p class="text-[10px] text-emerald-400 font-bold">누적 승리</p>
+                <p id="mypageStatWins" class="text-base font-black text-emerald-300">7승</p>
+              </div>
+              <div class="bg-red-950/40 p-2.5 rounded-xl border border-red-500/20">
+                <p class="text-[10px] text-red-400 font-bold">누적 패배</p>
+                <p id="mypageStatLosses" class="text-base font-black text-red-300">3패</p>
+              </div>
+              <div class="bg-amber-950/40 p-2.5 rounded-xl border border-amber-500/20">
+                <p class="text-[10px] text-amber-400 font-bold">누적 득실차</p>
+                <p id="mypageStatDiff" class="text-base font-black text-amber-300">+15점</p>
+              </div>
             </div>
           </div>
 
-          <!-- 4. 과거 대회 기록 & 게임 성적 히스토리 -->
+          <!-- 4. 대회별 참가 성적 & 승률 반영 히스토리 -->
           <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
             <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                <span>📜</span> 과거 대회 기록 & 게임 성적 히스토리
-              </span>
-              <span id="mypageHistoryCountBadge" class="text-[10px] text-slate-400">대회 기록</span>
+              <div>
+                <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                  <span>📜</span> 대회별 참가 성적 & 승률 반영 히스토리
+                </span>
+                <p class="text-[10px] text-slate-400 mt-0.5">
+                  각 대회별 본인 경기 성적과 총 누적 승률 합산 내역입니다.
+                </p>
+              </div>
+              <span id="mypageHistoryCountBadge" class="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">대회 기록</span>
             </div>
-            <div id="mypageHistoryList" class="space-y-2 max-h-64 overflow-y-auto"></div>
+            <div id="mypageHistoryList" class="space-y-2 max-h-72 overflow-y-auto"></div>
+            <div id="mypageHistoryNotice" class="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-slate-300">
+              ✓ 참가 대회의 모든 경기 성적이 합산되어 개인 누적 승률에 즉시 반영됩니다.
+            </div>
+          </div>
+
+          <!-- 5. 썬 클럽 회원 전체 누적 승률 랭킹 TOP 5 -->
+          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+              <div>
+                <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                  <span>🏆</span> 썬 클럽 회원 전체 누적 승률 랭킹 (TOP 5)
+                </span>
+                <p class="text-[10px] text-slate-400 mt-0.5">
+                  전체 회원의 전 대회 누적 성적에 따른 실시간 공식 랭킹 순위표입니다.
+                </p>
+              </div>
+              <span id="mypageMyRankBadge" class="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                내 순위: 2위
+              </span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left">
+                <thead>
+                  <tr class="border-b border-slate-800 text-slate-400 text-[10px]">
+                    <th class="py-2 px-1 text-center">순위</th>
+                    <th class="py-2 px-1.5">선수명 (부수)</th>
+                    <th class="py-2 px-1 text-center">참가</th>
+                    <th class="py-2 px-1 text-center">전적</th>
+                    <th class="py-2 px-1 text-center">누적 승률</th>
+                    <th class="py-2 px-1 text-right">득실</th>
+                  </tr>
+                </thead>
+                <tbody id="mypageLeaderboardBody" class="divide-y divide-slate-800/60"></tbody>
+              </table>
+            </div>
+            <p class="text-[10px] text-slate-500 pt-0.5">
+              ※ 모든 공식 대회(조별 풀리그, 본선 토너먼트, KDK) 결과가 실시간 누적 합산 반영됩니다.
+            </p>
           </div>
         </div>
 
@@ -1853,6 +1930,146 @@
       } catch {}
     }
 
+    // 과거 대회 선수별 성적 아카이브 (총 누적 승률 집계용)
+    const DEFAULT_PAST_TOURNAMENT_STATS = {
+      'tour-2': {
+        '강동원': { matches: 4, wins: 4, losses: 0, ptsFor: 24, ptsAgainst: 14, ptsDiff: 10, rankOrNote: '우승 🥇' },
+        '김철수': { matches: 4, wins: 3, losses: 1, ptsFor: 23, ptsAgainst: 17, ptsDiff: 6, rankOrNote: '준우승 🥈' },
+        '박민수': { matches: 3, wins: 2, losses: 1, ptsFor: 18, ptsAgainst: 15, ptsDiff: 3, rankOrNote: '3위 🥉' },
+        '송중기': { matches: 3, wins: 2, losses: 1, ptsFor: 17, ptsAgainst: 15, ptsDiff: 2, rankOrNote: '4강' },
+        '이영희': { matches: 3, wins: 1, losses: 2, ptsFor: 14, ptsAgainst: 15, ptsDiff: -1, rankOrNote: '8강' },
+        '한지민': { matches: 3, wins: 1, losses: 2, ptsFor: 13, ptsAgainst: 15, ptsDiff: -2, rankOrNote: '8강' },
+        '최수진': { matches: 3, wins: 1, losses: 2, ptsFor: 14, ptsAgainst: 15, ptsDiff: -1, rankOrNote: '8강' },
+        '김태희': { matches: 3, wins: 1, losses: 2, ptsFor: 13, ptsAgainst: 15, ptsDiff: -2, rankOrNote: '8강' },
+        '공유':   { matches: 2, wins: 0, losses: 2, ptsFor: 7, ptsAgainst: 14, ptsDiff: -7, rankOrNote: '예선' },
+        '정지훈': { matches: 2, wins: 0, losses: 2, ptsFor: 6, ptsAgainst: 14, ptsDiff: -8, rankOrNote: '예선' },
+        '조인성': { matches: 2, wins: 0, losses: 2, ptsFor: 6, ptsAgainst: 14, ptsDiff: -8, rankOrNote: '예선' },
+        '정우성': { matches: 2, wins: 0, losses: 2, ptsFor: 8, ptsAgainst: 14, ptsDiff: -6, rankOrNote: '예선' },
+      },
+      'tour-3': {
+        '이영희': { matches: 4, wins: 4, losses: 0, ptsFor: 24, ptsAgainst: 15, ptsDiff: 9, rankOrNote: '우승 🥇' },
+        '김철수': { matches: 4, wins: 3, losses: 1, ptsFor: 22, ptsAgainst: 15, ptsDiff: 7, rankOrNote: '준우승 🥈' },
+        '강동원': { matches: 4, wins: 3, losses: 1, ptsFor: 21, ptsAgainst: 16, ptsDiff: 5, rankOrNote: '3위 🥉' },
+        '공유':   { matches: 4, wins: 3, losses: 1, ptsFor: 20, ptsAgainst: 16, ptsDiff: 4, rankOrNote: '4위' },
+        '송중기': { matches: 4, wins: 2, losses: 2, ptsFor: 19, ptsAgainst: 18, ptsDiff: 1, rankOrNote: '5위' },
+        '박민수': { matches: 4, wins: 2, losses: 2, ptsFor: 18, ptsAgainst: 18, ptsDiff: 0, rankOrNote: '6위' },
+        '한지민': { matches: 4, wins: 2, losses: 2, ptsFor: 17, ptsAgainst: 18, ptsDiff: -1, rankOrNote: '7위' },
+        '최수진': { matches: 4, wins: 1, losses: 3, ptsFor: 14, ptsAgainst: 18, ptsDiff: -4, rankOrNote: '8위' },
+        '정지훈': { matches: 4, wins: 1, losses: 3, ptsFor: 14, ptsAgainst: 18, ptsDiff: -4, rankOrNote: '8위' },
+        '조인성': { matches: 4, wins: 1, losses: 3, ptsFor: 13, ptsAgainst: 18, ptsDiff: -5, rankOrNote: '9위' },
+      },
+    };
+
+    let pastTourStats = { ...DEFAULT_PAST_TOURNAMENT_STATS };
+    try {
+      const rawPast = localStorage.getItem('sun_tennis_past_tour_stats');
+      if (rawPast) {
+        const parsedPast = JSON.parse(rawPast);
+        pastTourStats = { ...DEFAULT_PAST_TOURNAMENT_STATS, ...parsedPast };
+      }
+    } catch {}
+
+    function persistHtmlPastTourStats() {
+      try {
+        localStorage.setItem('sun_tennis_past_tour_stats', JSON.stringify(pastTourStats));
+      } catch {}
+    }
+
+    function calculatePlayerCumulativeStats(targetName) {
+      let totalMatches = 0;
+      let totalWins = 0;
+      let totalLosses = 0;
+      let totalPtsDiff = 0;
+      let playedTournamentsCount = 0;
+
+      const historyBreakdown = tournamentHistory.map((t) => {
+        let m = 0;
+        let w = 0;
+        let l = 0;
+        let diff = 0;
+        let note = '';
+
+        if (t.id === currentTournament.id) {
+          const inKdk = kdkStandings.find((s) => s.name === targetName);
+          if (inKdk && inKdk.matches > 0) {
+            m = inKdk.matches;
+            w = inKdk.wins;
+            l = inKdk.losses;
+            diff = typeof inKdk.diff === 'string' ? parseInt(inKdk.diff, 10) || 0 : inKdk.diff || 0;
+            note = `현재 ${inKdk.rank}위 (${t.status === 'completed' ? '종료' : '진행중'})`;
+          } else {
+            const myCourts = (courtsData || []).filter(
+              (c) =>
+                (c.teamA || []).some((p) => p.includes(targetName)) ||
+                (c.teamB || []).some((p) => p.includes(targetName))
+            );
+            const myCompleted = myCourts.filter((c) => c.status === 'completed');
+            if (myCompleted.length > 0) {
+              m = myCompleted.length;
+              myCompleted.forEach((mc) => {
+                const inA = (mc.teamA || []).some((p) => p.includes(targetName));
+                const myScore = inA ? mc.scoreA : mc.scoreB;
+                const oppScore = inA ? mc.scoreB : mc.scoreA;
+                if (myScore > oppScore) w++;
+                else if (myScore < oppScore) l++;
+                diff += myScore - oppScore;
+              });
+              note = `${w}승 ${l}패 (${t.status === 'completed' ? '종료' : '진행중'})`;
+            }
+          }
+        } else {
+          const pastStat = pastTourStats[t.id] && pastTourStats[t.id][targetName];
+          if (pastStat) {
+            m = pastStat.matches || 0;
+            w = pastStat.wins || 0;
+            l = pastStat.losses || 0;
+            diff = pastStat.ptsDiff || 0;
+            note = pastStat.rankOrNote || '';
+          }
+        }
+
+        const hasPlayed = m > 0;
+        if (hasPlayed) {
+          playedTournamentsCount++;
+          totalMatches += m;
+          totalWins += w;
+          totalLosses += l;
+          totalPtsDiff += diff;
+        }
+
+        const tourWinRate = m > 0 ? (w / m) * 100 : 0;
+        return {
+          tourId: t.id,
+          tourName: t.name,
+          date: t.date,
+          format: t.format,
+          status: t.status,
+          matches: m,
+          wins: w,
+          losses: l,
+          ptsDiff: diff,
+          winRate: Math.round(tourWinRate * 10) / 10,
+          winRateStr: tourWinRate.toFixed(1),
+          rankOrNote: note || (hasPlayed ? `${w}승 ${l}패` : '미출전'),
+          hasPlayed,
+        };
+      });
+
+      const cumulativeWinRate = totalMatches > 0 ? (totalWins / totalMatches) * 100 : 0;
+
+      return {
+        playerName: targetName,
+        totalTournaments: playedTournamentsCount,
+        totalMatches,
+        totalWins,
+        totalLosses,
+        totalPtsDiff,
+        winRate: Math.round(cumulativeWinRate * 10) / 10,
+        winRateStr: cumulativeWinRate.toFixed(1),
+        historyBreakdown,
+      };
+    }
+
     // 3. 동적 코트 데이터 (관리자가 계속 추가 생성 가능)
     let courtsData = [
       { id: 1, courtNumber: 1, status: 'playing', teamA: ['김철수 (금배)', '강동원 (금배)'], teamB: ['박민수 (은배)', '정지훈 (동배)'], scoreA: 5, scoreB: 3 },
@@ -2239,9 +2456,28 @@
       const target = tournamentHistory.find(t => t.id === tourId);
       if (!target) return;
       target.status = target.status === 'completed' ? 'in_progress' : 'completed';
+      if (target.status === 'completed') {
+        if (!pastTourStats[tourId]) pastTourStats[tourId] = {};
+        registeredPlayers.forEach(p => {
+          const inKdk = kdkStandings.find(s => s.name === p.name);
+          if (inKdk && inKdk.matches > 0) {
+            pastTourStats[tourId][p.name] = {
+              matches: inKdk.matches,
+              wins: inKdk.wins,
+              losses: inKdk.losses,
+              ptsFor: inKdk.pts || 0,
+              ptsAgainst: (inKdk.pts || 0) - (typeof inKdk.diff === 'string' ? parseInt(inKdk.diff, 10) || 0 : inKdk.diff || 0),
+              ptsDiff: typeof inKdk.diff === 'string' ? parseInt(inKdk.diff, 10) || 0 : inKdk.diff || 0,
+              rankOrNote: `${inKdk.rank}위 🏆`
+            };
+          }
+        });
+        persistHtmlPastTourStats();
+      }
       if (currentTournament.id === tourId) currentTournament = target;
       persistHtmlTournaments();
       updateTournamentHeaderUI();
+      populateHtmlMyProfile();
     }
 
     function deleteHtmlTournament(tourId) {
@@ -3752,28 +3988,130 @@
         }
       }
 
-      // 과거 대회 기록 & 게임 성적 히스토리 렌더링
+      // 3. 누적 성적 및 승률 계산 & 전체 순위 산출
+      const allPlayerStats = registeredPlayers.map(p => {
+        const stats = calculatePlayerCumulativeStats(p.name);
+        return {
+          id: p.id,
+          name: p.name,
+          grade: p.grade || '테린이',
+          ...stats
+        };
+      });
+
+      allPlayerStats.sort((a, b) => {
+        if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+        if (b.totalWins !== a.totalWins) return b.totalWins - a.totalWins;
+        if (b.totalPtsDiff !== a.totalPtsDiff) return b.totalPtsDiff - a.totalPtsDiff;
+        return b.totalMatches - a.totalMatches;
+      });
+
+      allPlayerStats.forEach((p, idx) => {
+        p.rank = idx + 1;
+      });
+
+      const myStats = allPlayerStats.find(p => p.name === me.name) || {
+        rank: 1,
+        totalTournaments: 0,
+        totalMatches: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalPtsDiff: 0,
+        winRate: 0,
+        winRateStr: '0.0',
+        historyBreakdown: []
+      };
+
+      // 상단 VIP 카드 누적 랭킹 & 승률
+      const topRankBadge = document.getElementById('mypageTopRankBadge');
+      if (topRankBadge) topRankBadge.innerText = `TOP ${myStats.rank}위 🏆`;
+      const headerWinRate = document.getElementById('mypageHeaderWinRate');
+      if (headerWinRate) headerWinRate.innerText = `누적 승률 ${myStats.winRateStr}% (${myStats.totalWins}승 ${myStats.totalLosses}패)`;
+
+      // 3. 종합 개인 누적 성적 요약 카드
+      const summaryDesc = document.getElementById('mypageSummaryDesc');
+      if (summaryDesc) summaryDesc.innerText = `참가한 모든 공식 대회(총 ${myStats.totalTournaments}개 대회)의 경기 결과가 누적으로 자동 합산되었습니다.`;
+      const winRateText = document.getElementById('mypageWinRateText');
+      if (winRateText) winRateText.innerText = `${myStats.winRateStr}%`;
+      const winRateLabel = document.getElementById('mypageWinRateProgressLabel');
+      if (winRateLabel) winRateLabel.innerText = `${myStats.winRateStr}% (${myStats.totalWins}승 ${myStats.totalLosses}패)`;
+      const winRateBar = document.getElementById('mypageWinRateBar');
+      if (winRateBar) winRateBar.style.width = `${Math.min(100, Math.max(0, myStats.winRate))}%`;
+
+      const statMatches = document.getElementById('mypageStatMatches');
+      if (statMatches) statMatches.innerText = `${myStats.totalMatches}전`;
+      const statWins = document.getElementById('mypageStatWins');
+      if (statWins) statWins.innerText = `${myStats.totalWins}승`;
+      const statLosses = document.getElementById('mypageStatLosses');
+      if (statLosses) statLosses.innerText = `${myStats.totalLosses}패`;
+      const statDiff = document.getElementById('mypageStatDiff');
+      if (statDiff) statDiff.innerText = `${myStats.totalPtsDiff >= 0 ? '+' : ''}${myStats.totalPtsDiff}점`;
+
+      // 4. 대회별 참가 성적 & 승률 반영 히스토리
       const histCount = document.getElementById('mypageHistoryCountBadge');
-      if (histCount) histCount.innerText = `총 ${tournamentHistory.length}개 대회 기록`;
+      if (histCount) histCount.innerText = `총 ${tournamentHistory.length}개 대회 (참가 ${myStats.totalTournaments}개)`;
       const histList = document.getElementById('mypageHistoryList');
       if (histList) {
-        histList.innerHTML = tournamentHistory.map((t, idx) => {
-          const isCur = currentTournament.id === t.id;
-          const resLabel = idx === 0 ? '본인 성적: 3승 0패 (+8 · 1위)' : idx === 1 ? '본인 성적: 4승 1패 (+9 · 준우승)' : '본인 성적: 2승 1패 (+4 · 3위)';
+        histList.innerHTML = (myStats.historyBreakdown || []).map((item) => {
+          const isCur = currentTournament.id === item.tourId;
           return `
-            <div class="p-3 rounded-xl border text-xs space-y-1.5 ${isCur ? 'bg-amber-950/30 border-amber-500/40' : 'bg-slate-950 border-slate-800'}">
+            <div class="p-3 rounded-xl border text-xs space-y-2 transition ${isCur ? 'bg-amber-950/30 border-amber-500/40 shadow-sm' : 'bg-slate-950 border-slate-800'}">
               <div class="flex justify-between items-center gap-2">
                 <div class="flex items-center gap-1.5 truncate">
-                  <span class="text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${t.status === 'completed' ? 'bg-slate-800 text-slate-300' : 'bg-emerald-500/20 text-emerald-300'}">${t.status === 'completed' ? '🏁 종료' : '🔴 진행중'}</span>
-                  <span class="font-black text-white truncate">${t.name}</span>
+                  <span class="text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${item.status === 'completed' ? 'bg-slate-800 text-slate-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">${item.status === 'completed' ? '🏁 종료' : '🔴 진행중'}</span>
+                  <span class="font-black text-white truncate">${item.tourName}</span>
                 </div>
-                <button type="button" onclick="switchTournament('${t.id}'); switchTab('${t.format === 'kdk' ? 'kdk' : 'tournament'}');" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer">기록·대진 보기 ➔</button>
+                <button type="button" onclick="switchTournament('${item.tourId}'); switchTab('${item.format === 'kdk' ? 'kdk' : 'tournament'}');" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer">대진·기록 ➔</button>
               </div>
-              <div class="flex justify-between items-center text-[10px] text-slate-400">
-                <span>📅 ${t.date} · ${t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · ${t.courtCount || 3}코트</span>
-                <span class="text-emerald-300 font-bold">${resLabel}</span>
+              <div class="flex justify-between items-center text-[10px] text-slate-400 flex-wrap gap-1">
+                <span>📅 ${item.date} · ${item.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'}</span>
+                ${item.hasPlayed ? `
+                  <span class="text-emerald-300 font-bold bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
+                    대회 성적: ${item.matches}전 ${item.wins}승 ${item.losses}패 (${item.ptsDiff >= 0 ? '+' : ''}${item.ptsDiff} · ${item.rankOrNote} · 승률 ${item.winRateStr}%)
+                  </span>
+                ` : `
+                  <span class="text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                    대회 미출전
+                  </span>
+                `}
               </div>
             </div>
+          `;
+        }).join('');
+      }
+
+      const histNotice = document.getElementById('mypageHistoryNotice');
+      if (histNotice) {
+        histNotice.innerText = `✓ 위 ${myStats.totalTournaments}개 참가 대회의 모든 경기(${myStats.totalMatches}전 ${myStats.totalWins}승 ${myStats.totalLosses}패)가 합산되어 누적 승률(${myStats.winRateStr}%)에 즉시 반영됩니다.`;
+      }
+
+      // 5. 썬 클럽 회원 전체 누적 승률 랭킹 TOP 5
+      const myRankBadge = document.getElementById('mypageMyRankBadge');
+      if (myRankBadge) myRankBadge.innerText = `내 순위: ${myStats.rank}위`;
+      const leaderboardBody = document.getElementById('mypageLeaderboardBody');
+      if (leaderboardBody) {
+        leaderboardBody.innerHTML = allPlayerStats.slice(0, 5).map(player => {
+          const isMe = player.name === me.name;
+          const medal = player.rank === 1 ? '🥇' : player.rank === 2 ? '🥈' : player.rank === 3 ? '🥉' : `${player.rank}위`;
+          return `
+            <tr class="transition ${isMe ? 'bg-amber-950/40 text-amber-200 font-bold border-l-2 border-amber-400' : 'hover:bg-slate-800/40'}">
+              <td class="py-2.5 px-1 text-center font-black">${medal}</td>
+              <td class="py-2.5 px-1.5">
+                <div class="flex items-center gap-1">
+                  <span class="${isMe ? 'text-amber-300 font-black' : 'text-white'}">${player.name}</span>
+                  <span class="text-[10px] text-slate-400">(${player.grade})</span>
+                  ${isMe ? `<span class="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-black">MY</span>` : ''}
+                </div>
+              </td>
+              <td class="py-2.5 px-1 text-center text-slate-400 text-[11px]">${player.totalTournaments}개</td>
+              <td class="py-2.5 px-1 text-center text-slate-300 font-mono text-[11px]">${player.totalWins}승 ${player.totalLosses}패</td>
+              <td class="py-2.5 px-1 text-center">
+                <span class="font-black text-emerald-300">${player.winRateStr}%</span>
+              </td>
+              <td class="py-2.5 px-1 text-right font-mono font-bold text-amber-300">
+                ${player.totalPtsDiff >= 0 ? '+' : ''}${player.totalPtsDiff}
+              </td>
+            </tr>
           `;
         }).join('');
       }

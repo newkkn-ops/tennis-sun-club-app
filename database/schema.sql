@@ -2,17 +2,26 @@
 -- 테니스 어플(Tennis Club/Tournament App) DB Schema
 -- ===================================================
 
--- 1. 사용자 등급 및 권한 타입 정의
+-- 1. 사용자 등급, 권한 및 가입 승인 상태 타입 정의
 create type user_grade as enum ('금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부');
 create type user_role as enum ('admin', 'member');
 
--- 2. 회원(Users) 테이블 (Supabase Auth auth.users와 1:1 연동)
+-- 2. 회원(Users) 테이블 (Supabase Auth auth.users와 연동 + 승인 상태 pending/approved 실시간 관리)
 create table users (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  username text unique,
+  email text,
   name text not null,
-  gender text check (gender in ('M', 'F')) not null,
+  gender text check (gender in ('M', 'F')) not null default 'M',
   grade user_grade not null default '테린이',
   role user_role not null default 'member',
+  phone text,
+  birth_date date,
+  age int,
+  experience_years int default 4,
+  is_guest boolean default false,
+  approval_status text check (approval_status in ('pending', 'approved')) not null default 'pending',
+  requested_at timestamp with time zone default timezone('utc'::text, now()) not null,
   push_subscription jsonb, -- 웹 푸시 알림 브라우저 구독 객체(PushSubscription JSON)
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -88,35 +97,72 @@ create trigger trg_user_create_stats
   for each row execute function handle_new_user_stats();
 
 -- ===================================================
--- [웹 푸시(Web Push) 알림 구독 컬럼 추가]
 -- ===================================================
+-- [웹 푸시(Web Push) 및 회원 인증/승인 확장 컬럼 보완]
+-- ===================================================
+alter table users add column if not exists username text;
+alter table users add column if not exists email text;
+alter table users add column if not exists phone text;
+alter table users add column if not exists birth_date date;
+alter table users add column if not exists age int;
+alter table users add column if not exists experience_years int default 4;
+alter table users add column if not exists is_guest boolean default false;
+alter table users add column if not exists approval_status text check (approval_status in ('pending', 'approved')) default 'pending';
+alter table users add column if not exists requested_at timestamp with time zone default timezone('utc'::text, now());
 alter table users add column if not exists push_subscription jsonb;
 
 -- ===================================================
 -- [Supabase Realtime 활성화]
--- 실시간 코트 현황판 동기화를 위해 matches 테이블 Realtime 발행
+-- 실시간 코트 현황판 및 실시간 회원 승인/목록 동기화를 위해 matches, users 테이블 Realtime 발행
 -- ===================================================
 alter publication supabase_realtime add table matches;
+alter publication supabase_realtime add table users;
 
 -- ===================================================
 -- [2단계: 회원가입 시 public.users 자동 생성 트리거 (Trigger)]
 -- ===================================================
 
--- 1. 회원가입 시 자동으로 public.users에 기본 정보를 넣어주는 함수
+-- 1. 회원가입(supabase.auth.signUp) 시 자동으로 public.users에 승인 대기(pending) 기본 정보를 넣어주는 함수
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = ''
 as $$
 begin
-  insert into public.users (id, name, gender, grade, role)
+  insert into public.users (
+    id,
+    username,
+    email,
+    name,
+    gender,
+    grade,
+    phone,
+    birth_date,
+    role,
+    approval_status,
+    requested_at
+  )
   values (
-    new.id, 
-    coalesce(new.raw_user_meta_data ->> 'name', '클럽회원'), 
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'username', split_part(new.email, '@', 1)),
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'name', '클럽회원'),
     coalesce(new.raw_user_meta_data ->> 'gender', 'M'),
     coalesce((new.raw_user_meta_data ->> 'grade')::public.user_grade, '테린이'::public.user_grade),
-    'member'
-  );
+    nullif(new.raw_user_meta_data ->> 'phone', ''),
+    nullif(new.raw_user_meta_data ->> 'birth_date', '')::date,
+    coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'member'::public.user_role),
+    coalesce(new.raw_user_meta_data ->> 'approval_status', 'pending'),
+    timezone('utc'::text, now())
+  )
+  on conflict (id) do update set
+    username = excluded.username,
+    email = excluded.email,
+    name = excluded.name,
+    gender = excluded.gender,
+    grade = excluded.grade,
+    phone = coalesce(excluded.phone, public.users.phone),
+    birth_date = coalesce(excluded.birth_date, public.users.birth_date);
   return new;
 end;
 $$;
@@ -136,17 +182,20 @@ alter table tournaments enable row level security;
 alter table tournament_participants enable row level security;
 alter table matches enable row level security;
 
--- 조회: 인증된 모든 회원은 데이터 조회 가능
-create policy "Allow read for authenticated users" on users for select to authenticated using (true);
+-- 조회: 회원 목록 및 승인 상태 조회 허용
+create policy "Allow read for all users" on users for select to anon, authenticated using (true);
 create policy "Allow read for authenticated stats" on player_stats for select to authenticated using (true);
 create policy "Allow read for authenticated tournaments" on tournaments for select to authenticated using (true);
 create policy "Allow read for authenticated participants" on tournament_participants for select to authenticated using (true);
 create policy "Allow read for authenticated matches" on matches for select to authenticated using (true);
 
+-- 등록: 신규 회원가입 신청(pending) 및 관리자 회원 등록 허용
+create policy "Allow insert for signup and admin" on users for insert to anon, authenticated with check (true);
+
 -- 수정: 본인 프로필만 본인이 수정 가능
 create policy "Allow update own profile" on users for update to authenticated using (auth.uid() = id);
 
--- 수정: 관리자(Admin)는 모든 회원의 등급 및 권한 수정 가능
+-- 수정: 관리자(Admin)는 모든 회원의 승인 상태(pending -> approved), 등급 및 권한 수정 가능
 create policy "Allow admin to update any user" on users for update to authenticated
   using (
     exists (
@@ -155,7 +204,7 @@ create policy "Allow admin to update any user" on users for update to authentica
     )
   );
 
--- 삭제: 관리자(Admin)는 가입회원의 회원가입 취소(탈퇴/삭제) 처리 가능
+-- 삭제: 관리자(Admin)는 가입 거절 및 회원가입 취소(탈퇴/삭제) 처리 가능
 create policy "Allow admin to delete any user" on users for delete to authenticated
   using (
     exists (

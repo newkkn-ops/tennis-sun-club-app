@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import AdminTournamentManager, {
   TournamentConfig,
@@ -8,8 +8,19 @@ import AdminTournamentManager, {
 import AdminUserManagement, { ManagedMember } from './components/AdminUserManagement';
 import KdkCourtOperations from './components/KdkCourtOperations';
 import AppBackExitOverlay from './components/AppBackExitOverlay';
+import BirthDateSelector from './components/BirthDateSelector';
 import { useAppBackHandler } from './hooks/useAppBackHandler';
-import { generateKDKSchedule, GRADE_WEIGHTS } from './lib/kdk';
+import {
+  generateKDKSchedule,
+  GRADE_WEIGHTS,
+  getCompositeSkillScore,
+  resolvePlayerAge,
+} from './lib/kdk';
+import {
+  calculateKoreanManAge,
+  formatBirthDateDisplay,
+  formatManAgeLabel,
+} from './lib/age';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -47,12 +58,206 @@ export interface RegisteredPlayer {
   gender: 'M' | 'F';
   role: 'member' | 'admin';
   phone?: string;
+  birthDate?: string; // 출생년월일 (YYYY-MM-DD) -> 만 나이 자동 계산 및 실력 균등 배정용
+  age?: number; // 만 나이 (생년월일 기준 자동 계산)
+  experienceYears?: number; // 구력(년)
   isGuest?: boolean; // 미가입 회원 또는 임의 등록 선수 여부
   approvalStatus?: 'pending' | 'approved'; // 운영자 회원가입 승인 상태
   requestedAt?: string;
 }
 
 const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
+
+const DEFAULT_SAMPLE_BIRTHDATES: Record<string, string> = {
+  p1: '1972-05-14',
+  p2: '1981-01-18',
+  p3: '1975-03-22',
+  p4: '1983-06-25',
+  p5: '1974-08-10',
+  p6: '1984-11-05',
+  p7: '1978-04-12',
+  p8: '1987-09-19',
+  p9: '1982-07-28',
+  p10: '1979-07-10',
+  p11: '1981-03-29',
+  p12: '1973-03-20',
+  p13: '1982-10-30',
+  p14: '1983-09-25',
+};
+
+// ----------------------------------------------------
+// 과거 대회 선수별 경기 성적 아카이브 & 누적 승률 집계 모델
+// ----------------------------------------------------
+export interface PastTournamentPlayerStat {
+  matches: number;
+  wins: number;
+  losses: number;
+  ptsFor: number;
+  ptsAgainst: number;
+  ptsDiff: number;
+  rankOrNote: string;
+}
+
+export type PastTournamentStatsMap = Record<string, Record<string, PastTournamentPlayerStat>>;
+
+export const DEFAULT_PAST_TOURNAMENT_STATS: PastTournamentStatsMap = {
+  'tour-2': {
+    '강동원': { matches: 4, wins: 4, losses: 0, ptsFor: 24, ptsAgainst: 14, ptsDiff: 10, rankOrNote: '우승 🥇' },
+    '김철수': { matches: 4, wins: 3, losses: 1, ptsFor: 23, ptsAgainst: 17, ptsDiff: 6, rankOrNote: '준우승 🥈' },
+    '박민수': { matches: 3, wins: 2, losses: 1, ptsFor: 18, ptsAgainst: 15, ptsDiff: 3, rankOrNote: '3위 🥉' },
+    '송중기': { matches: 3, wins: 2, losses: 1, ptsFor: 17, ptsAgainst: 15, ptsDiff: 2, rankOrNote: '4강' },
+    '이영희': { matches: 3, wins: 1, losses: 2, ptsFor: 14, ptsAgainst: 15, ptsDiff: -1, rankOrNote: '8강' },
+    '한지민': { matches: 3, wins: 1, losses: 2, ptsFor: 13, ptsAgainst: 15, ptsDiff: -2, rankOrNote: '8강' },
+    '최수진': { matches: 3, wins: 1, losses: 2, ptsFor: 14, ptsAgainst: 15, ptsDiff: -1, rankOrNote: '8강' },
+    '김태희': { matches: 3, wins: 1, losses: 2, ptsFor: 13, ptsAgainst: 15, ptsDiff: -2, rankOrNote: '8강' },
+    '공유':   { matches: 2, wins: 0, losses: 2, ptsFor: 7, ptsAgainst: 14, ptsDiff: -7, rankOrNote: '예선' },
+    '정지훈': { matches: 2, wins: 0, losses: 2, ptsFor: 6, ptsAgainst: 14, ptsDiff: -8, rankOrNote: '예선' },
+    '조인성': { matches: 2, wins: 0, losses: 2, ptsFor: 6, ptsAgainst: 14, ptsDiff: -8, rankOrNote: '예선' },
+    '정우성': { matches: 2, wins: 0, losses: 2, ptsFor: 8, ptsAgainst: 14, ptsDiff: -6, rankOrNote: '예선' },
+  },
+  'tour-3': {
+    '이영희': { matches: 4, wins: 4, losses: 0, ptsFor: 24, ptsAgainst: 15, ptsDiff: 9, rankOrNote: '우승 🥇' },
+    '김철수': { matches: 4, wins: 3, losses: 1, ptsFor: 22, ptsAgainst: 15, ptsDiff: 7, rankOrNote: '준우승 🥈' },
+    '강동원': { matches: 4, wins: 3, losses: 1, ptsFor: 21, ptsAgainst: 16, ptsDiff: 5, rankOrNote: '3위 🥉' },
+    '공유':   { matches: 4, wins: 3, losses: 1, ptsFor: 20, ptsAgainst: 16, ptsDiff: 4, rankOrNote: '4위' },
+    '송중기': { matches: 4, wins: 2, losses: 2, ptsFor: 19, ptsAgainst: 18, ptsDiff: 1, rankOrNote: '5위' },
+    '박민수': { matches: 4, wins: 2, losses: 2, ptsFor: 18, ptsAgainst: 18, ptsDiff: 0, rankOrNote: '6위' },
+    '한지민': { matches: 4, wins: 2, losses: 2, ptsFor: 17, ptsAgainst: 18, ptsDiff: -1, rankOrNote: '7위' },
+    '최수진': { matches: 4, wins: 1, losses: 3, ptsFor: 14, ptsAgainst: 18, ptsDiff: -4, rankOrNote: '8위' },
+    '정지훈': { matches: 4, wins: 1, losses: 3, ptsFor: 14, ptsAgainst: 18, ptsDiff: -4, rankOrNote: '8위' },
+    '조인성': { matches: 4, wins: 1, losses: 3, ptsFor: 13, ptsAgainst: 18, ptsDiff: -5, rankOrNote: '9위' },
+  },
+};
+
+export interface TournamentPlayerPerformance {
+  tourId: string;
+  tourName: string;
+  date: string;
+  format: 'kdk' | 'tournament';
+  status: 'in_progress' | 'completed';
+  matches: number;
+  wins: number;
+  losses: number;
+  ptsDiff: number;
+  winRate: number;
+  winRateStr: string;
+  rankOrNote: string;
+  hasPlayed: boolean;
+}
+
+export interface CumulativePlayerStats {
+  playerName: string;
+  totalTournaments: number;
+  totalMatches: number;
+  totalWins: number;
+  totalLosses: number;
+  totalPtsDiff: number;
+  winRate: number;
+  winRateStr: string;
+  historyBreakdown: TournamentPlayerPerformance[];
+}
+
+export function calculatePlayerCumulativeStats(
+  targetName: string,
+  history: TournamentRecord[],
+  curTour: TournamentRecord,
+  curCourts: CourtMatch[],
+  curKdkStandings: Array<{ name: string; matches: number; wins: number; losses: number; ptsDiff: string | number; rank: number; totalPts?: number }>,
+  pastArchive: PastTournamentStatsMap
+): CumulativePlayerStats {
+  let totalMatches = 0;
+  let totalWins = 0;
+  let totalLosses = 0;
+  let totalPtsDiff = 0;
+  let playedTournamentsCount = 0;
+
+  const historyBreakdown: TournamentPlayerPerformance[] = history.map((t) => {
+    let m = 0;
+    let w = 0;
+    let l = 0;
+    let diff = 0;
+    let note = '';
+
+    if (t.id === curTour.id) {
+      const inKdk = curKdkStandings.find((s) => s.name === targetName);
+      if (inKdk && inKdk.matches > 0) {
+        m = inKdk.matches;
+        w = inKdk.wins;
+        l = inKdk.losses;
+        diff = typeof inKdk.ptsDiff === 'string' ? parseInt(inKdk.ptsDiff, 10) || 0 : inKdk.ptsDiff || 0;
+        note = `현재 ${inKdk.rank}위 (${t.status === 'completed' ? '종료' : '진행중'})`;
+      } else {
+        const myCourts = curCourts.filter(
+          (c) =>
+            (c.teamA || []).some((p) => p.includes(targetName)) ||
+            (c.teamB || []).some((p) => p.includes(targetName))
+        );
+        const myCompletedCourts = myCourts.filter((c) => c.status === 'completed');
+        if (myCompletedCourts.length > 0) {
+          m = myCompletedCourts.length;
+          myCompletedCourts.forEach((mc) => {
+            const inA = (mc.teamA || []).some((p) => p.includes(targetName));
+            const myScore = inA ? mc.scoreA : mc.scoreB;
+            const oppScore = inA ? mc.scoreB : mc.scoreA;
+            if (myScore > oppScore) w++;
+            else if (myScore < oppScore) l++;
+            diff += myScore - oppScore;
+          });
+          note = `${w}승 ${l}패 (${t.status === 'completed' ? '종료' : '진행중'})`;
+        }
+      }
+    } else {
+      const pastStat = pastArchive[t.id]?.[targetName];
+      if (pastStat) {
+        m = pastStat.matches;
+        w = pastStat.wins;
+        l = pastStat.losses;
+        diff = pastStat.ptsDiff;
+        note = pastStat.rankOrNote;
+      }
+    }
+
+    const hasPlayed = m > 0;
+    if (hasPlayed) {
+      playedTournamentsCount++;
+      totalMatches += m;
+      totalWins += w;
+      totalLosses += l;
+      totalPtsDiff += diff;
+    }
+
+    const tourWinRate = m > 0 ? (w / m) * 100 : 0;
+    return {
+      tourId: t.id,
+      tourName: t.name,
+      date: t.date,
+      format: t.format,
+      status: t.status,
+      matches: m,
+      wins: w,
+      losses: l,
+      ptsDiff: diff,
+      winRate: Math.round(tourWinRate * 10) / 10,
+      winRateStr: tourWinRate.toFixed(1),
+      rankOrNote: note || (hasPlayed ? `${w}승 ${l}패` : '미출전'),
+      hasPlayed,
+    };
+  });
+
+  const cumulativeWinRate = totalMatches > 0 ? (totalWins / totalMatches) * 100 : 0;
+
+  return {
+    playerName: targetName,
+    totalTournaments: playedTournamentsCount,
+    totalMatches,
+    totalWins,
+    totalLosses,
+    totalPtsDiff,
+    winRate: Math.round(cumulativeWinRate * 10) / 10,
+    winRateStr: cumulativeWinRate.toFixed(1),
+    historyBreakdown,
+  };
+}
 
 export default function TennisApp() {
   // ----------------------------------------------------
@@ -70,6 +275,7 @@ export default function TennisApp() {
   const [signUpName, setSignUpName] = useState<string>('');
   const [signUpGender, setSignUpGender] = useState<'M' | 'F'>('M');
   const [signUpGrade, setSignUpGrade] = useState<string>('테린이');
+  const [signUpBirthDate, setSignUpBirthDate] = useState<string>('');
   const [signUpPhone, setSignUpPhone] = useState<string>('');
 
   // 메인 네비게이션 탭: 'courts' | 'kdk' | 'tournament' | 'mypage' | 'admin'
@@ -81,20 +287,20 @@ export default function TennisApp() {
   // 1. 등록된 공식 선수(가입회원 + 미가입회원/임의선수) 명부 풀
   // ----------------------------------------------------
   const [registeredPlayers, setRegisteredPlayers] = useState<RegisteredPlayer[]>([
-    { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false, approvalStatus: 'approved' },
-    { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', isGuest: true, approvalStatus: 'approved' },
-    { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', isGuest: true, approvalStatus: 'approved' },
-    { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', isGuest: true, approvalStatus: 'approved' },
-    { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', isGuest: true, approvalStatus: 'approved' },
+    { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', birthDate: '1972-05-14', age: calculateKoreanManAge('1972-05-14') ?? 54, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', birthDate: '1981-01-18', age: calculateKoreanManAge('1981-01-18') ?? 45, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', birthDate: '1975-03-22', age: calculateKoreanManAge('1975-03-22') ?? 51, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', birthDate: '1983-06-25', age: calculateKoreanManAge('1983-06-25') ?? 43, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', birthDate: '1974-08-10', age: calculateKoreanManAge('1974-08-10') ?? 52, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', birthDate: '1984-11-05', age: calculateKoreanManAge('1984-11-05') ?? 42, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', birthDate: '1978-04-12', age: calculateKoreanManAge('1978-04-12') ?? 48, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', birthDate: '1987-09-19', age: calculateKoreanManAge('1987-09-19') ?? 39, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', birthDate: '1982-07-28', age: calculateKoreanManAge('1982-07-28') ?? 44, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', birthDate: '1979-07-10', age: calculateKoreanManAge('1979-07-10') ?? 47, isGuest: false, approvalStatus: 'approved' },
+    { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', birthDate: '1981-03-29', age: calculateKoreanManAge('1981-03-29') ?? 45, isGuest: true, approvalStatus: 'approved' },
+    { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', birthDate: '1973-03-20', age: calculateKoreanManAge('1973-03-20') ?? 53, isGuest: true, approvalStatus: 'approved' },
+    { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', birthDate: '1982-10-30', age: calculateKoreanManAge('1982-10-30') ?? 44, isGuest: true, approvalStatus: 'approved' },
+    { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', birthDate: '1983-09-25', age: calculateKoreanManAge('1983-09-25') ?? 43, isGuest: true, approvalStatus: 'approved' },
   ]);
 
   const pendingApprovalCount = registeredPlayers.filter((p) => p.approvalStatus === 'pending').length;
@@ -216,16 +422,62 @@ export default function TennisApp() {
     alert(`🗑️ [${target.name}] 대회가 삭제되었습니다.`);
   };
 
+  // ----------------------------------------------------
+  // 과거 대회 선수별 성적 아카이브 (총 누적 승률 집계용)
+  // ----------------------------------------------------
+  const [pastTourStats, setPastTourStats] = useState<PastTournamentStatsMap>(() => {
+    try {
+      const raw = localStorage.getItem('sun_tennis_past_tour_stats');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return { ...DEFAULT_PAST_TOURNAMENT_STATS, ...parsed };
+      }
+    } catch {}
+    return DEFAULT_PAST_TOURNAMENT_STATS;
+  });
+
+  const persistPastTourStats = (stats: PastTournamentStatsMap) => {
+    try {
+      localStorage.setItem('sun_tennis_past_tour_stats', JSON.stringify(stats));
+    } catch {}
+  };
+
   // 관리자 전용: 대회 상태 전환 (진행중 <-> 종료됨)
   const handleToggleTournamentStatus = (tourId: string) => {
     if (!isAdmin) return;
+    const target = tournamentHistory.find((t) => t.id === tourId);
+    if (!target) return;
+    const newStatus = target.status === 'completed' ? 'in_progress' : 'completed';
     const nextList: TournamentRecord[] = tournamentHistory.map((t) =>
-      t.id === tourId
-        ? { ...t, status: t.status === 'completed' ? 'in_progress' : 'completed' }
-        : t
+      t.id === tourId ? { ...t, status: newStatus } : t
     );
     setTournamentHistory(nextList);
     persistTournamentHistory(nextList);
+
+    // 대회가 종료 상태로 변경될 때, 해당 대회의 현재 선수별 경기 기록을 아카이브로 보존
+    if (newStatus === 'completed') {
+      setPastTourStats((prev) => {
+        const updated = { ...prev };
+        if (!updated[tourId]) updated[tourId] = {};
+        registeredPlayers.forEach((p) => {
+          const inKdk = kdkStandings.find((s) => s.name === p.name);
+          if (inKdk && inKdk.matches > 0) {
+            updated[tourId][p.name] = {
+              matches: inKdk.matches,
+              wins: inKdk.wins,
+              losses: inKdk.losses,
+              ptsFor: inKdk.totalPts || 0,
+              ptsAgainst: (inKdk.totalPts || 0) - (typeof inKdk.ptsDiff === 'string' ? parseInt(inKdk.ptsDiff, 10) || 0 : inKdk.ptsDiff || 0),
+              ptsDiff: typeof inKdk.ptsDiff === 'string' ? parseInt(inKdk.ptsDiff, 10) || 0 : inKdk.ptsDiff || 0,
+              rankOrNote: `${inKdk.rank}위 🏆`,
+            };
+          }
+        });
+        persistPastTourStats(updated);
+        return updated;
+      });
+    }
+
     if (currentTournament.id === tourId) {
       const updated = nextList.find((t) => t.id === tourId);
       if (updated) setCurrentTournament(updated);
@@ -719,6 +971,59 @@ export default function TennisApp() {
     setSelectedCourt(null);
   };
 
+  // ----------------------------------------------------
+  // 회원 전체 누적 승률 순위표 및 현재 로그인 회원의 누적 성적 계산
+  // ----------------------------------------------------
+  const clubCumulativeLeaderboard = useMemo(() => {
+    const list = registeredPlayers.map((p) => {
+      const stats = calculatePlayerCumulativeStats(
+        p.name,
+        tournamentHistory,
+        currentTournament,
+        courts,
+        kdkStandings,
+        pastTourStats
+      );
+      return {
+        id: p.id,
+        name: p.name,
+        grade: p.grade,
+        role: p.role,
+        ...stats,
+      };
+    });
+
+    list.sort((a, b) => {
+      if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+      if (b.totalWins !== a.totalWins) return b.totalWins - a.totalWins;
+      if (b.totalPtsDiff !== a.totalPtsDiff) return b.totalPtsDiff - a.totalPtsDiff;
+      return b.totalMatches - a.totalMatches;
+    });
+
+    return list.map((item, idx) => ({
+      ...item,
+      rank: idx + 1,
+    }));
+  }, [registeredPlayers, tournamentHistory, currentTournament, courts, kdkStandings, pastTourStats]);
+
+  const currentUserCumulative = useMemo(() => {
+    if (!currentUser) return null;
+    return calculatePlayerCumulativeStats(
+      currentUser.name,
+      tournamentHistory,
+      currentTournament,
+      courts,
+      kdkStandings,
+      pastTourStats
+    );
+  }, [currentUser, tournamentHistory, currentTournament, courts, kdkStandings, pastTourStats]);
+
+  const currentUserRank = useMemo(() => {
+    if (!currentUser) return 1;
+    const found = clubCumulativeLeaderboard.find((p) => p.name === currentUser.name);
+    return found ? found.rank : 1;
+  }, [currentUser, clubCumulativeLeaderboard]);
+
   // 초기 로컬 스토리지 가입 회원(승인 대기 포함) 및 로그인 세션/현재 화면 복원 (새로고침 시 자동종료·로그아웃 방지)
   useEffect(() => {
     try {
@@ -731,7 +1036,17 @@ export default function TennisApp() {
             const byId = new Map<string, RegisteredPlayer>();
             prev.forEach((u) => byId.set(u.id, u));
             savedUsers.forEach((su) => {
-              byId.set(su.id, { ...byId.get(su.id), ...su });
+              const existing = byId.get(su.id);
+              const resolvedBirthDate =
+                su.birthDate || existing?.birthDate || DEFAULT_SAMPLE_BIRTHDATES[su.id];
+              const resolvedAge =
+                calculateKoreanManAge(resolvedBirthDate) ?? su.age ?? existing?.age;
+              byId.set(su.id, {
+                ...existing,
+                ...su,
+                birthDate: resolvedBirthDate,
+                age: resolvedAge,
+              });
             });
             // 최신 가입(또는 대기) 신청자가 상단에 보이도록 정렬
             const merged = Array.from(byId.values()).sort((a, b) => {
@@ -751,7 +1066,16 @@ export default function TennisApp() {
         const parsedUser: RegisteredPlayer = JSON.parse(savedCurrentUserRaw);
         if (parsedUser && parsedUser.id && parsedUser.name) {
           const resolvedRole: 'member' | 'admin' = parsedUser.role === 'admin' ? 'admin' : 'member';
-          setCurrentUser({ ...parsedUser, role: resolvedRole });
+          const resolvedBirthDate =
+            parsedUser.birthDate || DEFAULT_SAMPLE_BIRTHDATES[parsedUser.id];
+          const resolvedAge =
+            calculateKoreanManAge(resolvedBirthDate) ?? parsedUser.age;
+          setCurrentUser({
+            ...parsedUser,
+            role: resolvedRole,
+            birthDate: resolvedBirthDate,
+            age: resolvedAge,
+          });
           setRole(resolvedRole);
 
           const savedSessionRaw = localStorage.getItem('sun_tennis_session_state');
@@ -816,6 +1140,15 @@ export default function TennisApp() {
         return;
       }
 
+      const signUpManAge = calculateKoreanManAge(signUpBirthDate);
+      if (!signUpBirthDate || signUpManAge === null) {
+        setAuthMessage({
+          type: 'error',
+          text: '생년월일(출생년도, 월, 일)을 모두 선택해 주세요. 만 나이가 자동 계산되어 실력 균등 배정에 반영됩니다.',
+        });
+        return;
+      }
+
       // 중복 아이디 검사 (현재 상태 + localStorage 모두 검사)
       let savedLocalList: any[] = [];
       try {
@@ -858,6 +1191,8 @@ export default function TennisApp() {
           gender: signUpGender,
           role: 'member',
           phone: signUpPhone.trim(),
+          birthDate: signUpBirthDate,
+          age: signUpManAge,
           isGuest: false,
           approvalStatus: 'pending', // 운영자 확인 및 승인 전까지 접속 불가
           requestedAt: nowStr,
@@ -877,13 +1212,14 @@ export default function TennisApp() {
         setPassword('');
         setConfirmPassword('');
         setSignUpName('');
+        setSignUpBirthDate('');
         setSignUpPhone('');
         setAuthMessage({
           type: 'success',
-          text: `⏳ [${newPlayer.name}] 님의 회원가입 신청(ID: ${newPlayer.username})이 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 로그인하여 접속할 수 있습니다.`,
+          text: `⏳ [${newPlayer.name} · 만 ${signUpManAge}세] 님의 회원가입 신청(ID: ${newPlayer.username})이 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 로그인하여 접속할 수 있습니다.`,
         });
         alert(
-          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${newPlayer.username}\n이름/등급: ${newPlayer.name} (${newPlayer.grade})\n\n⏳ 운영자(관리자)의 확인 및 승인 후 로그인하여 접속하실 수 있습니다.`
+          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${newPlayer.username}\n이름/등급: ${newPlayer.name} (${newPlayer.grade} · 만 ${signUpManAge}세)\n\n⏳ 운영자(관리자)의 확인 및 승인 후 로그인하여 접속하실 수 있습니다.`
         );
       } finally {
         setAuthLoading(false);
@@ -987,6 +1323,7 @@ export default function TennisApp() {
   const [editMyName, setEditMyName] = useState<string>('');
   const [editMyGender, setEditMyGender] = useState<'M' | 'F'>('M');
   const [editMyGrade, setEditMyGrade] = useState<string>('은배');
+  const [editMyBirthDate, setEditMyBirthDate] = useState<string>('');
   const [editMyPhone, setEditMyPhone] = useState<string>('');
   const [editMyPassword, setEditMyPassword] = useState<string>('');
   const [editMyConfirmPassword, setEditMyConfirmPassword] = useState<string>('');
@@ -998,6 +1335,7 @@ export default function TennisApp() {
     setEditMyName(user.name || '');
     setEditMyGender(user.gender === 'F' ? 'F' : 'M');
     setEditMyGrade(user.grade || '은배');
+    setEditMyBirthDate(user.birthDate || '');
     setEditMyPhone(user.phone || '');
     setEditMyPassword('');
     setEditMyConfirmPassword('');
@@ -1054,6 +1392,7 @@ export default function TennisApp() {
       }
     }
 
+    const computedManAge = calculateKoreanManAge(editMyBirthDate);
     const updatedUser: RegisteredPlayer = {
       ...currentUser,
       username: trimmedId,
@@ -1061,6 +1400,8 @@ export default function TennisApp() {
       name: trimmedName,
       gender: editMyGender,
       grade: editMyGrade,
+      birthDate: editMyBirthDate || undefined,
+      age: computedManAge !== null ? computedManAge : currentUser.age,
       phone: editMyPhone.trim(),
       password: trimmedPw ? trimmedPw : currentUser.password,
     };
@@ -1083,10 +1424,11 @@ export default function TennisApp() {
     setEditMyConfirmPassword('');
     setShowMyPassword(false);
     setIsEditingMyProfile(false);
+    const savedAgeLabel = formatManAgeLabel(updatedUser.birthDate, updatedUser.age);
     setMyInfoSavedMsg(
       `✅ 내 정보가 저장되었습니다! (아이디: ${updatedUser.username}${
-        trimmedPw ? ' · 비밀번호 변경 완료' : ''
-      })`
+        savedAgeLabel ? ` · ${savedAgeLabel} 실력균등 반영` : ''
+      }${trimmedPw ? ' · 비밀번호 변경 완료' : ''})`
     );
   };
 
@@ -1131,7 +1473,16 @@ export default function TennisApp() {
     }
 
     const adminUser: RegisteredPlayer = matchedAdmin
-      ? { ...matchedAdmin, role: 'admin', approvalStatus: 'approved' }
+      ? {
+          ...matchedAdmin,
+          role: 'admin',
+          approvalStatus: 'approved',
+          birthDate: matchedAdmin.birthDate || DEFAULT_SAMPLE_BIRTHDATES[matchedAdmin.id],
+          age:
+            calculateKoreanManAge(
+              matchedAdmin.birthDate || DEFAULT_SAMPLE_BIRTHDATES[matchedAdmin.id]
+            ) ?? matchedAdmin.age,
+        }
       : {
           id: 'p10',
           username: 'admin',
@@ -1139,6 +1490,8 @@ export default function TennisApp() {
           grade: '금배',
           gender: 'M',
           role: 'admin',
+          birthDate: '1979-07-10',
+          age: calculateKoreanManAge('1979-07-10') ?? 47,
           isGuest: false,
           approvalStatus: 'approved',
         };
@@ -1479,6 +1832,15 @@ export default function TennisApp() {
                       required
                     />
                   </div>
+
+                  <BirthDateSelector
+                    value={signUpBirthDate}
+                    onChange={setSignUpBirthDate}
+                    required
+                    accent="emerald"
+                    label="생년월일 (출생년도 · 월 · 일)"
+                    helperText="출생년월일을 입력하면 만 나이가 자동 계산되어 KDK·대회 실력 균등 배정에 반영됩니다."
+                  />
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -2284,6 +2646,9 @@ export default function TennisApp() {
                           name: newPlayer.name,
                           grade: newPlayer.grade,
                           gender: newPlayer.gender === 'F' || newPlayer.gender === '여' ? 'F' : 'M',
+                          birthDate: newPlayer.birthDate,
+                          age: resolvePlayerAge(newPlayer, 45),
+                          experienceYears: newPlayer.experienceYears,
                           role: 'member',
                           isGuest: true,
                         },
@@ -2588,18 +2953,35 @@ export default function TennisApp() {
                           {isEditingMyProfile ? '✕ 수정 닫기' : '✏️ 내 정보 수정'}
                         </button>
                       </div>
-                      <div className="flex gap-1.5 pt-0.5">
+                      <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">
                           {currentUser.grade}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/40 text-slate-950">
                           {isAdmin ? '관리자 모드' : '정회원'} ({currentUser.gender === 'F' ? '여' : '남'})
                         </span>
+                        {formatManAgeLabel(currentUser.birthDate, currentUser.age) ? (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950/85 text-emerald-300 shadow-sm">
+                            🎂 {formatManAgeLabel(currentUser.birthDate, currentUser.age)}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-950/50 text-amber-200">
+                            생년월일 미입력
+                          </span>
+                        )}
                       </div>
+                      {currentUser.birthDate && (
+                        <p className="text-[10px] font-bold text-slate-950/75">
+                          생년월일: {formatBirthDateDisplay(currentUser.birthDate)} (만 나이 실력균등 자동반영)
+                        </p>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
-                      <span className="text-[10px] font-extrabold text-slate-950/70 block">승률 랭킹</span>
-                      <span className="text-2xl font-black text-slate-950">TOP 3 🏆</span>
+                      <span className="text-[10px] font-extrabold text-slate-950/70 block">전체 누적 랭킹</span>
+                      <span className="text-2xl font-black text-slate-950">TOP {currentUserRank}위 🏆</span>
+                      <span className="text-[10px] font-black text-slate-950/80 block">
+                        누적 승률 {currentUserCumulative?.winRateStr || '0.0'}% ({currentUserCumulative?.totalWins || 0}승 {currentUserCumulative?.totalLosses || 0}패)
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2714,6 +3096,15 @@ export default function TennisApp() {
                           </select>
                         </div>
                       </div>
+
+                      <BirthDateSelector
+                        key={`${currentUser.id}_${isEditingMyProfile}`}
+                        value={editMyBirthDate}
+                        onChange={setEditMyBirthDate}
+                        compact
+                        label="생년월일 (출생년도 · 월 · 일)"
+                        helperText="만 나이가 자동 계산되어 KDK·대회 실력 균등 배정 및 동점자 순위에 반영됩니다."
+                      />
 
                       <div className="grid grid-cols-2 gap-2.5">
                         <div>
@@ -2865,71 +3256,95 @@ export default function TennisApp() {
                         )}
                       </div>
 
-                      {/* 3. 현재 대회 본인 성적 & 누적 전적 */}
+                      {/* 3. 전 대회 종합 개인 누적 성적 & 승률 집계 */}
                       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
                         <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                          <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                            <span>📊</span> 현재 본인 성적 & 대회 전적 ({currentTournament.name})
-                          </span>
-                          <span className="text-xs font-extrabold text-amber-400">
-                            {myStanding ? `현재 ${myStanding.rank}위 · 승점 ${myStanding.pts}점` : '승률 75.0%'}
-                          </span>
+                          <div>
+                            <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                              <span>📊</span> 전 대회 종합 개인 누적 성적 & 승률 집계
+                            </span>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              참가한 모든 공식 대회(총 {currentUserCumulative?.totalTournaments || 0}개 대회)의 경기 결과가 누적으로 자동 합산되었습니다.
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] text-slate-400 block">누적 승률</span>
+                            <span className="text-sm font-black text-amber-400">
+                              {currentUserCumulative?.winRateStr || '0.0'}%
+                            </span>
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
-                          <div className="bg-gradient-to-r from-amber-400 to-emerald-400 h-2.5 rounded-full" style={{ width: '75%' }} />
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-extrabold">
+                            <span className="text-slate-400">누적 승률 달성도</span>
+                            <span className="text-emerald-300">
+                              {currentUserCumulative?.winRateStr || '0.0'}% ({currentUserCumulative?.totalWins || 0}승 {currentUserCumulative?.totalLosses || 0}패)
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+                            <div
+                              className="bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-400 h-3 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(100, Math.max(0, currentUserCumulative?.winRate || 0))}%` }}
+                            />
+                          </div>
                         </div>
+
                         <div className="grid grid-cols-4 gap-2 pt-1 text-center text-xs">
-                          <div className="bg-slate-950 p-2 rounded-xl border border-slate-800">
-                            <p className="text-[10px] text-slate-400">출전 경기</p>
+                          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                            <p className="text-[10px] text-slate-400">총 출전 경기</p>
                             <p className="text-base font-black text-white">
-                              {myStanding ? myStanding.matches : 12}
+                              {currentUserCumulative?.totalMatches || 0}전
                             </p>
                           </div>
-                          <div className="bg-emerald-950/40 p-2 rounded-xl border border-emerald-500/20">
-                            <p className="text-[10px] text-emerald-400 font-bold">승리</p>
+                          <div className="bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/20">
+                            <p className="text-[10px] text-emerald-400 font-bold">누적 승리</p>
                             <p className="text-base font-black text-emerald-300">
-                              {myStanding ? myStanding.wins : 9}
+                              {currentUserCumulative?.totalWins || 0}승
                             </p>
                           </div>
-                          <div className="bg-red-950/40 p-2 rounded-xl border border-red-500/20">
-                            <p className="text-[10px] text-red-400 font-bold">패배</p>
+                          <div className="bg-red-950/40 p-2.5 rounded-xl border border-red-500/20">
+                            <p className="text-[10px] text-red-400 font-bold">누적 패배</p>
                             <p className="text-base font-black text-red-300">
-                              {myStanding ? myStanding.losses : 3}
+                              {currentUserCumulative?.totalLosses || 0}패
                             </p>
                           </div>
-                          <div className="bg-amber-950/40 p-2 rounded-xl border border-amber-500/20">
-                            <p className="text-[10px] text-amber-400 font-bold">득실차</p>
+                          <div className="bg-amber-950/40 p-2.5 rounded-xl border border-amber-500/20">
+                            <p className="text-[10px] text-amber-400 font-bold">누적 득실차</p>
                             <p className="text-base font-black text-amber-300">
-                              {myStanding
-                                ? myStanding.diff >= 0
-                                  ? `+${myStanding.diff}`
-                                  : myStanding.diff
-                                : '+21'}
+                              {(currentUserCumulative?.totalPtsDiff || 0) >= 0
+                                ? `+${currentUserCumulative?.totalPtsDiff || 0}`
+                                : currentUserCumulative?.totalPtsDiff || 0}점
                             </p>
                           </div>
                         </div>
                       </div>
 
-                      {/* 4. 과거 대회 및 게임 기록 · 성적 히스토리 */}
+                      {/* 4. 대회별 참가 성적 & 승률 반영 히스토리 */}
                       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
                         <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                          <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                            <span>📜</span> 과거 대회 기록 & 게임 성적 히스토리
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            총 {tournamentHistory.length}개 대회 기록
+                          <div>
+                            <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                              <span>📜</span> 대회별 참가 성적 & 승률 반영 히스토리
+                            </span>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              각 대회별 본인 경기 성적과 총 누적 승률 합산 내역입니다.
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">
+                            총 {tournamentHistory.length}개 대회 (참가 {currentUserCumulative?.totalTournaments || 0}개)
                           </span>
                         </div>
 
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">
-                          {tournamentHistory.map((t, idx) => {
-                            const isCur = currentTournament.id === t.id;
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
+                          {currentUserCumulative?.historyBreakdown.map((item) => {
+                            const isCur = currentTournament.id === item.tourId;
                             return (
                               <div
-                                key={t.id}
-                                className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                                key={item.tourId}
+                                className={`p-3 rounded-xl border text-xs space-y-2 transition ${
                                   isCur
-                                    ? 'bg-amber-950/30 border-amber-500/40'
+                                    ? 'bg-amber-950/30 border-amber-500/40 shadow-sm'
                                     : 'bg-slate-950 border-slate-800'
                                 }`}
                               >
@@ -2937,42 +3352,129 @@ export default function TennisApp() {
                                   <div className="flex items-center gap-1.5 truncate">
                                     <span
                                       className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${
-                                        t.status === 'completed'
+                                        item.status === 'completed'
                                           ? 'bg-slate-800 text-slate-300'
-                                          : 'bg-emerald-500/20 text-emerald-300'
+                                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                       }`}
                                     >
-                                      {t.status === 'completed' ? '🏁 종료' : '🔴 진행중'}
+                                      {item.status === 'completed' ? '🏁 종료' : '🔴 진행중'}
                                     </span>
-                                    <span className="font-black text-white truncate">{t.name}</span>
+                                    <span className="font-black text-white truncate">{item.tourName}</span>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setCurrentTournament(t);
-                                      setActiveTab(t.format === 'kdk' ? 'kdk' : 'tournament');
+                                      const targetTour = tournamentHistory.find((t) => t.id === item.tourId);
+                                      if (targetTour) {
+                                        setCurrentTournament(targetTour);
+                                        setActiveTab(targetTour.format === 'kdk' ? 'kdk' : 'tournament');
+                                      }
                                     }}
                                     className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer"
                                   >
-                                    기록·대진 보기 ➔
+                                    대진·기록 ➔
                                   </button>
                                 </div>
-                                <div className="flex justify-between items-center text-[10px] text-slate-400">
+                                <div className="flex justify-between items-center text-[10px] text-slate-400 flex-wrap gap-1">
                                   <span>
-                                    📅 {t.date} · {t.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'} · {t.courtCount}코트
+                                    📅 {item.date} · {item.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'}
                                   </span>
-                                  <span className="text-emerald-300 font-bold">
-                                    {idx === 0
-                                      ? '본인 성적: 3승 0패 (+8 · 1위)'
-                                      : idx === 1
-                                      ? '본인 성적: 4승 1패 (+9 · 준우승)'
-                                      : '본인 성적: 2승 1패 (+4 · 3위)'}
-                                  </span>
+                                  {item.hasPlayed ? (
+                                    <span className="text-emerald-300 font-bold bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
+                                      대회 성적: {item.matches}전 {item.wins}승 {item.losses}패 ({item.ptsDiff >= 0 ? `+${item.ptsDiff}` : item.ptsDiff} · {item.rankOrNote} · 승률 {item.winRateStr}%)
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                                      대회 미출전
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
                           })}
                         </div>
+                        <div className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-slate-300">
+                          ✓ 위 {currentUserCumulative?.totalTournaments || 0}개 참가 대회의 모든 경기({currentUserCumulative?.totalMatches || 0}전 {currentUserCumulative?.totalWins || 0}승 {currentUserCumulative?.totalLosses || 0}패)가 합산되어 누적 승률({currentUserCumulative?.winRateStr || '0.0'}%)에 즉시 반영됩니다.
+                        </div>
+                      </div>
+
+                      {/* 5. 썬 클럽 회원 전체 누적 승률 랭킹 TOP 5 */}
+                      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <div>
+                            <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                              <span>🏆</span> 썬 클럽 회원 전체 누적 승률 랭킹 (TOP 5)
+                            </span>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              전체 회원의 전 대회 누적 성적에 따른 실시간 공식 랭킹 순위표입니다.
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                            내 순위: {currentUserRank}위
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs text-left">
+                            <thead>
+                              <tr className="border-b border-slate-800 text-slate-400 text-[10px]">
+                                <th className="py-2 px-1 text-center">순위</th>
+                                <th className="py-2 px-1.5">선수명 (부수)</th>
+                                <th className="py-2 px-1 text-center">참가</th>
+                                <th className="py-2 px-1 text-center">전적</th>
+                                <th className="py-2 px-1 text-center">누적 승률</th>
+                                <th className="py-2 px-1 text-right">득실</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/60">
+                              {clubCumulativeLeaderboard.slice(0, 5).map((player) => {
+                                const isMe = player.name === currentUser.name;
+                                const medal =
+                                  player.rank === 1 ? '🥇' : player.rank === 2 ? '🥈' : player.rank === 3 ? '🥉' : `${player.rank}위`;
+                                return (
+                                  <tr
+                                    key={player.name}
+                                    className={`transition ${
+                                      isMe
+                                        ? 'bg-amber-950/40 text-amber-200 font-bold border-l-2 border-amber-400'
+                                        : 'hover:bg-slate-800/40'
+                                    }`}
+                                  >
+                                    <td className="py-2.5 px-1 text-center font-black">{medal}</td>
+                                    <td className="py-2.5 px-1.5">
+                                      <div className="flex items-center gap-1">
+                                        <span className={isMe ? 'text-amber-300 font-black' : 'text-white'}>
+                                          {player.name}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">({player.grade})</span>
+                                        {isMe && (
+                                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-black">
+                                            MY
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 px-1 text-center text-slate-400 text-[11px]">
+                                      {player.totalTournaments}개
+                                    </td>
+                                    <td className="py-2.5 px-1 text-center text-slate-300 font-mono text-[11px]">
+                                      {player.totalWins}승 {player.totalLosses}패
+                                    </td>
+                                    <td className="py-2.5 px-1 text-center">
+                                      <span className="font-black text-emerald-300">{player.winRateStr}%</span>
+                                    </td>
+                                    <td className="py-2.5 px-1 text-right font-mono font-bold text-amber-300">
+                                      {player.totalPtsDiff >= 0 ? `+${player.totalPtsDiff}` : player.totalPtsDiff}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="text-[10px] text-slate-500 pt-0.5">
+                          ※ 모든 공식 대회(조별 풀리그, 본선 토너먼트, KDK) 결과가 실시간 누적 합산 반영됩니다.
+                        </p>
                       </div>
                     </>
                   );
@@ -3225,6 +3727,9 @@ export default function TennisApp() {
                           name: newPlayer.name,
                           grade: newPlayer.grade,
                           gender: newPlayer.gender === 'F' || newPlayer.gender === '여' ? 'F' : 'M',
+                          birthDate: newPlayer.birthDate,
+                          age: resolvePlayerAge(newPlayer, 45),
+                          experienceYears: newPlayer.experienceYears,
                           role: 'member',
                           isGuest: true,
                         },
@@ -3251,6 +3756,8 @@ export default function TennisApp() {
                     setRegisteredPlayers((prev) => prev.filter((p) => p.id !== rejectedId));
                   }}
                   onUpdateMember={(updated: ManagedMember) => {
+                    const updatedAge =
+                      calculateKoreanManAge(updated.birthDate) ?? updated.age;
                     setRegisteredPlayers((prev) =>
                       prev.map((p) =>
                         p.id === updated.id
@@ -3262,6 +3769,8 @@ export default function TennisApp() {
                               name: updated.name,
                               email: updated.email,
                               phone: updated.phone,
+                              birthDate: updated.birthDate ?? p.birthDate,
+                              age: updatedAge ?? p.age,
                               gender: updated.gender === 'F' || updated.gender === '여' ? 'F' : 'M',
                               grade: updated.grade,
                               role: updated.role,
@@ -3270,7 +3779,7 @@ export default function TennisApp() {
                       )
                     );
                     if (currentUser && currentUser.id === updated.id) {
-                      setCurrentUser({
+                      const nextCurrentUser: RegisteredPlayer = {
                         ...currentUser,
                         username: updated.username ?? currentUser.username,
                         password:
@@ -3280,10 +3789,19 @@ export default function TennisApp() {
                         name: updated.name,
                         email: updated.email,
                         phone: updated.phone,
+                        birthDate: updated.birthDate ?? currentUser.birthDate,
+                        age: updatedAge ?? currentUser.age,
                         gender: updated.gender === 'F' || updated.gender === '여' ? 'F' : 'M',
                         grade: updated.grade,
                         role: updated.role,
-                      });
+                      };
+                      setCurrentUser(nextCurrentUser);
+                      try {
+                        localStorage.setItem(
+                          'sun_tennis_current_user',
+                          JSON.stringify(nextCurrentUser)
+                        );
+                      } catch {}
                     }
                   }}
                   onCancelMembership={(cancelledId: string, cancelledName: string) => {
@@ -3307,6 +3825,8 @@ export default function TennisApp() {
                       name: newMember.name,
                       email: newMember.email,
                       phone: newMember.phone,
+                      birthDate: newMember.birthDate,
+                      age: calculateKoreanManAge(newMember.birthDate) ?? newMember.age,
                       gender: newMember.gender === 'F' || newMember.gender === '여' ? 'F' : 'M',
                       grade: newMember.grade,
                       role: newMember.role,
@@ -3372,7 +3892,11 @@ export default function TennisApp() {
                         name: newGuest.name,
                         grade: newGuest.grade,
                         gender: newGuest.gender === '여' ? 'F' : 'M',
+                        birthDate: newGuest.birthDate,
+                        age: resolvePlayerAge(newGuest, 46),
+                        experienceYears: newGuest.experienceYears,
                         role: 'member',
+                        isGuest: true,
                       },
                     ]);
                   }}
@@ -3584,7 +4108,8 @@ export default function TennisApp() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-0.5">
                   {registeredPlayers.map((p) => {
                     const isSelected = newTourSelectedPlayerIds.includes(p.id);
-                    const pt = GRADE_WEIGHTS[p.grade] || 6;
+                    const pt = getCompositeSkillScore(p);
+                    const ageLabel = formatManAgeLabel(p.birthDate, p.age);
                     return (
                       <button
                         key={p.id}
@@ -3610,7 +4135,7 @@ export default function TennisApp() {
                             </span>
                           </div>
                           <span className="text-[9px] text-slate-400 block">
-                            {p.grade} (실력 {pt}점)
+                            {p.grade}{ageLabel ? `·${ageLabel}` : ''} (실력 {pt}점)
                           </span>
                         </div>
                         <span

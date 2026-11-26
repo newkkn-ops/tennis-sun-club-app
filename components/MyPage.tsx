@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { formatManAgeLabel } from '../lib/age';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
@@ -19,6 +20,8 @@ export interface MyPageProps {
   userName?: string;
   userGrade?: string;
   userGender?: string;
+  userBirthDate?: string;
+  userAge?: number;
   customStats?: {
     total_matches: number;
     wins: number;
@@ -44,6 +47,8 @@ export default function MyPage({
   userName = '김철수',
   userGrade = '금배',
   userGender = '남',
+  userBirthDate,
+  userAge,
   customStats,
   customHistory,
 }: MyPageProps) {
@@ -153,13 +158,18 @@ export default function MyPage({
             <h2 className="text-xl font-black text-slate-950 flex items-center gap-1.5">
               <span>☀️</span> {userName} 회원님
             </h2>
-            <div className="flex gap-1.5 pt-1">
+            <div className="flex gap-1.5 pt-1 flex-wrap">
               <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">
                 {userGrade}
               </span>
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/40 text-slate-950">
                 정회원 ({userGender})
               </span>
+              {formatManAgeLabel(userBirthDate, userAge) && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950/85 text-emerald-300 shadow-sm">
+                  🎂 {formatManAgeLabel(userBirthDate, userAge)}
+                </span>
+              )}
             </div>
           </div>
           <div className="text-right">
