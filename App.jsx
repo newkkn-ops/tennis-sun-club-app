@@ -5,6 +5,7 @@ import {
   toAuthEmail,
   mapSupabaseUserRow,
   ensureDefaultAdminAccount,
+  saveUserToPublicUsers,
 } from './lib/supabase';
 import AdminTournamentManager, {
   TournamentConfig,
@@ -1213,35 +1214,18 @@ export default function TennisApp() {
 
       setAuthLoading(true);
       try {
-        // 1. Supabase public.users 테이블에서 중복 아이디/이메일 실시간 검사
-        const { data: existingRows } = await supabase
-          .from('users')
-          .select('id, username, email')
-          .or(`username.ilike.${trimmedId},email.ilike.${authEmail}`);
-
-        if (Array.isArray(existingRows) && existingRows.length > 0) {
-          setAuthMessage({
-            type: 'error',
-            text: `이미 사용 중이거나 승인 대기 중인 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.`,
-          });
-          return;
-        }
-
-        // 2. Supabase Auth 회원가입 요청 (supabase.auth.signUp)
+        // 1. Supabase Auth 회원가입 요청 (supabase.auth.signUp)
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: authEmail,
           password,
           options: {
             data: {
-              username: trimmedId,
               name: signUpName.trim(),
               gender: signUpGender,
               grade: signUpGrade,
-              phone: signUpPhone.trim(),
-              birth_date: signUpBirthDate,
-              age: signUpManAge,
               role: 'member',
-              approval_status: 'pending',
+              status: 'pending',
+              username: trimmedId,
             },
           },
         });
@@ -1249,59 +1233,29 @@ export default function TennisApp() {
         if (signUpError) {
           setAuthMessage({
             type: 'error',
-            text: `회원가입 실패: ${signUpError.message}`,
+            text: signUpError.message.includes('already registered')
+              ? `이미 사용 중이거나 가입 신청된 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.`
+              : `회원가입 실패: ${signUpError.message}`,
           });
           return;
         }
 
         const createdUserId = signUpData?.user?.id;
-        const nowIso = new Date().toISOString();
 
-        // 3. public.users 테이블에 승인 대기(status: 'pending' / role: 'member') 상태로 실시간 저장 (localStorage 저장 로직 배제)
-        const userInsertPayload: Record<string, any> = {
-          ...(createdUserId ? { id: createdUserId } : {}),
-          username: trimmedId,
-          email: authEmail,
-          name: signUpName.trim(),
-          grade: signUpGrade,
-          gender: signUpGender,
-          role: 'member',
-          phone: signUpPhone.trim() || null,
-          birth_date: signUpBirthDate || null,
-          age: signUpManAge ?? null,
-          is_guest: false,
-          approval_status: 'pending',
-          status: 'pending',
-          requested_at: nowIso,
-        };
-
-        let { error: upsertError } = await supabase.from('users').upsert(userInsertPayload);
-        if (upsertError) {
-          if (
-            upsertError.message.includes('approval_status') ||
-            upsertError.message.includes('schema cache')
-          ) {
-            const fallback = { ...userInsertPayload };
-            delete fallback.approval_status;
-            const retry = await supabase.from('users').upsert(fallback);
-            upsertError = retry.error;
-          } else if (
-            upsertError.message.includes('status') ||
-            upsertError.message.includes('schema cache')
-          ) {
-            const fallback = { ...userInsertPayload };
-            delete fallback.status;
-            const retry = await supabase.from('users').upsert(fallback);
-            upsertError = retry.error;
+        // 2. public.users 테이블에 승인 대기(status: 'pending', role: 'member') 상태로 실시간 저장
+        if (createdUserId) {
+          const userInsertPayload = {
+            id: createdUserId,
+            name: signUpName.trim(),
+            gender: signUpGender,
+            grade: signUpGrade,
+            role: 'member',
+            status: 'pending',
+          };
+          const { error: upsertError } = await saveUserToPublicUsers(userInsertPayload);
+          if (upsertError) {
+            console.warn('public.users upsert warning:', upsertError.message);
           }
-        }
-
-        if (upsertError) {
-          setAuthMessage({
-            type: 'error',
-            text: `회원 프로필 저장 실패: ${upsertError.message}`,
-          });
-          return;
         }
 
         // 승인 대기(pending) 상태이므로 자동 로그인 세션을 즉시 해제
@@ -1322,10 +1276,10 @@ export default function TennisApp() {
         setSignUpPhone('');
         setAuthMessage({
           type: 'success',
-          text: `⏳ [${appliedName} · 만 ${signUpManAge}세] 님의 회원가입 신청(ID: ${trimmedId})이 Supabase DB에 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 어느 기기에서나 로그인할 수 있습니다.`,
+          text: `⏳ [${appliedName}] 님의 회원가입 신청(ID: ${trimmedId})이 Supabase DB에 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 로그인할 수 있습니다.`,
         });
         alert(
-          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${trimmedId}\n이름/등급: ${appliedName} (${appliedGrade} · 만 ${signUpManAge}세)\n\n⏳ 운영자(관리자)의 확인 및 승인 후 모든 기기에서 로그인하여 접속하실 수 있습니다.`
+          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${trimmedId}\n이름/등급: ${appliedName} (${appliedGrade})\n\n⏳ 운영자(관리자)의 확인 및 승인 후 로그인하여 접속하실 수 있습니다.`
         );
       } finally {
         setAuthLoading(false);
@@ -1338,29 +1292,22 @@ export default function TennisApp() {
 
       setAuthLoading(true);
       try {
-        // 1. public.users 테이블에서 username 또는 email로 회원 이메일 조회
-        const { data: lookupRow } = await supabase
-          .from('users')
-          .select('*')
-          .or(`username.ilike.${trimmedId},email.ilike.${trimmedId}`)
-          .maybeSingle();
+        const authEmail = toAuthEmail(trimmedId);
 
-        let resolvedEmail = lookupRow?.email || toAuthEmail(trimmedId);
-
-        // 2. Supabase Auth 로그인 검증 (supabase.auth.signInWithPassword)
+        // 1. Supabase Auth 로그인 검증 (supabase.auth.signInWithPassword)
         let { data: signInData, error: signInError } =
           await supabase.auth.signInWithPassword({
-            email: resolvedEmail,
+            email: authEmail,
             password,
           });
 
         if (
           (signInError || !signInData?.user) &&
-          (trimmedId === 'admin' || resolvedEmail.startsWith('admin@'))
+          (trimmedId.toLowerCase() === 'admin' || authEmail.startsWith('admin@'))
         ) {
           await ensureDefaultAdminAccount();
           const retryResult = await supabase.auth.signInWithPassword({
-            email: resolvedEmail,
+            email: authEmail,
             password,
           });
           signInData = retryResult.data;
@@ -1375,20 +1322,21 @@ export default function TennisApp() {
           return;
         }
 
-        // 3. public.users 테이블에서 최신 회원 프로필 및 승인 상태(pending / approved) 확인
+        // 2. public.users 테이블에서 최신 회원 프로필 및 승인 상태(status) 확인
         const { data: userRow } = await supabase
           .from('users')
           .select('*')
           .eq('id', signInData.user.id)
           .maybeSingle();
 
-        const profile = mapSupabaseUserRow(userRow || lookupRow || {
+        const profile = mapSupabaseUserRow(userRow || {
           id: signInData.user.id,
-          email: signInData.user.email,
+          name: trimmedId,
+          email: authEmail,
           ...signInData.user.user_metadata,
         });
 
-        // 4. 운영자 승인 대기(pending / 미승인) 중인 계정 접속 차단 및 로그아웃
+        // 3. 운영자 승인 대기(pending / 미승인) 중인 계정 접속 차단 및 로그아웃
         if (profile && profile.approvalStatus === 'pending') {
           await supabase.auth.signOut();
           setAuthMessage({
@@ -1398,13 +1346,21 @@ export default function TennisApp() {
           return;
         }
 
-        // 5. 승인 완료 회원: role('admin' 또는 'member')에 맞는 화면으로 정상 연결
+        // 4. 승인 완료 회원: role('admin' 또는 'member')에 맞는 화면으로 정상 연결
         const resolvedRole: 'member' | 'admin' =
           profile?.role === 'admin' ? 'admin' : 'member';
         const loggedUser: RegisteredPlayer = {
           ...(profile as RegisteredPlayer),
+          id: signInData.user.id,
+          name: profile?.name || trimmedId,
+          gender: profile?.gender || 'M',
+          grade: profile?.grade || '테린이',
           role: resolvedRole,
+          status: 'approved',
           approvalStatus: 'approved',
+          username: trimmedId,
+          email: authEmail,
+          isGuest: false,
         };
 
         setCurrentUser(loggedUser);
@@ -1576,13 +1532,7 @@ export default function TennisApp() {
       return;
     }
 
-    const { data: lookupAdmin } = await supabase
-      .from('users')
-      .select('*')
-      .or(`username.ilike.${trimmedAdminId},email.ilike.${trimmedAdminId}`)
-      .maybeSingle();
-
-    let resolvedAdminEmail = lookupAdmin?.email || toAuthEmail(trimmedAdminId);
+    const resolvedAdminEmail = toAuthEmail(trimmedAdminId);
 
     let { data: signInData, error: signInError } =
       await supabase.auth.signInWithPassword({
@@ -1617,7 +1567,14 @@ export default function TennisApp() {
       .eq('id', signInData.user.id)
       .maybeSingle();
 
-    const adminProfile = mapSupabaseUserRow(adminRow || lookupAdmin);
+    const adminProfile = mapSupabaseUserRow(
+      adminRow || {
+        id: signInData.user.id,
+        name: '관리자',
+        role: 'admin',
+        ...signInData.user.user_metadata,
+      }
+    );
 
     if (!adminProfile || adminProfile.role !== 'admin') {
       await supabase.auth.signOut();

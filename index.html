@@ -5424,13 +5424,7 @@
         return;
       }
 
-      const { data: lookupAdmin } = await supabase
-        .from('users')
-        .select('*')
-        .or(`username.ilike.${adminId},email.ilike.${adminId}`)
-        .maybeSingle();
-
-      const resolvedAdminEmail = (lookupAdmin && lookupAdmin.email) || toHtmlAuthEmail(adminId);
+      const resolvedAdminEmail = toHtmlAuthEmail(adminId);
       let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: resolvedAdminEmail,
         password: adminPw
@@ -5457,7 +5451,12 @@
         .eq('id', signInData.user.id)
         .maybeSingle();
 
-      const adminUser = mapHtmlSupabaseUserRow(adminRow || lookupAdmin);
+      const adminUser = mapHtmlSupabaseUserRow(adminRow || {
+        id: signInData.user.id,
+        name: '관리자',
+        role: 'admin',
+        ...signInData.user.user_metadata
+      });
       if (!adminUser || adminUser.role !== 'admin') {
         await supabase.auth.signOut();
         showErr('관리자(admin) 권한이 없는 계정입니다.');
@@ -5521,55 +5520,45 @@
         }
 
         const authEmail = toHtmlAuthEmail(loginId);
-        const { data: existingRows } = await supabase
-          .from('users')
-          .select('id, username, email')
-          .or(`username.ilike.${normalizedId},email.ilike.${authEmail}`);
-
-        if (Array.isArray(existingRows) && existingRows.length > 0) {
-          alert('이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.');
-          return;
-        }
 
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: authEmail,
           password: pw,
           options: {
             data: {
-              username: loginId,
               name,
               grade,
               gender,
-              phone,
-              birth_date: birthDate,
-              age: manAge,
               role: 'member',
-              approval_status: 'pending'
+              status: 'pending',
+              username: loginId
             }
           }
         });
 
         if (signUpError) {
-          alert('회원가입 실패: ' + signUpError.message);
+          alert(signUpError.message.includes('already registered')
+            ? `이미 사용 중이거나 가입 신청된 아이디(${loginId})입니다. 다른 아이디를 입력해 주세요.`
+            : `회원가입 실패: ${signUpError.message}`);
           return;
         }
 
         const createdId = signUpData && signUpData.user ? signUpData.user.id : undefined;
-        await supabase.from('users').upsert({
-          ...(createdId ? { id: createdId } : {}),
-          username: loginId,
-          email: authEmail,
-          name,
-          grade,
-          gender,
-          phone: phone || null,
-          birth_date: birthDate,
-          age: manAge,
-          role: 'member',
-          is_guest: false,
-          approval_status: 'pending',
-          requested_at: new Date().toISOString()
-        });
+        if (createdId) {
+          const payload = {
+            id: createdId,
+            name,
+            gender,
+            grade,
+            role: 'member',
+            status: 'pending'
+          };
+          let { error: upsertErr } = await supabase.from('users').upsert(payload);
+          if (upsertErr && (upsertErr.message.includes('status') || upsertErr.message.includes('column'))) {
+            delete payload.status;
+            await supabase.from('users').upsert(payload);
+          }
+        }
 
         if (signUpData && signUpData.session) {
           await supabase.auth.signOut();
@@ -5580,20 +5569,14 @@
         document.getElementById('htmlAuthConfirmPassword').value = '';
         setHtmlBirthDateSelects('htmlSignUpBirth', '', 'htmlSignUpManAgeBadge');
         setHtmlAuthMode(false);
-        alert(`✅ 회원가입 신청이 Supabase DB에 접수되었습니다!\n신청 아이디: ${loginId} (${name} · ${grade} · 만 ${manAge}세)\n\n⏳ 운영자(관리자)의 확인 및 승인 완료 후 모든 기기에서 로그인하실 수 있습니다.`);
+        alert(`✅ 회원가입 신청이 Supabase DB에 접수되었습니다!\n신청 아이디: ${loginId} (${name} · ${grade})\n\n⏳ 운영자(관리자)의 확인 및 승인 완료 후 모든 기기에서 로그인하실 수 있습니다.`);
       } else {
         if (!loginId || !pw) {
           alert('아이디와 비밀번호를 모두 입력해 주세요.');
           return;
         }
 
-        const { data: lookupRow } = await supabase
-          .from('users')
-          .select('*')
-          .or(`username.ilike.${normalizedId},email.ilike.${normalizedId}`)
-          .maybeSingle();
-
-        const resolvedEmail = (lookupRow && lookupRow.email) || toHtmlAuthEmail(loginId);
+        const resolvedEmail = toHtmlAuthEmail(loginId);
         let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: resolvedEmail,
           password: pw

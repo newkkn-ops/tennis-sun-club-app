@@ -194,7 +194,7 @@ export default function AdminUserManagement({
       ? toAuthEmail(trimmedId)
       : editingMember.email || '';
 
-    const { data: updatedRow, error } = await supabase
+    let { data: updatedRow, error } = await supabase
       .from('users')
       .update({
         name: editName.trim(),
@@ -209,7 +209,23 @@ export default function AdminUserManagement({
       })
       .eq('id', editingMember.id)
       .select()
-      .single();
+      .maybeSingle();
+
+    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
+      const retry = await supabase
+        .from('users')
+        .update({
+          name: editName.trim(),
+          gender: editGender,
+          grade: editGrade,
+          role: editRole,
+        })
+        .eq('id', editingMember.id)
+        .select()
+        .maybeSingle();
+      updatedRow = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       alert(`회원 정보 수정 중 오류가 발생했습니다: ${error.message}`);
@@ -443,10 +459,25 @@ export default function AdminUserManagement({
       requested_at: new Date().toISOString(),
     };
 
-    const { data: insertedRow, error: insertError } = await supabase
+    let { data: insertedRow, error: insertError } = await supabase
       .from('users')
       .upsert(insertPayload)
       .select()
+      .maybeSingle();
+
+    if (insertError && (insertError.message.includes('column') || insertError.message.includes('schema cache'))) {
+      const minimal = {
+        ...(newUserId ? { id: newUserId } : {}),
+        name: newName.trim(),
+        gender: newGender,
+        grade: newGrade,
+        role: newRole,
+        status: 'approved',
+      };
+      const retry = await supabase.from('users').upsert(minimal).select().maybeSingle();
+      insertedRow = retry.data;
+      insertError = retry.error;
+    }
       .single();
 
     if (insertError) {
