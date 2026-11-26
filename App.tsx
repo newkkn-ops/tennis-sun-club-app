@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, toAuthEmail, mapSupabaseUserRow } from './lib/supabase';
 import AdminTournamentManager, {
   TournamentConfig,
   ParticipantPlayer,
@@ -21,10 +21,6 @@ import {
   formatBirthDateDisplay,
   formatManAgeLabel,
 } from './lib/age';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export interface TournamentRecord {
   id: string;
@@ -284,26 +280,13 @@ export default function TennisApp() {
   const isAdmin = role === 'admin';
 
   // ----------------------------------------------------
-  // 1. 등록된 공식 선수(가입회원 + 미가입회원/임의선수) 명부 풀
+  // 1. 등록된 공식 선수(가입회원 + 승인대기 + 미가입회원/임의선수) 명부 풀 (Supabase public.users 실시간 연동)
   // ----------------------------------------------------
-  const [registeredPlayers, setRegisteredPlayers] = useState<RegisteredPlayer[]>([
-    { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', birthDate: '1972-05-14', age: calculateKoreanManAge('1972-05-14') ?? 54, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', birthDate: '1981-01-18', age: calculateKoreanManAge('1981-01-18') ?? 45, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', birthDate: '1975-03-22', age: calculateKoreanManAge('1975-03-22') ?? 51, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', birthDate: '1983-06-25', age: calculateKoreanManAge('1983-06-25') ?? 43, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', birthDate: '1974-08-10', age: calculateKoreanManAge('1974-08-10') ?? 52, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', birthDate: '1984-11-05', age: calculateKoreanManAge('1984-11-05') ?? 42, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', birthDate: '1978-04-12', age: calculateKoreanManAge('1978-04-12') ?? 48, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', birthDate: '1987-09-19', age: calculateKoreanManAge('1987-09-19') ?? 39, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', birthDate: '1982-07-28', age: calculateKoreanManAge('1982-07-28') ?? 44, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', birthDate: '1979-07-10', age: calculateKoreanManAge('1979-07-10') ?? 47, isGuest: false, approvalStatus: 'approved' },
-    { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', birthDate: '1981-03-29', age: calculateKoreanManAge('1981-03-29') ?? 45, isGuest: true, approvalStatus: 'approved' },
-    { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', birthDate: '1973-03-20', age: calculateKoreanManAge('1973-03-20') ?? 53, isGuest: true, approvalStatus: 'approved' },
-    { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', birthDate: '1982-10-30', age: calculateKoreanManAge('1982-10-30') ?? 44, isGuest: true, approvalStatus: 'approved' },
-    { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', birthDate: '1983-09-25', age: calculateKoreanManAge('1983-09-25') ?? 43, isGuest: true, approvalStatus: 'approved' },
-  ]);
+  const [registeredPlayers, setRegisteredPlayers] = useState<RegisteredPlayer[]>([]);
 
-  const pendingApprovalCount = registeredPlayers.filter((p) => p.approvalStatus === 'pending').length;
+  const pendingApprovalCount = registeredPlayers.filter(
+    (p) => p.approvalStatus === 'pending'
+  ).length;
   const approvedPlayers = registeredPlayers.filter((p) => p.approvalStatus !== 'pending');
 
   // ----------------------------------------------------
@@ -1024,85 +1007,156 @@ export default function TennisApp() {
     return found ? found.rank : 1;
   }, [currentUser, clubCumulativeLeaderboard]);
 
-  // 초기 로컬 스토리지 가입 회원(승인 대기 포함) 및 로그인 세션/현재 화면 복원 (새로고침 시 자동종료·로그아웃 방지)
-  useEffect(() => {
-    try {
-      let mergedUsers: RegisteredPlayer[] | null = null;
-      const savedUsersRaw = localStorage.getItem('sun_tennis_registered_users');
-      if (savedUsersRaw) {
-        const savedUsers: RegisteredPlayer[] = JSON.parse(savedUsersRaw);
-        if (Array.isArray(savedUsers) && savedUsers.length > 0) {
-          setRegisteredPlayers((prev) => {
-            const byId = new Map<string, RegisteredPlayer>();
-            prev.forEach((u) => byId.set(u.id, u));
-            savedUsers.forEach((su) => {
-              const existing = byId.get(su.id);
-              const resolvedBirthDate =
-                su.birthDate || existing?.birthDate || DEFAULT_SAMPLE_BIRTHDATES[su.id];
-              const resolvedAge =
-                calculateKoreanManAge(resolvedBirthDate) ?? su.age ?? existing?.age;
-              byId.set(su.id, {
-                ...existing,
-                ...su,
-                birthDate: resolvedBirthDate,
-                age: resolvedAge,
-              });
-            });
-            // 최신 가입(또는 대기) 신청자가 상단에 보이도록 정렬
-            const merged = Array.from(byId.values()).sort((a, b) => {
-              if (a.approvalStatus === 'pending' && b.approvalStatus !== 'pending') return -1;
-              if (a.approvalStatus !== 'pending' && b.approvalStatus === 'pending') return 1;
-              return 0;
-            });
-            mergedUsers = merged;
-            return merged;
-          });
-        }
-      }
+  // Supabase public.users 테이블에서 전체 회원(승인 대기 pending + 정회원 approved) 실시간 조회
+  const fetchUsersFromSupabase = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      // 저장된 로그인 세션 복원 -> 새로고침해도 로그인 상태와 보고 있던 화면 그대로 유지
-      const savedCurrentUserRaw = localStorage.getItem('sun_tennis_current_user');
-      if (savedCurrentUserRaw) {
-        const parsedUser: RegisteredPlayer = JSON.parse(savedCurrentUserRaw);
-        if (parsedUser && parsedUser.id && parsedUser.name) {
-          const resolvedRole: 'member' | 'admin' = parsedUser.role === 'admin' ? 'admin' : 'member';
-          const resolvedBirthDate =
-            parsedUser.birthDate || DEFAULT_SAMPLE_BIRTHDATES[parsedUser.id];
+    if (!error && Array.isArray(data)) {
+      const mapped: RegisteredPlayer[] = data
+        .map((row) => {
+          const norm = mapSupabaseUserRow(row);
+          if (!norm) return null;
+          const resolvedBirthDate = norm.birthDate || DEFAULT_SAMPLE_BIRTHDATES[norm.id];
           const resolvedAge =
-            calculateKoreanManAge(resolvedBirthDate) ?? parsedUser.age;
-          setCurrentUser({
-            ...parsedUser,
-            role: resolvedRole,
+            calculateKoreanManAge(resolvedBirthDate) ?? norm.age;
+          return {
+            ...norm,
             birthDate: resolvedBirthDate,
             age: resolvedAge,
-          });
-          setRole(resolvedRole);
+          } as RegisteredPlayer;
+        })
+        .filter((u): u is RegisteredPlayer => Boolean(u))
+        .sort((a, b) => {
+          if (a.approvalStatus === 'pending' && b.approvalStatus !== 'pending') return -1;
+          if (a.approvalStatus !== 'pending' && b.approvalStatus === 'pending') return 1;
+          return 0;
+        });
 
-          const savedSessionRaw = localStorage.getItem('sun_tennis_session_state');
-          if (savedSessionRaw) {
-            const parsedSession = JSON.parse(savedSessionRaw);
-            const validTabs = ['courts', 'kdk', 'tournament', 'mypage', 'admin'];
-            if (parsedSession?.activeTab && validTabs.includes(parsedSession.activeTab)) {
-              const safeTab =
-                parsedSession.activeTab === 'admin' && resolvedRole !== 'admin'
-                  ? 'courts'
-                  : parsedSession.activeTab;
-              setActiveTab(safeTab);
+      setRegisteredPlayers(mapped);
+    }
+  }, []);
+
+  // 초기 Supabase Auth 세션 및 public.users 회원 목록 실시간 연동 (로컬 스토리지 회원 관리 제거)
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateAuthAndUsers = async () => {
+      try {
+        await fetchUsersFromSupabase();
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user && isMounted) {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          const norm = mapSupabaseUserRow(userRow);
+          if (norm && norm.approvalStatus === 'pending') {
+            await supabase.auth.signOut();
+            setCurrentUser(null);
+            setRole('member');
+          } else if (norm) {
+            const resolvedRole: 'member' | 'admin' =
+              norm.role === 'admin' ? 'admin' : 'member';
+            const resolvedBirthDate =
+              norm.birthDate || DEFAULT_SAMPLE_BIRTHDATES[norm.id];
+            const resolvedAge =
+              calculateKoreanManAge(resolvedBirthDate) ?? norm.age;
+            setCurrentUser({
+              ...(norm as RegisteredPlayer),
+              role: resolvedRole,
+              birthDate: resolvedBirthDate,
+              age: resolvedAge,
+            });
+            setRole(resolvedRole);
+
+            const savedSessionRaw = localStorage.getItem('sun_tennis_session_state');
+            if (savedSessionRaw) {
+              const parsedSession = JSON.parse(savedSessionRaw);
+              const validTabs = ['courts', 'kdk', 'tournament', 'mypage', 'admin'];
+              if (parsedSession?.activeTab && validTabs.includes(parsedSession.activeTab)) {
+                const safeTab =
+                  parsedSession.activeTab === 'admin' && resolvedRole !== 'admin'
+                    ? 'courts'
+                    : parsedSession.activeTab;
+                setActiveTab(safeTab);
+              } else {
+                setActiveTab(resolvedRole === 'admin' ? 'admin' : 'courts');
+              }
+              if (
+                parsedSession?.tourPhase === 'qualifying' ||
+                parsedSession?.tourPhase === 'main'
+              ) {
+                setTourPhase(parsedSession.tourPhase);
+              }
             } else {
               setActiveTab(resolvedRole === 'admin' ? 'admin' : 'courts');
             }
-            if (parsedSession?.tourPhase === 'qualifying' || parsedSession?.tourPhase === 'main') {
-              setTourPhase(parsedSession.tourPhase);
-            }
-          } else {
-            setActiveTab(resolvedRole === 'admin' ? 'admin' : 'courts');
           }
         }
+      } catch {
+      } finally {
+        if (isMounted) setAuthHydrated(true);
       }
-    } catch {} finally {
-      setAuthHydrated(true);
-    }
-  }, []);
+    };
+
+    hydrateAuthAndUsers();
+
+    // Supabase Auth 세션 변경 실시간 구독
+    const {
+      data: { subscription: authSub },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        if (isMounted) {
+          setCurrentUser(null);
+          setRole('member');
+        }
+        return;
+      }
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      const norm = mapSupabaseUserRow(userRow);
+      if (norm && norm.approvalStatus !== 'pending' && isMounted) {
+        const resolvedBreakBirth =
+          norm.birthDate || DEFAULT_SAMPLE_BIRTHDATES[norm.id];
+        setCurrentUser({
+          ...(norm as RegisteredPlayer),
+          birthDate: resolvedBreakBirth,
+          age: calculateKoreanManAge(resolvedBreakBirth) ?? norm.age,
+        });
+      }
+    });
+
+    // Supabase public.users 테이블 실시간(Realtime) 변경 구독 (다른 기기에서 가입/승인/수정 시 즉시 반영)
+    const usersChannel = supabase
+      .channel('public:users:tennis-app')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        async () => {
+          await fetchUsersFromSupabase();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      authSub?.unsubscribe();
+      supabase.removeChannel(usersChannel);
+    };
+  }, [fetchUsersFromSupabase]);
 
   // 로그인 상태에서 현재 탭/토너먼트 단계 자동 저장 (새로고침 시 동일 화면 유지)
   useEffect(() => {
@@ -1115,7 +1169,7 @@ export default function TennisApp() {
     } catch {}
   }, [authHydrated, currentUser, activeTab, tourPhase]);
 
-  // 로그인 & 회원가입 제출 핸들러 (아이디 + 비밀번호 기반 · 회원가입은 운영자 승인 후 접속)
+  // 로그인 & 회원가입 제출 핸들러 (Supabase Auth + public.users 실시간 연동 · 회원가입은 pending 승인 대기 후 접속)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthMessage(null);
@@ -1131,8 +1185,8 @@ export default function TennisApp() {
         setAuthMessage({ type: 'error', text: '이름(실명)을 입력해 주세요.' });
         return;
       }
-      if (password.length < 4) {
-        setAuthMessage({ type: 'error', text: '비밀번호는 최소 4자 이상 입력해 주세요.' });
+      if (password.length < 6) {
+        setAuthMessage({ type: 'error', text: '비밀번호는 최소 6자 이상 입력해 주세요.' });
         return;
       }
       if (password !== confirmPassword) {
@@ -1149,65 +1203,111 @@ export default function TennisApp() {
         return;
       }
 
-      // 중복 아이디 검사 (현재 상태 + localStorage 모두 검사)
-      let savedLocalList: any[] = [];
-      try {
-        savedLocalList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      } catch {}
-
-      const isDuplicate =
-        registeredPlayers.some(
-          (p) =>
-            (p.username && p.username.toLowerCase() === trimmedId.toLowerCase()) ||
-            (p.email && p.email.toLowerCase() === trimmedId.toLowerCase())
-        ) ||
-        savedLocalList.some(
-          (p: any) =>
-            (p.username && p.username.toLowerCase() === trimmedId.toLowerCase()) ||
-            (p.email && p.email.toLowerCase() === trimmedId.toLowerCase())
-        );
-
-      if (isDuplicate) {
-        setAuthMessage({ type: 'error', text: `이미 사용 중이거나 승인 대기 중인 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.` });
-        return;
-      }
+      const authEmail = toAuthEmail(trimmedId);
 
       setAuthLoading(true);
       try {
-        const nowStr = new Date().toLocaleString('ko-KR', {
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
+        // 1. Supabase public.users 테이블에서 중복 아이디/이메일 실시간 검사
+        const { data: existingRows } = await supabase
+          .from('users')
+          .select('id, username, email')
+          .or(`username.ilike.${trimmedId},email.ilike.${authEmail}`);
+
+        if (Array.isArray(existingRows) && existingRows.length > 0) {
+          setAuthMessage({
+            type: 'error',
+            text: `이미 사용 중이거나 승인 대기 중인 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.`,
+          });
+          return;
+        }
+
+        // 2. Supabase Auth 회원가입 요청 (supabase.auth.signUp)
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: authEmail,
+          password,
+          options: {
+            data: {
+              username: trimmedId,
+              name: signUpName.trim(),
+              gender: signUpGender,
+              grade: signUpGrade,
+              phone: signUpPhone.trim(),
+              birth_date: signUpBirthDate,
+              age: signUpManAge,
+              role: 'member',
+              approval_status: 'pending',
+            },
+          },
         });
 
-        const newPlayer: RegisteredPlayer = {
-          id: `p_${Date.now()}`,
+        if (signUpError) {
+          setAuthMessage({
+            type: 'error',
+            text: `회원가입 실패: ${signUpError.message}`,
+          });
+          return;
+        }
+
+        const createdUserId = signUpData?.user?.id;
+        const nowIso = new Date().toISOString();
+
+        // 3. public.users 테이블에 승인 대기(status: 'pending' / role: 'member') 상태로 실시간 저장 (localStorage 저장 로직 배제)
+        const userInsertPayload: Record<string, any> = {
+          ...(createdUserId ? { id: createdUserId } : {}),
           username: trimmedId,
-          password,
+          email: authEmail,
           name: signUpName.trim(),
-          email: trimmedId.includes('@') ? trimmedId : '',
           grade: signUpGrade,
           gender: signUpGender,
           role: 'member',
-          phone: signUpPhone.trim(),
-          birthDate: signUpBirthDate,
-          age: signUpManAge,
-          isGuest: false,
-          approvalStatus: 'pending', // 운영자 확인 및 승인 전까지 접속 불가
-          requestedAt: nowStr,
+          phone: signUpPhone.trim() || null,
+          birth_date: signUpBirthDate || null,
+          age: signUpManAge ?? null,
+          is_guest: false,
+          approval_status: 'pending',
+          status: 'pending',
+          requested_at: nowIso,
         };
 
-        setRegisteredPlayers((prev) => [newPlayer, ...prev.filter((p) => p.username !== newPlayer.username)]);
-        try {
-          const updatedSaved = [
-            { ...newPlayer, password },
-            ...savedLocalList.filter((u: any) => u.username !== newPlayer.username),
-          ];
-          localStorage.setItem('sun_tennis_registered_users', JSON.stringify(updatedSaved));
-        } catch {}
+        let { error: upsertError } = await supabase.from('users').upsert(userInsertPayload);
+        if (upsertError) {
+          if (
+            upsertError.message.includes('approval_status') ||
+            upsertError.message.includes('schema cache')
+          ) {
+            const fallback = { ...userInsertPayload };
+            delete fallback.approval_status;
+            const retry = await supabase.from('users').upsert(fallback);
+            upsertError = retry.error;
+          } else if (
+            upsertError.message.includes('status') ||
+            upsertError.message.includes('schema cache')
+          ) {
+            const fallback = { ...userInsertPayload };
+            delete fallback.status;
+            const retry = await supabase.from('users').upsert(fallback);
+            upsertError = retry.error;
+          }
+        }
 
-        // 바로 로그인시키지 않고 승인 대기 안내 표시 후 로그인 화면으로 전환
+        if (upsertError) {
+          setAuthMessage({
+            type: 'error',
+            text: `회원 프로필 저장 실패: ${upsertError.message}`,
+          });
+          return;
+        }
+
+        // 승인 대기(pending) 상태이므로 자동 로그인 세션을 즉시 해제
+        if (signUpData?.session) {
+          await supabase.auth.signOut();
+        }
+
+        await fetchUsersFromSupabase();
+
+        // 승인 대기 안내 표시 후 로그인 화면으로 전환
+        const appliedName = signUpName.trim();
+        const appliedGrade = signUpGrade;
         setIsSignUp(false);
         setPassword('');
         setConfirmPassword('');
@@ -1216,10 +1316,10 @@ export default function TennisApp() {
         setSignUpPhone('');
         setAuthMessage({
           type: 'success',
-          text: `⏳ [${newPlayer.name} · 만 ${signUpManAge}세] 님의 회원가입 신청(ID: ${newPlayer.username})이 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 로그인하여 접속할 수 있습니다.`,
+          text: `⏳ [${appliedName} · 만 ${signUpManAge}세] 님의 회원가입 신청(ID: ${trimmedId})이 Supabase DB에 접수되었습니다! 운영자(관리자)가 확인 후 승인하면 어느 기기에서나 로그인할 수 있습니다.`,
         });
         alert(
-          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${newPlayer.username}\n이름/등급: ${newPlayer.name} (${newPlayer.grade} · 만 ${signUpManAge}세)\n\n⏳ 운영자(관리자)의 확인 및 승인 후 로그인하여 접속하실 수 있습니다.`
+          `✅ 회원가입 신청이 완료되었습니다!\n\n신청 아이디: ${trimmedId}\n이름/등급: ${appliedName} (${appliedGrade} · 만 ${signUpManAge}세)\n\n⏳ 운영자(관리자)의 확인 및 승인 후 모든 기기에서 로그인하여 접속하실 수 있습니다.`
         );
       } finally {
         setAuthLoading(false);
@@ -1232,79 +1332,65 @@ export default function TennisApp() {
 
       setAuthLoading(true);
       try {
-        const lowerId = trimmedId.toLowerCase();
-        let matchedUser: any = undefined;
+        // 1. public.users 테이블에서 username 또는 email로 회원 이메일 조회
+        const { data: lookupRow } = await supabase
+          .from('users')
+          .select('*')
+          .or(`username.ilike.${trimmedId},email.ilike.${trimmedId}`)
+          .maybeSingle();
 
-        try {
-          const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-          const foundLocal = savedList.find(
-            (u: any) =>
-              u.username?.toLowerCase() === lowerId ||
-              u.email?.toLowerCase() === lowerId ||
-              u.name?.toLowerCase() === lowerId
-          );
-          if (foundLocal) {
-            matchedUser = foundLocal;
-          }
-        } catch {}
+        const resolvedEmail = lookupRow?.email || toAuthEmail(trimmedId);
 
-        const stateMatched = registeredPlayers.find(
-          (u) =>
-            u.username?.toLowerCase() === lowerId ||
-            u.email?.toLowerCase() === lowerId ||
-            u.name?.toLowerCase() === lowerId
-        );
+        // 2. Supabase Auth 로그인 검증 (supabase.auth.signInWithPassword)
+        const { data: signInData, error: signInError } =
+          await supabase.auth.signInWithPassword({
+            email: resolvedEmail,
+            password,
+          });
 
-        if (matchedUser && stateMatched) {
-          matchedUser = {
-            ...matchedUser,
-            ...stateMatched,
-            password:
-              stateMatched.password !== undefined
-                ? stateMatched.password
-                : matchedUser.password,
-          };
-        } else if (!matchedUser && stateMatched) {
-          matchedUser = stateMatched;
-        }
-
-        // 기본 로그인 창에서 아이디·비번으로 로그인 시 항상 회원모드('member')로 접속!
-        // (관리자 모드는 반드시 하단 [👑 관리자 입장] 버튼에서 관리자 아이디·비번 인증을 거쳐야 함)
-        if (!matchedUser) {
+        if (signInError || !signInData?.user) {
           setAuthMessage({
             type: 'error',
-            text: '등록되지 않은 아이디입니다. 회원가입 신청 후 운영자(관리자) 승인을 받아 접속해 주세요.',
+            text: '아이디 또는 비밀번호가 일치하지 않거나 등록되지 않은 계정입니다.',
           });
           return;
         }
 
-        // 비밀번호 일치 여부 확인 (가입 시 설정한 비밀번호가 있는 경우)
-        if (matchedUser.password && matchedUser.password !== password) {
-          setAuthMessage({ type: 'error', text: '비밀번호가 일치하지 않습니다.' });
-          return;
-        }
+        // 3. public.users 테이블에서 최신 회원 프로필 및 승인 상태(pending / approved) 확인
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', signInData.user.id)
+          .maybeSingle();
 
-        // 운영자 승인 대기 중인 계정 접속 차단
-        if (matchedUser.approvalStatus === 'pending') {
+        const profile = mapSupabaseUserRow(userRow || lookupRow || {
+          id: signInData.user.id,
+          email: signInData.user.email,
+          ...signInData.user.user_metadata,
+        });
+
+        // 4. 운영자 승인 대기(pending / 미승인) 중인 계정 접속 차단 및 로그아웃
+        if (profile && profile.approvalStatus === 'pending') {
+          await supabase.auth.signOut();
           setAuthMessage({
             type: 'error',
-            text: `⏳ [${matchedUser.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다. 승인 완료 후 로그인하여 접속할 수 있습니다.`,
+            text: `⏳ [${profile.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다. 승인 완료 후 로그인하여 접속할 수 있습니다.`,
           });
           return;
         }
 
+        // 5. 승인 완료 회원: role('admin' 또는 'member')에 맞는 화면으로 정상 연결
+        const resolvedRole: 'member' | 'admin' =
+          profile?.role === 'admin' ? 'admin' : 'member';
         const loggedUser: RegisteredPlayer = {
-          ...matchedUser,
-          role: 'member',
+          ...(profile as RegisteredPlayer),
+          role: resolvedRole,
           approvalStatus: 'approved',
         };
 
         setCurrentUser(loggedUser);
-        setRole('member');
-        setActiveTab('courts');
-        try {
-          localStorage.setItem('sun_tennis_current_user', JSON.stringify(loggedUser));
-        } catch {}
+        setRole(resolvedRole);
+        setActiveTab(resolvedRole === 'admin' ? 'admin' : 'courts');
       } finally {
         setAuthLoading(false);
       }
@@ -1319,6 +1405,8 @@ export default function TennisApp() {
 
   // 마이페이지 내 정보 수정 상태 (관리자/일반회원 공통 · 기본 비활성화, 수정 버튼 클릭 시 활성화)
   const [isEditingMyProfile, setIsEditingMyProfile] = useState<boolean>(false);
+  // 마이페이지 '대회별 참가 성적 & 승률 반영 히스토리' 아코디언 상태 (기본값: 닫힘)
+  const [showMyHistoryAccordion, setShowMyHistoryAccordion] = useState<boolean>(false);
   const [editMyUsername, setEditMyUsername] = useState<string>('');
   const [editMyName, setEditMyName] = useState<string>('');
   const [editMyGender, setEditMyGender] = useState<'M' | 'F'>('M');
@@ -1346,12 +1434,13 @@ export default function TennisApp() {
     if (currentUser) {
       resetMyProfileFormFromUser(currentUser);
       setIsEditingMyProfile(false);
+      setShowMyHistoryAccordion(false);
       setMyInfoSavedMsg('');
     }
   }, [currentUser?.id]);
 
-  // 본인 정보(아이디 · 비밀번호 · 이름 · 성별 · 등급 · 연락처) 수정 저장 핸들러 (관리자/회원 공통)
-  const handleSaveMyProfile = (e: React.FormEvent) => {
+  // 본인 정보(아이디 · 비밀번호 · 이름 · 성별 · 등급 · 연락처) 수정 저장 핸들러 (Supabase Auth + public.users 실시간 반영)
+  const handleSaveMyProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
@@ -1382,8 +1471,8 @@ export default function TennisApp() {
     }
 
     if (trimmedPw.length > 0) {
-      if (trimmedPw.length < 4) {
-        alert('새 비밀번호는 최소 4자 이상 입력해 주세요.');
+      if (trimmedPw.length < 6) {
+        alert('새 비밀번호는 최소 6자 이상 입력해 주세요.');
         return;
       }
       if (trimmedPw !== trimmedConfirmPw) {
@@ -1393,47 +1482,71 @@ export default function TennisApp() {
     }
 
     const computedManAge = calculateKoreanManAge(editMyBirthDate);
+    const resolvedEmail = toAuthEmail(trimmedId);
+
+    // 1. Supabase public.users 테이블 프로필 업데이트
+    const { data: updatedRow, error: updateError } = await supabase
+      .from('users')
+      .update({
+        username: trimmedId,
+        email: resolvedEmail,
+        name: trimmedName,
+        gender: editMyGender,
+        grade: editMyGrade,
+        birth_date: editMyBirthDate || null,
+        age: computedManAge !== null ? computedManAge : currentUser.age ?? null,
+        phone: editMyPhone.trim() || null,
+      })
+      .eq('id', currentUser.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      alert(`내 정보 저장 중 오류가 발생했습니다: ${updateError.message}`);
+      return;
+    }
+
+    // 2. 비밀번호 변경 요청 시 Supabase Auth 비밀번호 업데이트
+    if (trimmedPw.length > 0) {
+      const { error: pwErr } = await supabase.auth.updateUser({
+        password: trimmedPw,
+      });
+      if (pwErr) {
+        alert(`비밀번호 변경 중 오류가 발생했습니다: ${pwErr.message}`);
+        return;
+      }
+    }
+
+    const normalized = mapSupabaseUserRow(updatedRow);
     const updatedUser: RegisteredPlayer = {
       ...currentUser,
+      ...(normalized as RegisteredPlayer),
       username: trimmedId,
-      email: trimmedId.includes('@') ? trimmedId : currentUser.email || '',
+      email: resolvedEmail,
       name: trimmedName,
       gender: editMyGender,
       grade: editMyGrade,
       birthDate: editMyBirthDate || undefined,
       age: computedManAge !== null ? computedManAge : currentUser.age,
       phone: editMyPhone.trim(),
-      password: trimmedPw ? trimmedPw : currentUser.password,
     };
 
     setCurrentUser(updatedUser);
-    setRegisteredPlayers((prev) => {
-      const exists = prev.some((p) => p.id === updatedUser.id);
-      const next = exists
-        ? prev.map((p) => (p.id === updatedUser.id ? { ...p, ...updatedUser } : p))
-        : [updatedUser, ...prev];
-      try {
-        localStorage.setItem('sun_tennis_registered_users', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-    try {
-      localStorage.setItem('sun_tennis_current_user', JSON.stringify(updatedUser));
-    } catch {}
+    await fetchUsersFromSupabase();
     setEditMyPassword('');
     setEditMyConfirmPassword('');
     setShowMyPassword(false);
     setIsEditingMyProfile(false);
     const savedAgeLabel = formatManAgeLabel(updatedUser.birthDate, updatedUser.age);
     setMyInfoSavedMsg(
-      `✅ 내 정보가 저장되었습니다! (아이디: ${updatedUser.username}${
+      `✅ 내 정보가 Supabase DB에 실시간 저장되었습니다! (아이디: ${updatedUser.username}${
         savedAgeLabel ? ` · ${savedAgeLabel} 실력균등 반영` : ''
       }${trimmedPw ? ' · 비밀번호 변경 완료' : ''})`
     );
   };
 
-  // 관리자 아이디·비밀번호 엄격 인증 후 관리자 모드 입장
-  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+  // 관리자 아이디·비밀번호 엄격 인증 후 관리자 모드 입장 (Supabase Auth + public.users role='admin' 검증)
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminLoginError('');
     const trimmedAdminId = adminLoginId.trim().toLowerCase();
@@ -1444,57 +1557,46 @@ export default function TennisApp() {
       return;
     }
 
-    // 등록된 관리자 계정 또는 변경 전 기본 관리자 계정(admin / admin1234) 검증
-    const matchedAdmin = registeredPlayers.find(
-      (u) =>
-        u.role === 'admin' &&
-        (u.username?.toLowerCase() === trimmedAdminId || u.email?.toLowerCase() === trimmedAdminId)
-    );
+    const { data: lookupAdmin } = await supabase
+      .from('users')
+      .select('*')
+      .or(`username.ilike.${trimmedAdminId},email.ilike.${trimmedAdminId}`)
+      .maybeSingle();
 
-    const defaultAdminRecord = registeredPlayers.find((u) => u.id === 'p10');
-    const isDefaultAdminUnchanged =
-      !defaultAdminRecord?.password &&
-      (!defaultAdminRecord?.username || defaultAdminRecord.username.toLowerCase() === 'admin');
+    const resolvedAdminEmail = lookupAdmin?.email || toAuthEmail(trimmedAdminId);
 
-    const isDefaultAdminValid =
-      isDefaultAdminUnchanged &&
-      (trimmedAdminId === 'admin' || trimmedAdminId === 'admin@suntc.kr') &&
-      trimmedAdminPw === 'admin1234';
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email: resolvedAdminEmail,
+        password: trimmedAdminPw,
+      });
 
-    const isMatchedAdminValid =
-      Boolean(matchedAdmin) &&
-      (matchedAdmin?.password
-        ? matchedAdmin.password === trimmedAdminPw
-        : trimmedAdminPw === 'admin1234');
-
-    if (!isDefaultAdminValid && !isMatchedAdminValid) {
-      setAdminLoginError('❌ 관리자 아이디 또는 비밀번호가 일치하지 않습니다. 관리자 인증 없이는 입장할 수 없습니다.');
+    if (signInError || !signInData?.user) {
+      setAdminLoginError(
+        '❌ 관리자 아이디 또는 비밀번호가 일치하지 않습니다. 관리자 인증 없이는 입장할 수 없습니다.'
+      );
       return;
     }
 
-    const adminUser: RegisteredPlayer = matchedAdmin
-      ? {
-          ...matchedAdmin,
-          role: 'admin',
-          approvalStatus: 'approved',
-          birthDate: matchedAdmin.birthDate || DEFAULT_SAMPLE_BIRTHDATES[matchedAdmin.id],
-          age:
-            calculateKoreanManAge(
-              matchedAdmin.birthDate || DEFAULT_SAMPLE_BIRTHDATES[matchedAdmin.id]
-            ) ?? matchedAdmin.age,
-        }
-      : {
-          id: 'p10',
-          username: 'admin',
-          name: '공유 관리자',
-          grade: '금배',
-          gender: 'M',
-          role: 'admin',
-          birthDate: '1979-07-10',
-          age: calculateKoreanManAge('1979-07-10') ?? 47,
-          isGuest: false,
-          approvalStatus: 'approved',
-        };
+    const { data: adminRow } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', signInData.user.id)
+      .maybeSingle();
+
+    const adminProfile = mapSupabaseUserRow(adminRow || lookupAdmin);
+
+    if (!adminProfile || adminProfile.role !== 'admin') {
+      await supabase.auth.signOut();
+      setAdminLoginError('❌ 관리자(admin) 권한이 부여되지 않은 계정입니다.');
+      return;
+    }
+
+    const adminUser: RegisteredPlayer = {
+      ...(adminProfile as RegisteredPlayer),
+      role: 'admin',
+      approvalStatus: 'approved',
+    };
 
     setCurrentUser(adminUser);
     setRole('admin');
@@ -1503,15 +1605,12 @@ export default function TennisApp() {
     setAdminLoginId('');
     setAdminLoginPw('');
     setAdminLoginError('');
-    try {
-      localStorage.setItem('sun_tennis_current_user', JSON.stringify(adminUser));
-    } catch {}
   };
 
-  // 로그아웃 핸들러
-  const handleLogout = () => {
+  // 로그아웃 핸들러 (Supabase Auth 세션 종료)
+  const handleLogout = async () => {
     try {
-      localStorage.removeItem('sun_tennis_current_user');
+      await supabase.auth.signOut();
       localStorage.removeItem('sun_tennis_session_state');
     } catch {}
     setCurrentUser(null);
@@ -3318,83 +3417,108 @@ export default function TennisApp() {
                             </p>
                           </div>
                         </div>
+
+                        {/* 상세 히스토리 아코디언 토글 버튼 */}
+                        <button
+                          type="button"
+                          aria-expanded={showMyHistoryAccordion}
+                          onClick={() => setShowMyHistoryAccordion((prev) => !prev)}
+                          className="w-full mt-1 py-2.5 px-3.5 rounded-xl bg-slate-950/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-400/40 text-amber-300 font-bold text-xs transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <span>
+                            {showMyHistoryAccordion
+                              ? '📜 상세 히스토리 접기 ▲'
+                              : '📜 상세 히스토리 보기 ▼'}
+                          </span>
+                        </button>
                       </div>
 
-                      {/* 4. 대회별 참가 성적 & 승률 반영 히스토리 */}
-                      <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                          <div>
-                            <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                              <span>📜</span> 대회별 참가 성적 & 승률 반영 히스토리
-                            </span>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              각 대회별 본인 경기 성적과 총 누적 승률 합산 내역입니다.
-                            </p>
-                          </div>
-                          <span className="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">
-                            총 {tournamentHistory.length}개 대회 (참가 {currentUserCumulative?.totalTournaments || 0}개)
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
-                          {currentUserCumulative?.historyBreakdown.map((item) => {
-                            const isCur = currentTournament.id === item.tourId;
-                            return (
-                              <div
-                                key={item.tourId}
-                                className={`p-3 rounded-xl border text-xs space-y-2 transition ${
-                                  isCur
-                                    ? 'bg-amber-950/30 border-amber-500/40 shadow-sm'
-                                    : 'bg-slate-950 border-slate-800'
-                                }`}
-                              >
-                                <div className="flex justify-between items-center gap-2">
-                                  <div className="flex items-center gap-1.5 truncate">
-                                    <span
-                                      className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${
-                                        item.status === 'completed'
-                                          ? 'bg-slate-800 text-slate-300'
-                                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                      }`}
-                                    >
-                                      {item.status === 'completed' ? '🏁 종료' : '🔴 진행중'}
-                                    </span>
-                                    <span className="font-black text-white truncate">{item.tourName}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const targetTour = tournamentHistory.find((t) => t.id === item.tourId);
-                                      if (targetTour) {
-                                        setCurrentTournament(targetTour);
-                                        setActiveTab(targetTour.format === 'kdk' ? 'kdk' : 'tournament');
-                                      }
-                                    }}
-                                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer"
-                                  >
-                                    대진·기록 ➔
-                                  </button>
-                                </div>
-                                <div className="flex justify-between items-center text-[10px] text-slate-400 flex-wrap gap-1">
-                                  <span>
-                                    📅 {item.date} · {item.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'}
-                                  </span>
-                                  {item.hasPlayed ? (
-                                    <span className="text-emerald-300 font-bold bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
-                                      대회 성적: {item.matches}전 {item.wins}승 {item.losses}패 ({item.ptsDiff >= 0 ? `+${item.ptsDiff}` : item.ptsDiff} · {item.rankOrNote} · 승률 {item.winRateStr}%)
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                                      대회 미출전
-                                    </span>
-                                  )}
-                                </div>
+                      {/* 4. 대회별 참가 성적 & 승률 반영 히스토리 (아코디언 · 기본 숨김) */}
+                      <div
+                        aria-hidden={!showMyHistoryAccordion}
+                        className={`grid transition-all duration-300 ease-in-out ${
+                          showMyHistoryAccordion
+                            ? 'grid-rows-[1fr] opacity-100'
+                            : 'grid-rows-[0fr] opacity-0 !mt-0 pointer-events-none'
+                        }`}
+                      >
+                        <div className="overflow-hidden">
+                          <div className="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                              <div>
+                                <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                                  <span>📜</span> 대회별 참가 성적 & 승률 반영 히스토리
+                                </span>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  각 대회별 본인 경기 성적과 총 누적 승률 합산 내역입니다.
+                                </p>
                               </div>
-                            );
-                          })}
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-slate-300">
-                          ✓ 위 {currentUserCumulative?.totalTournaments || 0}개 참가 대회의 모든 경기({currentUserCumulative?.totalMatches || 0}전 {currentUserCumulative?.totalWins || 0}승 {currentUserCumulative?.totalLosses || 0}패)가 합산되어 누적 승률({currentUserCumulative?.winRateStr || '0.0'}%)에 즉시 반영됩니다.
+                              <span className="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">
+                                총 {tournamentHistory.length}개 대회 (참가 {currentUserCumulative?.totalTournaments || 0}개)
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
+                              {currentUserCumulative?.historyBreakdown.map((item) => {
+                                const isCur = currentTournament.id === item.tourId;
+                                return (
+                                  <div
+                                    key={item.tourId}
+                                    className={`p-3 rounded-xl border text-xs space-y-2 transition ${
+                                      isCur
+                                        ? 'bg-amber-950/30 border-amber-500/40 shadow-sm'
+                                        : 'bg-slate-950 border-slate-800'
+                                    }`}
+                                  >
+                                    <div className="flex justify-between items-center gap-2">
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <span
+                                          className={`text-[9px] px-1.5 py-0.5 rounded font-black shrink-0 ${
+                                            item.status === 'completed'
+                                              ? 'bg-slate-800 text-slate-300'
+                                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                          }`}
+                                        >
+                                          {item.status === 'completed' ? '🏁 종료' : '🔴 진행중'}
+                                        </span>
+                                        <span className="font-black text-white truncate">{item.tourName}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const targetTour = tournamentHistory.find((t) => t.id === item.tourId);
+                                          if (targetTour) {
+                                            setCurrentTournament(targetTour);
+                                            setActiveTab(targetTour.format === 'kdk' ? 'kdk' : 'tournament');
+                                          }
+                                        }}
+                                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] shrink-0 cursor-pointer"
+                                      >
+                                        대진·기록 ➔
+                                      </button>
+                                    </div>
+                                    <div className="flex justify-between items-center text-[10px] text-slate-400 flex-wrap gap-1">
+                                      <span>
+                                        📅 {item.date} · {item.format === 'kdk' ? 'KDK 순환' : '예선/본선 토너먼트'}
+                                      </span>
+                                      {item.hasPlayed ? (
+                                        <span className="text-emerald-300 font-bold bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
+                                          대회 성적: {item.matches}전 {item.wins}승 {item.losses}패 ({item.ptsDiff >= 0 ? `+${item.ptsDiff}` : item.ptsDiff} · {item.rankOrNote} · 승률 {item.winRateStr}%)
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                                          대회 미출전
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-slate-300">
+                              ✓ 위 {currentUserCumulative?.totalTournaments || 0}개 참가 대회의 모든 경기({currentUserCumulative?.totalMatches || 0}전 {currentUserCumulative?.totalWins || 0}승 {currentUserCumulative?.totalLosses || 0}패)가 합산되어 누적 승률({currentUserCumulative?.winRateStr || '0.0'}%)에 즉시 반영됩니다.
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -3796,12 +3920,6 @@ export default function TennisApp() {
                         role: updated.role,
                       };
                       setCurrentUser(nextCurrentUser);
-                      try {
-                        localStorage.setItem(
-                          'sun_tennis_current_user',
-                          JSON.stringify(nextCurrentUser)
-                        );
-                      } catch {}
                     }
                   }}
                   onCancelMembership={(cancelledId: string, cancelledName: string) => {

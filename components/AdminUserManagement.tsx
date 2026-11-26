@@ -1,24 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, toAuthEmail, mapSupabaseUserRow } from '../lib/supabase';
 import BirthDateSelector from './BirthDateSelector';
 import {
   calculateKoreanManAge,
   formatBirthDateDisplay,
   formatManAgeLabel,
 } from '../lib/age';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const isSupabaseConfigured =
-  Boolean(supabaseUrl) &&
-  supabaseUrl !== 'YOUR_SUPABASE_URL' &&
-  !supabaseUrl.includes('your-project');
-
-const supabase = createClient(
-  isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
-  isSupabaseConfigured ? supabaseAnonKey : 'placeholder-anon-key'
-);
 
 const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
 
@@ -33,10 +21,14 @@ export interface ManagedMember {
   role: 'member' | 'admin';
   phone?: string;
   birthDate?: string; // 생년월일 (YYYY-MM-DD)
+  birth_date?: string;
   age?: number; // 만 나이 (자동 계산)
   isGuest?: boolean;
+  is_guest?: boolean;
   approvalStatus?: 'pending' | 'approved';
+  approval_status?: 'pending' | 'approved';
   requestedAt?: string;
+  requested_at?: string;
 }
 
 interface AdminUserManagementProps {
@@ -58,19 +50,7 @@ export default function AdminUserManagement({
   onApproveMember,
   onRejectMember,
 }: AdminUserManagementProps) {
-  const [users, setUsers] = useState<ManagedMember[]>(
-    externalUsers || [
-      { id: 'p1', name: '김철수', email: 'chulsoo@suntc.kr', gender: 'M', grade: '금배', role: 'member', birthDate: '1972-05-14' },
-      { id: 'p2', name: '강동원', email: 'dongwon@suntc.kr', gender: 'M', grade: '금배', role: 'member', birthDate: '1981-01-18' },
-      { id: 'p3', name: '박민수', email: 'minsoo@suntc.kr', gender: 'M', grade: '은배', role: 'member', birthDate: '1975-03-22' },
-      { id: 'p4', name: '정지훈', email: 'jihoon@suntc.kr', gender: 'M', grade: '동배', role: 'member', birthDate: '1983-06-25' },
-      { id: 'p5', name: '이영희', email: 'younghee@suntc.kr', gender: 'F', grade: '국화', role: 'member', birthDate: '1974-08-10' },
-      { id: 'p6', name: '한지민', email: 'jimin@suntc.kr', gender: 'F', grade: '은배', role: 'member', birthDate: '1984-11-05' },
-      { id: 'p7', name: '최수진', email: 'sujin@suntc.kr', gender: 'F', grade: '개나리', role: 'member', birthDate: '1978-04-12' },
-      { id: 'p8', name: '송중기', email: 'joongki@suntc.kr', gender: 'M', grade: '동배', role: 'member', birthDate: '1987-09-19' },
-      { id: 'p10', name: '공유', email: 'admin@suntc.kr', gender: 'M', grade: '금배', role: 'admin', birthDate: '1979-07-10' },
-    ]
-  );
+  const [users, setUsers] = useState<ManagedMember[]>(externalUsers || []);
 
   // 검색 필터 상태
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -107,58 +87,74 @@ export default function AdminUserManagement({
   const [newGrade, setNewGrade] = useState<string>('테린이');
   const [newRole, setNewRole] = useState<'member' | 'admin'>('member');
 
+  const fetchUsersFromDb = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && Array.isArray(data)) {
+      const normalized = data
+        .map((row) => mapSupabaseUserRow(row) as ManagedMember)
+        .filter(Boolean);
+      setUsers(normalized);
+    }
+  };
+
   useEffect(() => {
     if (externalUsers) {
-      setUsers(externalUsers);
-    } else if (isSupabaseConfigured) {
-      fetchUsersFromDb();
+      setUsers(
+        externalUsers.map((u) => ({
+          ...u,
+          birthDate: u.birthDate || u.birth_date,
+          approvalStatus:
+            u.approval_status === 'pending' || u.approvalStatus === 'pending'
+              ? 'pending'
+              : 'approved',
+          approval_status:
+            u.approval_status === 'pending' || u.approvalStatus === 'pending'
+              ? 'pending'
+              : 'approved',
+        }))
+      );
     }
   }, [externalUsers]);
 
-  const fetchUsersFromDb = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name', { ascending: true });
+  // Supabase users 테이블 초기 조회 및 실시간(Realtime) 변경 구독
+  useEffect(() => {
+    fetchUsersFromDb();
 
-      if (!error && data && data.length > 0) {
-        setUsers(data as ManagedMember[]);
-      }
-    } catch {}
-  };
-
-  // 회원 정보 수정 모달 열기 (아이디 및 저장된 비밀번호까지 불러오기)
-  const openEditModal = (member: ManagedMember) => {
-    let resolvedPassword = member.password || '';
-    if (!resolvedPassword) {
-      try {
-        const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-        const found = savedList.find(
-          (u: any) =>
-            u.id === member.id ||
-            (member.username && u.username?.toLowerCase() === member.username.toLowerCase()) ||
-            (member.email && u.email?.toLowerCase() === member.email.toLowerCase())
-        );
-        if (found?.password) {
-          resolvedPassword = found.password;
+    const channel = supabase
+      .channel('public:users:admin-management')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        () => {
+          fetchUsersFromDb();
         }
-      } catch {}
-    }
+      )
+      .subscribe();
 
-    setEditingMember({ ...member, password: resolvedPassword || member.password });
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 회원 정보 수정 모달 열기
+  const openEditModal = (member: ManagedMember) => {
+    setEditingMember(member);
     setEditName(member.name || '');
     setEditEmail(member.username || member.email || '');
-    setEditPassword(resolvedPassword);
+    setEditPassword('');
     setShowEditPassword(true);
     setEditPhone(member.phone || '');
-    setEditBirthDate(member.birthDate || '');
+    setEditBirthDate(member.birthDate || member.birth_date || '');
     setEditGender(member.gender === 'F' || member.gender === '여' ? 'F' : 'M');
     setEditGrade(member.grade || '은배');
     setEditRole(member.role || 'member');
   };
 
-  // 회원 정보 수정 저장 핸들러 (아이디 중복 검사 + 비밀번호 수정 포함)
+  // 회원 정보 수정 저장 핸들러 (Supabase users 테이블 실시간 업데이트)
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMember) return;
@@ -194,114 +190,150 @@ export default function AdminUserManagement({
     }
 
     const computedAge = calculateKoreanManAge(editBirthDate);
-    const updated: ManagedMember = {
-      ...editingMember,
-      name: editName.trim(),
-      username: trimmedId,
-      password: trimmedPw,
-      email: trimmedId.includes('@') ? trimmedId : editingMember.email || '',
-      phone: editPhone.trim(),
-      birthDate: editBirthDate || undefined,
-      age: computedAge !== null ? computedAge : editingMember.age,
-      gender: editGender,
-      grade: editGrade,
-      role: editRole,
-    };
+    const resolvedEmail = trimmedId
+      ? toAuthEmail(trimmedId)
+      : editingMember.email || '';
+
+    const { data: updatedRow, error } = await supabase
+      .from('users')
+      .update({
+        name: editName.trim(),
+        username: trimmedId || editingMember.username || null,
+        email: resolvedEmail || null,
+        phone: editPhone.trim() || null,
+        birth_date: editBirthDate || null,
+        age: computedAge !== null ? computedAge : editingMember.age ?? null,
+        gender: editGender,
+        grade: editGrade,
+        role: editRole,
+      })
+      .eq('id', editingMember.id)
+      .select()
+      .single();
+
+    if (error) {
+      alert(`회원 정보 수정 중 오류가 발생했습니다: ${error.message}`);
+      return;
+    }
+
+    await fetchUsersFromDb();
+
+    const updated: ManagedMember =
+      (mapSupabaseUserRow(updatedRow) as ManagedMember) || {
+        ...editingMember,
+        name: editName.trim(),
+        username: trimmedId,
+        password: trimmedPw || undefined,
+        email: resolvedEmail,
+        phone: editPhone.trim(),
+        birthDate: editBirthDate || undefined,
+        birth_date: editBirthDate || undefined,
+        age: computedAge !== null ? computedAge : editingMember.age,
+        gender: editGender,
+        grade: editGrade,
+        role: editRole,
+      };
 
     setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     if (onUpdateMember) {
       onUpdateMember(updated);
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const existsInStorage = savedList.some(
-        (u: any) =>
-          u.id === updated.id ||
-          (editingMember.username && u.username?.toLowerCase() === editingMember.username.toLowerCase()) ||
-          (editingMember.email && u.email && u.email === editingMember.email)
-      );
-      const nextSaved = existsInStorage
-        ? savedList.map((u: any) =>
-            u.id === updated.id ||
-            (editingMember.username && u.username?.toLowerCase() === editingMember.username.toLowerCase()) ||
-            (editingMember.email && u.email && u.email === editingMember.email)
-              ? { ...u, ...updated }
-              : u
-          )
-        : [updated, ...savedList];
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase
-          .from('users')
-          .update({
-            name: updated.name,
-            gender: updated.gender,
-            grade: updated.grade,
-            role: updated.role,
-            birth_date: updated.birthDate || null,
-          })
-          .eq('id', updated.id);
-      } catch {}
-    }
-
     setEditingMember(null);
     const ageLabel = formatManAgeLabel(updated.birthDate, updated.age);
     alert(
-      `✅ [${updated.name}] 회원의 정보가 수정되었습니다.\n아이디: ${updated.username || '미설정'} / 비밀번호: ${
-        updated.password ? '변경(저장) 완료' : '미설정'
+      `✅ [${updated.name}] 회원의 정보가 Supabase DB에 실시간 반영되었습니다.\n아이디: ${
+        updated.username || '미설정'
       }${ageLabel ? ` / 나이: ${ageLabel}` : ''}`
     );
   };
 
-  // 인라인 등급 빠른 변경
+  // 인라인 등급 빠른 변경 (Supabase users 테이블 업데이트)
   const handleQuickGradeChange = async (member: ManagedMember, newGradeVal: string) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ grade: newGradeVal })
+      .eq('id', member.id);
+
+    if (error) {
+      alert(`등급 변경 실패: ${error.message}`);
+      return;
+    }
+
     const updated: ManagedMember = { ...member, grade: newGradeVal };
     setUsers((prev) => prev.map((u) => (u.id === member.id ? updated : u)));
     if (onUpdateMember) onUpdateMember(updated);
-
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const nextSaved = savedList.map((u: any) =>
-        u.id === member.id ? { ...u, grade: newGradeVal } : u
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').update({ grade: newGradeVal }).eq('id', member.id);
-      } catch {}
-    }
   };
 
-  // 인라인 권한 빠른 변경
+  // 인라인 권한 빠른 변경 (Supabase users 테이블 업데이트)
   const handleQuickRoleChange = async (member: ManagedMember, newRoleVal: 'member' | 'admin') => {
+    const { error } = await supabase
+      .from('users')
+      .update({ role: newRoleVal })
+      .eq('id', member.id);
+
+    if (error) {
+      alert(`권한 변경 실패: ${error.message}`);
+      return;
+    }
+
     const updated: ManagedMember = { ...member, role: newRoleVal };
     setUsers((prev) => prev.map((u) => (u.id === member.id ? updated : u)));
     if (onUpdateMember) onUpdateMember(updated);
-
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const nextSaved = savedList.map((u: any) =>
-        u.id === member.id ? { ...u, role: newRoleVal } : u
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').update({ role: newRoleVal }).eq('id', member.id);
-      } catch {}
-    }
   };
 
-  // 회원가입 승인 핸들러 (대기 -> 정회원 승인)
+  // 회원가입 승인 핸들러 (대기 pending -> 정회원 approved 실시간 DB 반영)
   const handleApproveMember = async (member: ManagedMember) => {
-    const approved: ManagedMember = { ...member, approvalStatus: 'approved' };
+    let { data, error } = await supabase
+      .from('users')
+      .update({ approval_status: 'approved', status: 'approved' })
+      .eq('id', member.id)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      if (
+        error.message.includes('approval_status') ||
+        error.message.includes('schema cache')
+      ) {
+        const retry = await supabase
+          .from('users')
+          .update({ status: 'approved' })
+          .eq('id', member.id)
+          .select()
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      } else if (
+        error.message.includes('status') ||
+        error.message.includes('schema cache')
+      ) {
+        const retry = await supabase
+          .from('users')
+          .update({ approval_status: 'approved' })
+          .eq('id', member.id)
+          .select()
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
+    }
+
+    if (error) {
+      alert(`회원가입 승인 처리 실패: ${error.message}`);
+      return;
+    }
+
+    await fetchUsersFromDb();
+
+    const approved: ManagedMember =
+      (mapSupabaseUserRow(data) as ManagedMember) || {
+        ...member,
+        approvalStatus: 'approved',
+        approval_status: 'approved',
+        status: 'approved',
+      };
+
     setUsers((prev) => prev.map((u) => (u.id === member.id ? approved : u)));
     if (onApproveMember) {
       onApproveMember(approved);
@@ -309,103 +341,57 @@ export default function AdminUserManagement({
       onUpdateMember(approved);
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const exists = savedList.some(
-        (u: any) =>
-          u.id === member.id ||
-          (member.username && u.username?.toLowerCase() === member.username.toLowerCase())
-      );
-      const nextSaved = exists
-        ? savedList.map((u: any) =>
-            u.id === member.id ||
-            (member.username && u.username?.toLowerCase() === member.username.toLowerCase())
-              ? { ...u, approvalStatus: 'approved' }
-              : u
-          )
-        : [approved, ...savedList];
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').update({ approval_status: 'approved' }).eq('id', member.id);
-      } catch {}
-    }
-
     alert(
-      `✅ [${member.name} (${member.username || member.email || '회원'})] 님의 회원가입이 승인되었습니다!\n지금부터 로그인하여 앱에 접속할 수 있습니다.`
+      `✅ [${member.name} (${member.username || member.email || '회원'})] 님의 회원가입이 승인되었습니다!\n이제 모든 기기에서 로그인하여 앱에 접속할 수 있습니다.`
     );
   };
 
-  // 회원가입 신청 거절(취소) 핸들러
+  // 회원가입 신청 거절(취소) 핸들러 (Supabase users 테이블에서 삭제)
   const handleRejectMember = async (member: ManagedMember) => {
     const confirmed = window.confirm(
       `⚠️ [${member.name} (ID: ${member.username || member.email || '미등록'})] 님의 회원가입 신청을 거절(취소)하시겠습니까?`
     );
     if (!confirmed) return;
 
-    setUsers((prev) => prev.filter((u) => u.id !== member.id));
+    const { error } = await supabase.from('users').delete().eq('id', member.id);
+    if (error) {
+      alert(`가입 거절 처리 실패: ${error.message}`);
+      return;
+    }
+
+    await fetchUsersFromDb();
     if (onRejectMember) {
       onRejectMember(member.id, member.name);
     } else if (onCancelMembership) {
       onCancelMembership(member.id, member.name);
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const filtered = savedList.filter(
-        (u: any) =>
-          u.id !== member.id &&
-          (!member.username || u.username?.toLowerCase() !== member.username.toLowerCase()) &&
-          (!member.email || u.email !== member.email)
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(filtered));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').delete().eq('id', member.id);
-      } catch {}
-    }
-
     alert(`❌ [${member.name}] 님의 회원가입 신청이 거절(삭제)되었습니다.`);
   };
 
-  // 회원가입 취소 (강제 탈퇴 / 계정 삭제) 핸들러
+  // 회원가입 취소 (강제 탈퇴 / 계정 삭제) 핸들러 (Supabase users 테이블에서 삭제)
   const handleCancelUserMembership = async (member: ManagedMember) => {
     const confirmed = window.confirm(
-      `⚠️ 정말 [${member.name} (${member.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?\n\n취소 시 클럽 회원 명부 및 로그인 계정에서 즉시 삭제됩니다.`
+      `⚠️ 정말 [${member.name} (${member.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?\n\n취소 시 Supabase 클럽 회원 명부에서 즉시 삭제됩니다.`
     );
     if (!confirmed) return;
 
-    setUsers((prev) => prev.filter((u) => u.id !== member.id));
-    if (onCancelMembership) {
-      onCancelMembership(member.id, member.name);
+    const { error } = await supabase.from('users').delete().eq('id', member.id);
+    if (error) {
+      alert(`회원 탈퇴 처리 실패: ${error.message}`);
+      return;
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const filtered = savedList.filter(
-        (u: any) =>
-          u.id !== member.id &&
-          (!member.username || u.username?.toLowerCase() !== member.username.toLowerCase()) &&
-          (!member.email || u.email !== member.email)
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(filtered));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').delete().eq('id', member.id);
-      } catch {}
+    await fetchUsersFromDb();
+    if (onCancelMembership) {
+      onCancelMembership(member.id, member.name);
     }
 
     alert(`🗑️ [${member.name}] 회원의 회원가입 취소(탈퇴) 처리가 완료되었습니다.`);
   };
 
-  // 관리자 신규 회원 직접 등록 핸들러
-  const handleAdminAddMember = (e: React.FormEvent) => {
+  // 관리자 신규 회원 직접 등록 핸들러 (Supabase Auth + users 테이블에 approved 상태로 실시간 등록)
+  const handleAdminAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) {
       alert('등록할 회원 이름을 입력해 주세요.');
@@ -413,33 +399,82 @@ export default function AdminUserManagement({
     }
 
     const computedAge = calculateKoreanManAge(newBirthDate);
-    const created: ManagedMember = {
-      id: `p_${Date.now()}`,
-      username: newEmail.trim() || newName.trim(),
-      password: newPassword.trim() || undefined,
+    const rawLoginId = (newEmail.trim() || newName.trim()).toLowerCase();
+    const authEmail = toAuthEmail(rawLoginId);
+    const rawPassword = newPassword.trim() || 'tennis1234';
+
+    let newUserId: string | undefined;
+
+    if (newPassword.trim().length >= 4) {
+      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+        email: authEmail,
+        password: rawPassword,
+        options: {
+          data: {
+            username: rawLoginId,
+            name: newName.trim(),
+            gender: newGender,
+            grade: newGrade,
+            phone: newPhone.trim(),
+            birth_date: newBirthDate || null,
+            role: newRole,
+            approval_status: 'approved',
+          },
+        },
+      });
+      if (!signUpErr && signUpData?.user?.id) {
+        newUserId = signUpData.user.id;
+      }
+    }
+
+    const insertPayload: Record<string, any> = {
+      ...(newUserId ? { id: newUserId } : {}),
+      username: rawLoginId,
+      email: authEmail,
       name: newName.trim(),
-      email: newEmail.trim().includes('@') ? newEmail.trim() : '',
-      phone: newPhone.trim(),
-      birthDate: newBirthDate || undefined,
-      age: computedAge !== null ? computedAge : undefined,
+      phone: newPhone.trim() || null,
+      birth_date: newBirthDate || null,
+      age: computedAge !== null ? computedAge : null,
       gender: newGender,
       grade: newGrade,
       role: newRole,
-      approvalStatus: 'approved',
+      is_guest: false,
+      approval_status: 'approved',
+      requested_at: new Date().toISOString(),
     };
 
-    setUsers((prev) => [created, ...prev]);
+    const { data: insertedRow, error: insertError } = await supabase
+      .from('users')
+      .upsert(insertPayload)
+      .select()
+      .single();
+
+    if (insertError) {
+      alert(`신규 회원 등록 실패: ${insertError.message}`);
+      return;
+    }
+
+    const created: ManagedMember =
+      (mapSupabaseUserRow(insertedRow) as ManagedMember) || {
+        id: newUserId || `u_${Date.now()}`,
+        username: rawLoginId,
+        name: newName.trim(),
+        email: authEmail,
+        phone: newPhone.trim(),
+        birthDate: newBirthDate || undefined,
+        birth_date: newBirthDate || undefined,
+        age: computedAge !== null ? computedAge : undefined,
+        gender: newGender,
+        grade: newGrade,
+        role: newRole,
+        approvalStatus: 'approved',
+        approval_status: 'approved',
+      };
+
+    setUsers((prev) => [created, ...prev.filter((u) => u.id !== created.id)]);
     if (onAddMember) {
       onAddMember(created);
     }
-
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      localStorage.setItem(
-        'sun_tennis_registered_users',
-        JSON.stringify([created, ...savedList])
-      );
-    } catch {}
 
     setNewName('');
     setNewEmail('');
@@ -448,11 +483,15 @@ export default function AdminUserManagement({
     setNewBirthDate('');
     setShowAddForm(false);
     const ageSuffix = computedAge !== null ? ` · 만 ${computedAge}세` : '';
-    alert(`🎉 [${created.name} (${created.grade}${ageSuffix})] 회원이 신규 등록되었습니다.`);
+    alert(`🎉 [${created.name} (${created.grade}${ageSuffix})] 회원이 Supabase DB에 정회원으로 등록되었습니다.`);
   };
 
-  const pendingUsers = users.filter((u) => u.approvalStatus === 'pending');
-  const approvedUsers = users.filter((u) => u.approvalStatus !== 'pending');
+  const pendingUsers = users.filter(
+    (u) => (u.approval_status || u.approvalStatus) === 'pending'
+  );
+  const approvedUsers = users.filter(
+    (u) => (u.approval_status || u.approvalStatus) !== 'pending'
+  );
 
   const filteredUsers = approvedUsers.filter((u) => {
     if (!searchQuery.trim()) return true;

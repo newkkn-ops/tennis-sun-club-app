@@ -78,45 +78,72 @@ export function LoginComponent({ supabase, onAuthSuccess }) {
     setSubmitting(true);
     try {
       if (isSignUp) {
+        const username = email.includes('@') ? email.split('@')[0] : email;
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
+              username,
               name: name || '클럽회원',
               gender,
               grade,
+              role: 'member',
+              approval_status: 'pending',
             },
           },
         });
         if (error) {
           alert('회원가입 실패: ' + error.message);
         } else {
-          alert('🎉 회원가입이 완료되었습니다!');
-          if (onAuthSuccess) {
-            onAuthSuccess({
-              id: data?.user?.id || `u_${Date.now()}`,
-              name: name || '클럽회원',
+          if (data?.user?.id) {
+            await supabase.from('users').upsert({
+              id: data.user.id,
+              username,
               email,
-              gender: gender === 'F' ? '여' : '남',
+              name: name || '클럽회원',
+              gender,
               grade,
               role: 'member',
+              is_guest: false,
+              approval_status: 'pending',
+              requested_at: new Date().toISOString(),
             });
           }
+          if (data?.session) {
+            await supabase.auth.signOut();
+          }
+          alert('⏳ 회원가입 신청이 접수되었습니다! 운영자(관리자) 승인 완료 후 로그인할 수 있습니다.');
+          setIsSignUp(false);
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
           alert('로그인 실패: ' + error.message);
-        } else if (onAuthSuccess && data?.user) {
-          onAuthSuccess({
-            id: data.user.id,
-            name: data.user.user_metadata?.name || email.split('@')[0],
-            email: data.user.email,
-            gender: data.user.user_metadata?.gender === 'F' ? '여' : '남',
-            grade: data.user.user_metadata?.grade || '금배',
-            role: 'member',
-          });
+        } else if (data?.user) {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', data.user.id)
+            .maybeSingle();
+
+          if (userRow?.approval_status === 'pending') {
+            await supabase.auth.signOut();
+            alert(`⏳ [${userRow.name || '회원'}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다.`);
+            return;
+          }
+
+          if (onAuthSuccess) {
+            onAuthSuccess({
+              id: data.user.id,
+              name: userRow?.name || data.user.user_metadata?.name || email.split('@')[0],
+              email: data.user.email,
+              gender: (userRow?.gender || data.user.user_metadata?.gender) === 'F' ? '여' : '남',
+              grade: userRow?.grade || data.user.user_metadata?.grade || '금배',
+              role: userRow?.role || 'member',
+              approval_status: userRow?.approval_status || 'approved',
+            });
+          }
         }
       }
     } finally {

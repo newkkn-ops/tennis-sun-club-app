@@ -1,20 +1,45 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const isSupabaseConfigured =
-  Boolean(supabaseUrl) &&
-  supabaseUrl !== 'YOUR_SUPABASE_URL' &&
-  !supabaseUrl.includes('your-project');
-
-const supabase = createClient(
-  isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
-  isSupabaseConfigured ? supabaseAnonKey : 'placeholder-anon-key'
-);
+import { supabase, toAuthEmail, mapSupabaseUserRow } from '../lib/supabase';
+import BirthDateSelector from './BirthDateSelector';
+import {
+  calculateKoreanManAge,
+  formatBirthDateDisplay,
+  formatManAgeLabel,
+} from '../lib/age';
 
 const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
+
+export interface ManagedMember {
+  id: string;
+  username?: string;
+  password?: string;
+  name: string;
+  email?: string;
+  gender: 'M' | 'F' | string;
+  grade: string;
+  role: 'member' | 'admin';
+  phone?: string;
+  birthDate?: string; // 생년월일 (YYYY-MM-DD)
+  birth_date?: string;
+  age?: number; // 만 나이 (자동 계산)
+  isGuest?: boolean;
+  is_guest?: boolean;
+  approvalStatus?: 'pending' | 'approved';
+  approval_status?: 'pending' | 'approved';
+  requestedAt?: string;
+  requested_at?: string;
+}
+
+interface AdminUserManagementProps {
+  externalUsers?: ManagedMember[];
+  currentUserId?: string;
+  onUpdateMember?: (updated: ManagedMember) => void;
+  onCancelMembership?: (userId: string, userName: string) => void;
+  onAddMember?: (newMember: ManagedMember) => void;
+  onApproveMember?: (approved: ManagedMember) => void;
+  onRejectMember?: (userId: string, userName: string) => void;
+}
 
 export default function AdminUserManagement({
   externalUsers,
@@ -24,100 +49,113 @@ export default function AdminUserManagement({
   onAddMember,
   onApproveMember,
   onRejectMember,
-}) {
-  const [users, setUsers] = useState(
-    externalUsers || [
-      { id: 'p1', name: '김철수', email: 'chulsoo@suntc.kr', gender: 'M', grade: '금배', role: 'member' },
-      { id: 'p2', name: '강동원', email: 'dongwon@suntc.kr', gender: 'M', grade: '금배', role: 'member' },
-      { id: 'p3', name: '박민수', email: 'minsoo@suntc.kr', gender: 'M', grade: '은배', role: 'member' },
-      { id: 'p4', name: '정지훈', email: 'jihoon@suntc.kr', gender: 'M', grade: '동배', role: 'member' },
-      { id: 'p5', name: '이영희', email: 'younghee@suntc.kr', gender: 'F', grade: '국화', role: 'member' },
-      { id: 'p6', name: '한지민', email: 'jimin@suntc.kr', gender: 'F', grade: '은배', role: 'member' },
-      { id: 'p7', name: '최수진', email: 'sujin@suntc.kr', gender: 'F', grade: '개나리', role: 'member' },
-      { id: 'p8', name: '송중기', email: 'joongki@suntc.kr', gender: 'M', grade: '동배', role: 'member' },
-      { id: 'p10', name: '공유', email: 'admin@suntc.kr', gender: 'M', grade: '금배', role: 'admin' },
-    ]
-  );
+}: AdminUserManagementProps) {
+  const [users, setUsers] = useState<ManagedMember[]>(externalUsers || []);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  // 검색 필터 상태
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const [isPendingSectionOpen, setIsPendingSectionOpen] = useState(false);
-  const [isMemberSectionOpen, setIsMemberSectionOpen] = useState(false);
-  const [expandedMemberIds, setExpandedMemberIds] = useState({});
+  // 섹션별 및 개별 회원 항목 접기/펼치기 상태 (기본값: 접힌 상태, 항목 클릭 시 펼쳐서 수정)
+  const [isPendingSectionOpen, setIsPendingSectionOpen] = useState<boolean>(false);
+  const [isMemberSectionOpen, setIsMemberSectionOpen] = useState<boolean>(false);
+  const [expandedMemberIds, setExpandedMemberIds] = useState<Record<string, boolean>>({});
 
-  const toggleExpandMember = (memberId) => {
+  const toggleExpandMember = (memberId: string) => {
     setExpandedMemberIds((prev) => ({ ...prev, [memberId]: !prev[memberId] }));
   };
 
-  const [editingMember, setEditingMember] = useState(null);
-  const [editName, setEditName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editPassword, setEditPassword] = useState('');
-  const [showEditPassword, setShowEditPassword] = useState(true);
-  const [editPhone, setEditPhone] = useState('');
-  const [editGender, setEditGender] = useState('M');
-  const [editGrade, setEditGrade] = useState('은배');
-  const [editRole, setEditRole] = useState('member');
+  // 상세 정보 수정 모달 대상 회원 상태
+  const [editingMember, setEditingMember] = useState<ManagedMember | null>(null);
+  const [editName, setEditName] = useState<string>('');
+  const [editEmail, setEditEmail] = useState<string>('');
+  const [editPassword, setEditPassword] = useState<string>('');
+  const [showEditPassword, setShowEditPassword] = useState<boolean>(true);
+  const [editPhone, setEditPhone] = useState<string>('');
+  const [editBirthDate, setEditBirthDate] = useState<string>('');
+  const [editGender, setEditGender] = useState<'M' | 'F'>('M');
+  const [editGrade, setEditGrade] = useState<string>('은배');
+  const [editRole, setEditRole] = useState<'member' | 'admin'>('member');
 
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newGender, setNewGender] = useState('M');
-  const [newGrade, setNewGrade] = useState('테린이');
-  const [newRole, setNewRole] = useState('member');
+  // 관리자 신규 회원 직접 등록 폼 토글 및 상태
+  const [showAddForm, setShowAddForm] = useState<boolean>(false);
+  const [newName, setNewName] = useState<string>('');
+  const [newEmail, setNewEmail] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [newPhone, setNewPhone] = useState<string>('');
+  const [newBirthDate, setNewBirthDate] = useState<string>('');
+  const [newGender, setNewGender] = useState<'M' | 'F'>('M');
+  const [newGrade, setNewGrade] = useState<string>('테린이');
+  const [newRole, setNewRole] = useState<'member' | 'admin'>('member');
+
+  const fetchUsersFromDb = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && Array.isArray(data)) {
+      const normalized = data
+        .map((row) => mapSupabaseUserRow(row) as ManagedMember)
+        .filter(Boolean);
+      setUsers(normalized);
+    }
+  };
 
   useEffect(() => {
     if (externalUsers) {
-      setUsers(externalUsers);
-    } else if (isSupabaseConfigured) {
-      fetchUsersFromDb();
+      setUsers(
+        externalUsers.map((u) => ({
+          ...u,
+          birthDate: u.birthDate || u.birth_date,
+          approvalStatus:
+            u.approval_status === 'pending' || u.approvalStatus === 'pending'
+              ? 'pending'
+              : 'approved',
+          approval_status:
+            u.approval_status === 'pending' || u.approvalStatus === 'pending'
+              ? 'pending'
+              : 'approved',
+        }))
+      );
     }
   }, [externalUsers]);
 
-  const fetchUsersFromDb = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name', { ascending: true });
+  // Supabase users 테이블 초기 조회 및 실시간(Realtime) 변경 구독
+  useEffect(() => {
+    fetchUsersFromDb();
 
-      if (!error && data && data.length > 0) {
-        setUsers(data);
-      }
-    } catch {}
-  };
-
-  const openEditModal = (member) => {
-    let resolvedPassword = member.password || '';
-    if (!resolvedPassword) {
-      try {
-        const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-        const found = savedList.find(
-          (u) =>
-            u.id === member.id ||
-            (member.username && u.username?.toLowerCase() === member.username.toLowerCase()) ||
-            (member.email && u.email?.toLowerCase() === member.email.toLowerCase())
-        );
-        if (found?.password) {
-          resolvedPassword = found.password;
+    const channel = supabase
+      .channel('public:users:admin-management')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        () => {
+          fetchUsersFromDb();
         }
-      } catch {}
-    }
+      )
+      .subscribe();
 
-    setEditingMember({ ...member, password: resolvedPassword || member.password });
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 회원 정보 수정 모달 열기
+  const openEditModal = (member: ManagedMember) => {
+    setEditingMember(member);
     setEditName(member.name || '');
     setEditEmail(member.username || member.email || '');
-    setEditPassword(resolvedPassword);
+    setEditPassword('');
     setShowEditPassword(true);
     setEditPhone(member.phone || '');
+    setEditBirthDate(member.birthDate || member.birth_date || '');
     setEditGender(member.gender === 'F' || member.gender === '여' ? 'F' : 'M');
     setEditGrade(member.grade || '은배');
     setEditRole(member.role || 'member');
   };
 
-  const handleSaveEdit = async (e) => {
+  // 회원 정보 수정 저장 핸들러 (Supabase users 테이블 실시간 업데이트)
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMember) return;
     if (!editName.trim()) {
@@ -151,107 +189,151 @@ export default function AdminUserManagement({
       return;
     }
 
-    const updated = {
-      ...editingMember,
-      name: editName.trim(),
-      username: trimmedId,
-      password: trimmedPw,
-      email: trimmedId.includes('@') ? trimmedId : editingMember.email || '',
-      phone: editPhone.trim(),
-      gender: editGender,
-      grade: editGrade,
-      role: editRole,
-    };
+    const computedAge = calculateKoreanManAge(editBirthDate);
+    const resolvedEmail = trimmedId
+      ? toAuthEmail(trimmedId)
+      : editingMember.email || '';
+
+    const { data: updatedRow, error } = await supabase
+      .from('users')
+      .update({
+        name: editName.trim(),
+        username: trimmedId || editingMember.username || null,
+        email: resolvedEmail || null,
+        phone: editPhone.trim() || null,
+        birth_date: editBirthDate || null,
+        age: computedAge !== null ? computedAge : editingMember.age ?? null,
+        gender: editGender,
+        grade: editGrade,
+        role: editRole,
+      })
+      .eq('id', editingMember.id)
+      .select()
+      .single();
+
+    if (error) {
+      alert(`회원 정보 수정 중 오류가 발생했습니다: ${error.message}`);
+      return;
+    }
+
+    await fetchUsersFromDb();
+
+    const updated: ManagedMember =
+      (mapSupabaseUserRow(updatedRow) as ManagedMember) || {
+        ...editingMember,
+        name: editName.trim(),
+        username: trimmedId,
+        password: trimmedPw || undefined,
+        email: resolvedEmail,
+        phone: editPhone.trim(),
+        birthDate: editBirthDate || undefined,
+        birth_date: editBirthDate || undefined,
+        age: computedAge !== null ? computedAge : editingMember.age,
+        gender: editGender,
+        grade: editGrade,
+        role: editRole,
+      };
 
     setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     if (onUpdateMember) {
       onUpdateMember(updated);
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const existsInStorage = savedList.some(
-        (u) =>
-          u.id === updated.id ||
-          (editingMember.username && u.username?.toLowerCase() === editingMember.username.toLowerCase()) ||
-          (editingMember.email && u.email && u.email === editingMember.email)
-      );
-      const nextSaved = existsInStorage
-        ? savedList.map((u) =>
-            u.id === updated.id ||
-            (editingMember.username && u.username?.toLowerCase() === editingMember.username.toLowerCase()) ||
-            (editingMember.email && u.email && u.email === editingMember.email)
-              ? { ...u, ...updated }
-              : u
-          )
-        : [updated, ...savedList];
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase
-          .from('users')
-          .update({
-            name: updated.name,
-            gender: updated.gender,
-            grade: updated.grade,
-            role: updated.role,
-          })
-          .eq('id', updated.id);
-      } catch {}
-    }
-
     setEditingMember(null);
+    const ageLabel = formatManAgeLabel(updated.birthDate, updated.age);
     alert(
-      `✅ [${updated.name}] 회원의 정보가 수정되었습니다.\n아이디: ${updated.username || '미설정'} / 비밀번호: ${
-        updated.password ? '변경(저장) 완료' : '미설정'
-      }`
+      `✅ [${updated.name}] 회원의 정보가 Supabase DB에 실시간 반영되었습니다.\n아이디: ${
+        updated.username || '미설정'
+      }${ageLabel ? ` / 나이: ${ageLabel}` : ''}`
     );
   };
 
-  const handleQuickGradeChange = async (member, newGradeVal) => {
-    const updated = { ...member, grade: newGradeVal };
+  // 인라인 등급 빠른 변경 (Supabase users 테이블 업데이트)
+  const handleQuickGradeChange = async (member: ManagedMember, newGradeVal: string) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ grade: newGradeVal })
+      .eq('id', member.id);
+
+    if (error) {
+      alert(`등급 변경 실패: ${error.message}`);
+      return;
+    }
+
+    const updated: ManagedMember = { ...member, grade: newGradeVal };
     setUsers((prev) => prev.map((u) => (u.id === member.id ? updated : u)));
     if (onUpdateMember) onUpdateMember(updated);
-
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const nextSaved = savedList.map((u) =>
-        u.id === member.id ? { ...u, grade: newGradeVal } : u
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').update({ grade: newGradeVal }).eq('id', member.id);
-      } catch {}
-    }
   };
 
-  const handleQuickRoleChange = async (member, newRoleVal) => {
-    const updated = { ...member, role: newRoleVal };
+  // 인라인 권한 빠른 변경 (Supabase users 테이블 업데이트)
+  const handleQuickRoleChange = async (member: ManagedMember, newRoleVal: 'member' | 'admin') => {
+    const { error } = await supabase
+      .from('users')
+      .update({ role: newRoleVal })
+      .eq('id', member.id);
+
+    if (error) {
+      alert(`권한 변경 실패: ${error.message}`);
+      return;
+    }
+
+    const updated: ManagedMember = { ...member, role: newRoleVal };
     setUsers((prev) => prev.map((u) => (u.id === member.id ? updated : u)));
     if (onUpdateMember) onUpdateMember(updated);
-
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const nextSaved = savedList.map((u) =>
-        u.id === member.id ? { ...u, role: newRoleVal } : u
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').update({ role: newRoleVal }).eq('id', member.id);
-      } catch {}
-    }
   };
 
-  const handleApproveMember = async (member) => {
-    const approved = { ...member, approvalStatus: 'approved' };
+  // 회원가입 승인 핸들러 (대기 pending -> 정회원 approved 실시간 DB 반영)
+  const handleApproveMember = async (member: ManagedMember) => {
+    let { data, error } = await supabase
+      .from('users')
+      .update({ approval_status: 'approved', status: 'approved' })
+      .eq('id', member.id)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      if (
+        error.message.includes('approval_status') ||
+        error.message.includes('schema cache')
+      ) {
+        const retry = await supabase
+          .from('users')
+          .update({ status: 'approved' })
+          .eq('id', member.id)
+          .select()
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      } else if (
+        error.message.includes('status') ||
+        error.message.includes('schema cache')
+      ) {
+        const retry = await supabase
+          .from('users')
+          .update({ approval_status: 'approved' })
+          .eq('id', member.id)
+          .select()
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
+    }
+
+    if (error) {
+      alert(`회원가입 승인 처리 실패: ${error.message}`);
+      return;
+    }
+
+    await fetchUsersFromDb();
+
+    const approved: ManagedMember =
+      (mapSupabaseUserRow(data) as ManagedMember) || {
+        ...member,
+        approvalStatus: 'approved',
+        approval_status: 'approved',
+        status: 'approved',
+      };
+
     setUsers((prev) => prev.map((u) => (u.id === member.id ? approved : u)));
     if (onApproveMember) {
       onApproveMember(approved);
@@ -259,142 +341,157 @@ export default function AdminUserManagement({
       onUpdateMember(approved);
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const exists = savedList.some(
-        (u) =>
-          u.id === member.id ||
-          (member.username && u.username?.toLowerCase() === member.username.toLowerCase())
-      );
-      const nextSaved = exists
-        ? savedList.map((u) =>
-            u.id === member.id ||
-            (member.username && u.username?.toLowerCase() === member.username.toLowerCase())
-              ? { ...u, approvalStatus: 'approved' }
-              : u
-          )
-        : [approved, ...savedList];
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(nextSaved));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').update({ approval_status: 'approved' }).eq('id', member.id);
-      } catch {}
-    }
-
     alert(
-      `✅ [${member.name} (${member.username || member.email || '회원'})] 님의 회원가입이 승인되었습니다!\n지금부터 로그인하여 앱에 접속할 수 있습니다.`
+      `✅ [${member.name} (${member.username || member.email || '회원'})] 님의 회원가입이 승인되었습니다!\n이제 모든 기기에서 로그인하여 앱에 접속할 수 있습니다.`
     );
   };
 
-  const handleRejectMember = async (member) => {
+  // 회원가입 신청 거절(취소) 핸들러 (Supabase users 테이블에서 삭제)
+  const handleRejectMember = async (member: ManagedMember) => {
     const confirmed = window.confirm(
       `⚠️ [${member.name} (ID: ${member.username || member.email || '미등록'})] 님의 회원가입 신청을 거절(취소)하시겠습니까?`
     );
     if (!confirmed) return;
 
-    setUsers((prev) => prev.filter((u) => u.id !== member.id));
+    const { error } = await supabase.from('users').delete().eq('id', member.id);
+    if (error) {
+      alert(`가입 거절 처리 실패: ${error.message}`);
+      return;
+    }
+
+    await fetchUsersFromDb();
     if (onRejectMember) {
       onRejectMember(member.id, member.name);
     } else if (onCancelMembership) {
       onCancelMembership(member.id, member.name);
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const filtered = savedList.filter(
-        (u) =>
-          u.id !== member.id &&
-          (!member.username || u.username?.toLowerCase() !== member.username.toLowerCase()) &&
-          (!member.email || u.email !== member.email)
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(filtered));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').delete().eq('id', member.id);
-      } catch {}
-    }
-
     alert(`❌ [${member.name}] 님의 회원가입 신청이 거절(삭제)되었습니다.`);
   };
 
-  const handleCancelUserMembership = async (member) => {
+  // 회원가입 취소 (강제 탈퇴 / 계정 삭제) 핸들러 (Supabase users 테이블에서 삭제)
+  const handleCancelUserMembership = async (member: ManagedMember) => {
     const confirmed = window.confirm(
-      `⚠️ 정말 [${member.name} (${member.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?\n\n취소 시 클럽 회원 명부 및 로그인 계정에서 즉시 삭제됩니다.`
+      `⚠️ 정말 [${member.name} (${member.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?\n\n취소 시 Supabase 클럽 회원 명부에서 즉시 삭제됩니다.`
     );
     if (!confirmed) return;
 
-    setUsers((prev) => prev.filter((u) => u.id !== member.id));
-    if (onCancelMembership) {
-      onCancelMembership(member.id, member.name);
+    const { error } = await supabase.from('users').delete().eq('id', member.id);
+    if (error) {
+      alert(`회원 탈퇴 처리 실패: ${error.message}`);
+      return;
     }
 
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      const filtered = savedList.filter(
-        (u) =>
-          u.id !== member.id &&
-          (!member.username || u.username?.toLowerCase() !== member.username.toLowerCase()) &&
-          (!member.email || u.email !== member.email)
-      );
-      localStorage.setItem('sun_tennis_registered_users', JSON.stringify(filtered));
-    } catch {}
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('users').delete().eq('id', member.id);
-      } catch {}
+    await fetchUsersFromDb();
+    if (onCancelMembership) {
+      onCancelMembership(member.id, member.name);
     }
 
     alert(`🗑️ [${member.name}] 회원의 회원가입 취소(탈퇴) 처리가 완료되었습니다.`);
   };
 
-  const handleAdminAddMember = (e) => {
+  // 관리자 신규 회원 직접 등록 핸들러 (Supabase Auth + users 테이블에 approved 상태로 실시간 등록)
+  const handleAdminAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) {
       alert('등록할 회원 이름을 입력해 주세요.');
       return;
     }
 
-    const created = {
-      id: `p_${Date.now()}`,
-      username: newEmail.trim() || newName.trim(),
-      password: newPassword.trim() || undefined,
+    const computedAge = calculateKoreanManAge(newBirthDate);
+    const rawLoginId = (newEmail.trim() || newName.trim()).toLowerCase();
+    const authEmail = toAuthEmail(rawLoginId);
+    const rawPassword = newPassword.trim() || 'tennis1234';
+
+    let newUserId: string | undefined;
+
+    if (newPassword.trim().length >= 4) {
+      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+        email: authEmail,
+        password: rawPassword,
+        options: {
+          data: {
+            username: rawLoginId,
+            name: newName.trim(),
+            gender: newGender,
+            grade: newGrade,
+            phone: newPhone.trim(),
+            birth_date: newBirthDate || null,
+            role: newRole,
+            approval_status: 'approved',
+          },
+        },
+      });
+      if (!signUpErr && signUpData?.user?.id) {
+        newUserId = signUpData.user.id;
+      }
+    }
+
+    const insertPayload: Record<string, any> = {
+      ...(newUserId ? { id: newUserId } : {}),
+      username: rawLoginId,
+      email: authEmail,
       name: newName.trim(),
-      email: newEmail.trim().includes('@') ? newEmail.trim() : '',
-      phone: newPhone.trim(),
+      phone: newPhone.trim() || null,
+      birth_date: newBirthDate || null,
+      age: computedAge !== null ? computedAge : null,
       gender: newGender,
       grade: newGrade,
       role: newRole,
-      approvalStatus: 'approved',
+      is_guest: false,
+      approval_status: 'approved',
+      requested_at: new Date().toISOString(),
     };
 
-    setUsers((prev) => [created, ...prev]);
+    const { data: insertedRow, error: insertError } = await supabase
+      .from('users')
+      .upsert(insertPayload)
+      .select()
+      .single();
+
+    if (insertError) {
+      alert(`신규 회원 등록 실패: ${insertError.message}`);
+      return;
+    }
+
+    const created: ManagedMember =
+      (mapSupabaseUserRow(insertedRow) as ManagedMember) || {
+        id: newUserId || `u_${Date.now()}`,
+        username: rawLoginId,
+        name: newName.trim(),
+        email: authEmail,
+        phone: newPhone.trim(),
+        birthDate: newBirthDate || undefined,
+        birth_date: newBirthDate || undefined,
+        age: computedAge !== null ? computedAge : undefined,
+        gender: newGender,
+        grade: newGrade,
+        role: newRole,
+        approvalStatus: 'approved',
+        approval_status: 'approved',
+      };
+
+    setUsers((prev) => [created, ...prev.filter((u) => u.id !== created.id)]);
     if (onAddMember) {
       onAddMember(created);
     }
-
-    try {
-      const savedList = JSON.parse(localStorage.getItem('sun_tennis_registered_users') || '[]');
-      localStorage.setItem(
-        'sun_tennis_registered_users',
-        JSON.stringify([created, ...savedList])
-      );
-    } catch {}
 
     setNewName('');
     setNewEmail('');
     setNewPassword('');
     setNewPhone('');
+    setNewBirthDate('');
     setShowAddForm(false);
-    alert(`🎉 [${created.name} (${created.grade})] 회원이 신규 등록되었습니다.`);
+    const ageSuffix = computedAge !== null ? ` · 만 ${computedAge}세` : '';
+    alert(`🎉 [${created.name} (${created.grade}${ageSuffix})] 회원이 Supabase DB에 정회원으로 등록되었습니다.`);
   };
 
-  const pendingUsers = users.filter((u) => u.approvalStatus === 'pending');
-  const approvedUsers = users.filter((u) => u.approvalStatus !== 'pending');
+  const pendingUsers = users.filter(
+    (u) => (u.approval_status || u.approvalStatus) === 'pending'
+  );
+  const approvedUsers = users.filter(
+    (u) => (u.approval_status || u.approvalStatus) !== 'pending'
+  );
 
   const filteredUsers = approvedUsers.filter((u) => {
     if (!searchQuery.trim()) return true;
@@ -409,6 +506,9 @@ export default function AdminUserManagement({
 
   return (
     <div className="space-y-3">
+      {/* ================================================================= */}
+      {/* [섹션 0]: 신규 회원가입 승인 대기 목록 (접기/펼치기 · 항목 클릭 시 승인/거절) */}
+      {/* ================================================================= */}
       <div
         className={`rounded-2xl p-3.5 shadow-xl space-y-3 border ${
           pendingUsers.length > 0
@@ -453,6 +553,8 @@ export default function AdminUserManagement({
               <div className="space-y-2">
                 {pendingUsers.map((u) => {
                   const isExpanded = Boolean(expandedMemberIds[u.id]);
+                  const manAgeBadge = formatManAgeLabel(u.birthDate, u.age);
+                  const birthStr = formatBirthDateDisplay(u.birthDate);
                   return (
                     <div
                       key={u.id}
@@ -471,6 +573,11 @@ export default function AdminUserManagement({
                           <span className="text-[10px] text-slate-400">
                             ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
                           </span>
+                          {manAgeBadge && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                              {manAgeBadge}
+                            </span>
+                          )}
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black">
                             승인 대기중
                           </span>
@@ -483,7 +590,14 @@ export default function AdminUserManagement({
                       {isExpanded && (
                         <div className="space-y-2 pt-2 border-t border-slate-800/80">
                           <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
-                            <span>신청 ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
+                            <span>
+                              신청 ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong>
+                            </span>
+                            {birthStr && (
+                              <span>
+                                · 생년월일: <strong className="text-emerald-300">{birthStr} ({manAgeBadge})</strong>
+                              </span>
+                            )}
                             {u.phone && <span>· 연락처: {u.phone}</span>}
                             {u.requestedAt && <span>· 신청일시: {u.requestedAt}</span>}
                           </div>
@@ -516,6 +630,9 @@ export default function AdminUserManagement({
         )}
       </div>
 
+      {/* ================================================================= */}
+      {/* [섹션 1]: 가입회원 정보 수정 & 회원가입 취소 관리 (접기/펼치기 + 개별 회원 접기/펼치기) */}
+      {/* ================================================================= */}
       <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-3">
         <div className="flex justify-between items-center gap-2">
           <button
@@ -533,6 +650,7 @@ export default function AdminUserManagement({
               항목을 눌러 펼친 뒤, 수정할 회원을 클릭하면 등급·권한·비밀번호 수정 및 탈퇴 처리가 가능합니다.
             </p>
           </button>
+
           <button
             type="button"
             onClick={() => setIsMemberSectionOpen((prev) => !prev)}
@@ -554,6 +672,7 @@ export default function AdminUserManagement({
               </button>
             </div>
 
+        {/* 관리자 신규 회원 직접 등록 폼 */}
         {showAddForm && (
           <form
             onSubmit={handleAdminAddMember}
@@ -596,10 +715,18 @@ export default function AdminUserManagement({
                 className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
               />
             </div>
+            <BirthDateSelector
+              value={newBirthDate}
+              onChange={setNewBirthDate}
+              compact
+              accent="emerald"
+              label="생년월일 (출생년·월·일 ➔ 만 나이 자동 계산)"
+              helperText="만 나이가 자동 계산되어 KDK·대회 실력 균등 배정에 반영됩니다."
+            />
             <div className="grid grid-cols-3 gap-2">
               <select
                 value={newGender}
-                onChange={(e) => setNewGender(e.target.value)}
+                onChange={(e) => setNewGender(e.target.value as 'M' | 'F')}
                 className="px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
               >
                 <option value="M">남성 (남)</option>
@@ -618,7 +745,7 @@ export default function AdminUserManagement({
               </select>
               <select
                 value={newRole}
-                onChange={(e) => setNewRole(e.target.value)}
+                onChange={(e) => setNewRole(e.target.value as 'member' | 'admin')}
                 className="px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-red-300 font-bold"
               >
                 <option value="member">일반회원</option>
@@ -634,6 +761,7 @@ export default function AdminUserManagement({
           </form>
         )}
 
+        {/* 검색바 & 인원 통계 */}
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -647,15 +775,19 @@ export default function AdminUserManagement({
           </span>
         </div>
 
+        {/* 가입회원 리스트 (각 회원 항목도 기본 접힘 ➔ 클릭 시 펼쳐서 수정/탈퇴) */}
         <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
           {filteredUsers.map((u) => {
             const isMe = currentUserId && String(u.id) === String(currentUserId);
             const isExpanded = Boolean(expandedMemberIds[u.id]);
+            const manAgeBadge = formatManAgeLabel(u.birthDate, u.age);
+            const birthStr = formatBirthDateDisplay(u.birthDate);
             return (
               <div
                 key={u.id}
                 className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 hover:border-slate-700 transition space-y-2 text-xs"
               >
+                {/* 접힌 요약 헤더: 항목을 누르면 펴져서 수정 가능 */}
                 <button
                   type="button"
                   onClick={() => toggleExpandMember(u.id)}
@@ -666,6 +798,11 @@ export default function AdminUserManagement({
                     <span className="text-[10px] text-slate-400">
                       ({u.gender === 'F' || u.gender === '여' ? '여' : '남'})
                     </span>
+                    {manAgeBadge && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                        {manAgeBadge}
+                      </span>
+                    )}
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-extrabold">
                       {u.grade}
                     </span>
@@ -697,11 +834,19 @@ export default function AdminUserManagement({
                 {isExpanded && (
                   <div className="space-y-2.5 pt-2 border-t border-slate-800/90">
                     <div className="flex justify-between items-center gap-2 flex-wrap">
-                      <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
                         <span>ID: <strong className="text-slate-200">{u.username || u.email || '미등록'}</strong></span>
+                        {birthStr ? (
+                          <span>
+                            · 생년월일: <strong className="text-emerald-300">{birthStr} ({manAgeBadge})</strong>
+                          </span>
+                        ) : (
+                          <span className="text-amber-400/80">· 생년월일 미등록</span>
+                        )}
                         {u.phone && <span>· {u.phone}</span>}
                       </div>
 
+                      {/* 빠른 등급 & 권한 변경 셀렉트 */}
                       <div className="flex gap-1.5 items-center shrink-0">
                         <select
                           value={u.grade}
@@ -717,7 +862,9 @@ export default function AdminUserManagement({
 
                         <select
                           value={u.role}
-                          onChange={(e) => handleQuickRoleChange(u, e.target.value)}
+                          onChange={(e) =>
+                            handleQuickRoleChange(u, e.target.value as 'member' | 'admin')
+                          }
                           className={`border text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none cursor-pointer ${
                             u.role === 'admin'
                               ? 'bg-red-950/80 text-red-300 border-red-500/40'
@@ -730,6 +877,7 @@ export default function AdminUserManagement({
                       </div>
                     </div>
 
+                    {/* 하단: [회원정보 수정] 버튼 & [회원가입 취소(탈퇴)] 버튼 */}
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -759,6 +907,9 @@ export default function AdminUserManagement({
         )}
       </div>
 
+      {/* ================================================================= */}
+      {/* [모달]: 가입회원 상세 정보 수정 모달 */}
+      {/* ================================================================= */}
       {editingMember && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 text-white my-auto max-h-[92vh] overflow-y-auto">
@@ -776,6 +927,7 @@ export default function AdminUserManagement({
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-3">
+              {/* 로그인 계정 정보 (아이디 · 비밀번호 확인 및 수정) */}
               <div className="bg-slate-950/90 border border-amber-500/35 rounded-2xl p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-black text-amber-300 flex items-center gap-1">
@@ -842,12 +994,21 @@ export default function AdminUserManagement({
                 />
               </div>
 
+              <BirthDateSelector
+                key={editingMember.id}
+                value={editBirthDate}
+                onChange={setEditBirthDate}
+                compact
+                label="생년월일 (출생년·월·일 ➔ 만 나이 자동 계산)"
+                helperText="생년월일 기준 만 나이가 자동 반영되어 KDK·대회 실력 균등 배정에 적용됩니다."
+              />
+
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-300 mb-1">성별</label>
                   <select
                     value={editGender}
-                    onChange={(e) => setEditGender(e.target.value)}
+                    onChange={(e) => setEditGender(e.target.value as 'M' | 'F')}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
                   >
                     <option value="M">남성 (남)</option>
@@ -877,7 +1038,7 @@ export default function AdminUserManagement({
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">회원 권한</label>
                 <select
                   value={editRole}
-                  onChange={(e) => setEditRole(e.target.value)}
+                  onChange={(e) => setEditRole(e.target.value as 'member' | 'admin')}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-red-300 font-bold"
                 >
                   <option value="member">👤 일반 클럽 회원 (member)</option>

@@ -18,8 +18,9 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="/og-image.png" />
 
-  <!-- Tailwind CSS CDN 및 폰트 -->
+  <!-- Tailwind CSS CDN 및 Supabase JS SDK -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -549,7 +550,9 @@
                 <div class="flex gap-1.5 pt-0.5 flex-wrap items-center">
                   <span id="mypageMemberGrade" class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950 text-amber-300 shadow-sm">금배</span>
                   <span id="mypageMemberRoleBadge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/40 text-slate-950">회원 모드</span>
+                  <span id="mypageMemberAgeBadge" class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950/85 text-emerald-300 shadow-sm">🎂 만 54세</span>
                 </div>
+                <p id="mypageMemberBirthText" class="text-[10px] font-bold text-slate-950/75">생년월일: 1972.05.14 (만 나이 실력균등 자동반영)</p>
               </div>
               <div class="text-right shrink-0">
                 <span class="text-[10px] font-extrabold text-slate-950/70 block">전체 누적 랭킹</span>
@@ -616,6 +619,19 @@
                   </select>
                 </div>
               </div>
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <label class="block text-[11px] font-bold text-slate-400">생년월일 (출생년도 · 월 · 일)</label>
+                  <span id="myProfileManAgeBadge" class="text-[10px] text-slate-500 font-medium">년·월·일 선택 시 만 나이 표시</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                  <select id="myProfileBirthYear" onchange="updateHtmlBirthDatePreview('myProfileBirth', 'myProfileManAgeBadge')" class="w-full px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"></select>
+                  <select id="myProfileBirthMonth" onchange="updateHtmlBirthDatePreview('myProfileBirth', 'myProfileManAgeBadge')" class="w-full px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"></select>
+                  <select id="myProfileBirthDay" onchange="updateHtmlBirthDatePreview('myProfileBirth', 'myProfileManAgeBadge')" class="w-full px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"></select>
+                </div>
+                <p class="text-[10px] text-slate-400">만 나이가 자동 계산되어 KDK·대회 실력 균등 배정 및 동점자 순위에 반영됩니다.</p>
+              </div>
+
               <div class="grid grid-cols-2 gap-2.5">
                 <div>
                   <label class="block text-[11px] font-bold text-slate-400 mb-1">테니스 등급(부수)</label>
@@ -701,24 +717,43 @@
                 <p id="mypageStatDiff" class="text-base font-black text-amber-300">+15점</p>
               </div>
             </div>
+
+            <!-- 상세 히스토리 아코디언 토글 버튼 -->
+            <button
+              type="button"
+              id="btnToggleMyHistoryAccordion"
+              aria-expanded="false"
+              onclick="toggleHtmlMyHistoryAccordion()"
+              class="w-full mt-1 py-2.5 px-3.5 rounded-xl bg-slate-950/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-400/40 text-amber-300 font-bold text-xs transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+            >
+              📜 상세 히스토리 보기 ▼
+            </button>
           </div>
 
-          <!-- 4. 대회별 참가 성적 & 승률 반영 히스토리 -->
-          <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-              <div>
-                <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                  <span>📜</span> 대회별 참가 성적 & 승률 반영 히스토리
-                </span>
-                <p class="text-[10px] text-slate-400 mt-0.5">
-                  각 대회별 본인 경기 성적과 총 누적 승률 합산 내역입니다.
-                </p>
+          <!-- 4. 대회별 참가 성적 & 승률 반영 히스토리 (아코디언 · 기본 숨김) -->
+          <div
+            id="mypageHistoryAccordionWrap"
+            aria-hidden="true"
+            class="grid transition-all duration-300 ease-in-out grid-rows-[0fr] opacity-0 !mt-0 pointer-events-none"
+          >
+            <div class="overflow-hidden">
+              <div class="bg-slate-900 border border-slate-750 rounded-2xl p-4 shadow-xl space-y-3">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <div>
+                    <span class="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                      <span>📜</span> 대회별 참가 성적 & 승률 반영 히스토리
+                    </span>
+                    <p class="text-[10px] text-slate-400 mt-0.5">
+                      각 대회별 본인 경기 성적과 총 누적 승률 합산 내역입니다.
+                    </p>
+                  </div>
+                  <span id="mypageHistoryCountBadge" class="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">대회 기록</span>
+                </div>
+                <div id="mypageHistoryList" class="space-y-2 max-h-72 overflow-y-auto"></div>
+                <div id="mypageHistoryNotice" class="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-slate-300">
+                  ✓ 참가 대회의 모든 경기 성적이 합산되어 개인 누적 승률에 즉시 반영됩니다.
+                </div>
               </div>
-              <span id="mypageHistoryCountBadge" class="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">대회 기록</span>
-            </div>
-            <div id="mypageHistoryList" class="space-y-2 max-h-72 overflow-y-auto"></div>
-            <div id="mypageHistoryNotice" class="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-slate-300">
-              ✓ 참가 대회의 모든 경기 성적이 합산되어 개인 누적 승률에 즉시 반영됩니다.
             </div>
           </div>
 
@@ -1515,6 +1550,19 @@
           <input type="text" id="editMemberName" required class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
         </div>
 
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <label class="block text-[11px] font-bold text-slate-300">생년월일 (출생년·월·일 ➔ 만 나이)</label>
+            <span id="editMemberManAgeBadge" class="text-[10px] text-slate-500 font-medium">년·월·일 선택 시 만 나이 표시</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <select id="editMemberBirthYear" onchange="updateHtmlBirthDatePreview('editMemberBirth', 'editMemberManAgeBadge')" class="w-full px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"></select>
+            <select id="editMemberBirthMonth" onchange="updateHtmlBirthDatePreview('editMemberBirth', 'editMemberManAgeBadge')" class="w-full px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"></select>
+            <select id="editMemberBirthDay" onchange="updateHtmlBirthDatePreview('editMemberBirth', 'editMemberManAgeBadge')" class="w-full px-2 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"></select>
+          </div>
+          <p class="text-[10px] text-slate-400">생년월일 기준 만 나이가 자동 반영되어 KDK·대회 실력 균등 배정에 적용됩니다.</p>
+        </div>
+
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label class="block text-[11px] font-bold text-slate-300 mb-1">성별</label>
@@ -1616,6 +1664,18 @@
             <div>
               <label class="block text-xs font-bold text-slate-300 mb-1">이름 (실명) <span class="text-amber-400">*</span></label>
               <input type="text" id="htmlSignUpName" placeholder="예: 홍길동" class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            </div>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <label class="block text-xs font-bold text-slate-300">생년월일 (출생년도 · 월 · 일) <span class="text-amber-400">*</span></label>
+                <span id="htmlSignUpManAgeBadge" class="text-[10px] text-slate-500 font-medium">년·월·일 선택 시 만 나이 표시</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <select id="htmlSignUpBirthYear" onchange="updateHtmlBirthDatePreview('htmlSignUpBirth', 'htmlSignUpManAgeBadge')" class="w-full px-2.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"></select>
+                <select id="htmlSignUpBirthMonth" onchange="updateHtmlBirthDatePreview('htmlSignUpBirth', 'htmlSignUpManAgeBadge')" class="w-full px-2.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"></select>
+                <select id="htmlSignUpBirthDay" onchange="updateHtmlBirthDatePreview('htmlSignUpBirth', 'htmlSignUpManAgeBadge')" class="w-full px-2.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"></select>
+              </div>
+              <p class="text-[10px] text-slate-400">출생년월일을 입력하면 만 나이가 자동 계산되어 KDK·대회 실력 균등 배정에 반영됩니다.</p>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
@@ -1765,8 +1825,146 @@
       '테린이': 3
     };
 
+    // =========================================================================
+    // [출생년월일(YYYY-MM-DD) ➔ 만 나이 자동 계산 및 실력 균등 연동 유틸리티]
+    // =========================================================================
+    const DEFAULT_HTML_BIRTHDATES = {
+      p1: '1972-05-14', p2: '1981-01-18', p3: '1975-03-22', p4: '1983-06-25',
+      p5: '1974-08-10', p6: '1984-11-05', p7: '1978-04-12', p8: '1987-09-19',
+      p9: '1982-07-28', p10: '1979-07-10', p11: '1981-03-29', p12: '1973-03-20',
+      p13: '1982-10-30', p14: '1983-09-25'
+    };
+
+    function getHtmlDaysInMonth(year, month) {
+      if (!year || !month || month < 1 || month > 12) return 31;
+      return new Date(year, month, 0).getDate();
+    }
+
+    function parseHtmlBirthDate(birthDate) {
+      if (!birthDate || typeof birthDate !== 'string') return { year: '', month: '', day: '' };
+      const m = birthDate.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (!m) return { year: '', month: '', day: '' };
+      const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+      if (mo < 1 || mo > 12 || d < 1 || d > getHtmlDaysInMonth(y, mo)) return { year: '', month: '', day: '' };
+      return { year: String(y), month: String(mo), day: String(d) };
+    }
+
+    function buildHtmlBirthDate(year, month, day) {
+      const y = Number(year), mo = Number(month), d = Number(day);
+      if (!y || !mo || !d) return '';
+      const maxD = getHtmlDaysInMonth(y, mo);
+      const safeD = Math.min(Math.max(1, d), maxD);
+      return `${y}-${String(mo).padStart(2, '0')}-${String(safeD).padStart(2, '0')}`;
+    }
+
+    function calculateHtmlKoreanManAge(birthDate) {
+      const parts = parseHtmlBirthDate(birthDate);
+      if (!parts.year || !parts.month || !parts.day) return null;
+      const y = Number(parts.year), mo = Number(parts.month), d = Number(parts.day);
+      const today = new Date();
+      let age = today.getFullYear() - y;
+      const monthDiff = today.getMonth() + 1 - mo;
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < d)) age -= 1;
+      return age >= 0 && age <= 120 ? age : null;
+    }
+
+    function formatHtmlBirthDateDisplay(birthDate) {
+      const p = parseHtmlBirthDate(birthDate);
+      if (!p.year || !p.month || !p.day) return '';
+      return `${p.year}.${p.month.padStart(2, '0')}.${p.day.padStart(2, '0')}`;
+    }
+
+    function formatHtmlManAgeLabel(birthDate, fallbackAge) {
+      const manAge = calculateHtmlKoreanManAge(birthDate);
+      if (manAge !== null) return `만 ${manAge}세`;
+      if (typeof fallbackAge === 'number' && !isNaN(fallbackAge) && fallbackAge > 0) {
+        return `만 ${Math.round(fallbackAge)}세`;
+      }
+      return '';
+    }
+
+    function initHtmlBirthDateSelects(prefix) {
+      const yEl = document.getElementById(prefix + 'Year');
+      const mEl = document.getElementById(prefix + 'Month');
+      const dEl = document.getElementById(prefix + 'Day');
+      if (!yEl || !mEl || !dEl) return;
+
+      const maxYear = new Date().getFullYear() - 7;
+      let yHtml = '<option value="">출생년도</option>';
+      for (let y = maxYear; y >= 1930; y--) {
+        yHtml += `<option value="${y}">${y}년</option>`;
+      }
+      yEl.innerHTML = yHtml;
+
+      let mHtml = '<option value="">월</option>';
+      for (let m = 1; m <= 12; m++) {
+        mHtml += `<option value="${m}">${m}월</option>`;
+      }
+      mEl.innerHTML = mHtml;
+
+      populateHtmlBirthDayOptions(prefix, '');
+    }
+
+    function populateHtmlBirthDayOptions(prefix, keepDay) {
+      const yEl = document.getElementById(prefix + 'Year');
+      const mEl = document.getElementById(prefix + 'Month');
+      const dEl = document.getElementById(prefix + 'Day');
+      if (!dEl) return;
+      const yNum = Number(yEl?.value) || 2000;
+      const mNum = Number(mEl?.value) || 1;
+      const maxD = getHtmlDaysInMonth(yNum, mNum);
+      const currentDay = keepDay !== undefined ? keepDay : dEl.value;
+      let dHtml = '<option value="">일</option>';
+      for (let d = 1; d <= maxD; d++) {
+        dHtml += `<option value="${d}">${d}일</option>`;
+      }
+      dEl.innerHTML = dHtml;
+      if (currentDay) {
+        dEl.value = String(Math.min(Number(currentDay), maxD));
+      }
+    }
+
+    function setHtmlBirthDateSelects(prefix, birthDate, badgeId) {
+      const yEl = document.getElementById(prefix + 'Year');
+      const mEl = document.getElementById(prefix + 'Month');
+      const dEl = document.getElementById(prefix + 'Day');
+      const parsed = parseHtmlBirthDate(birthDate);
+      if (yEl) yEl.value = parsed.year;
+      if (mEl) mEl.value = parsed.month;
+      populateHtmlBirthDayOptions(prefix, parsed.day);
+      if (dEl) dEl.value = parsed.day;
+      updateHtmlBirthDatePreview(prefix, badgeId);
+    }
+
+    function readHtmlBirthDateSelects(prefix) {
+      const y = document.getElementById(prefix + 'Year')?.value || '';
+      const m = document.getElementById(prefix + 'Month')?.value || '';
+      const d = document.getElementById(prefix + 'Day')?.value || '';
+      return buildHtmlBirthDate(y, m, d);
+    }
+
+    function updateHtmlBirthDatePreview(prefix, badgeId) {
+      const dEl = document.getElementById(prefix + 'Day');
+      populateHtmlBirthDayOptions(prefix, dEl ? dEl.value : '');
+      const birthDate = readHtmlBirthDateSelects(prefix);
+      const manAge = calculateHtmlKoreanManAge(birthDate);
+      const badgeEl = document.getElementById(badgeId);
+      if (!badgeEl) return;
+      if (manAge !== null) {
+        badgeEl.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black';
+        badgeEl.innerText = `🎂 만 ${manAge}세`;
+      } else {
+        badgeEl.className = 'text-[10px] text-slate-500 font-medium';
+        badgeEl.innerText = '년·월·일 선택 시 만 나이 표시';
+      }
+    }
+
     function getPlayerSkillWeight(p) {
-      return p && GRADE_WEIGHTS[p.grade] ? GRADE_WEIGHTS[p.grade] : 6;
+      if (!p) return 64;
+      if (typeof getHtmlCompositeSkillScore === 'function') {
+        return getHtmlCompositeSkillScore(p);
+      }
+      return GRADE_WEIGHTS[p.grade] ? GRADE_WEIGHTS[p.grade] : 6;
     }
 
     let currentUserRole = 'member';
@@ -1777,20 +1975,20 @@
     }
 
     let registeredPlayers = [
-      { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', isGuest: false },
-      { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', isGuest: false },
-      { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', isGuest: false },
-      { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', isGuest: false },
-      { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', isGuest: false },
-      { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', isGuest: true },
-      { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', isGuest: true },
-      { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', isGuest: true },
-      { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', isGuest: true },
+      { id: 'p1', username: 'chulsoo', name: '김철수', grade: '금배', gender: 'M', role: 'member', birthDate: '1972-05-14', age: calculateHtmlKoreanManAge('1972-05-14') ?? 54, isGuest: false },
+      { id: 'p2', username: 'dongwon', name: '강동원', grade: '금배', gender: 'M', role: 'member', birthDate: '1981-01-18', age: calculateHtmlKoreanManAge('1981-01-18') ?? 45, isGuest: false },
+      { id: 'p3', username: 'minsoo', name: '박민수', grade: '은배', gender: 'M', role: 'member', birthDate: '1975-03-22', age: calculateHtmlKoreanManAge('1975-03-22') ?? 51, isGuest: false },
+      { id: 'p4', username: 'jihoon', name: '정지훈', grade: '동배', gender: 'M', role: 'member', birthDate: '1983-06-25', age: calculateHtmlKoreanManAge('1983-06-25') ?? 43, isGuest: false },
+      { id: 'p5', username: 'younghee', name: '이영희', grade: '국화', gender: 'F', role: 'member', birthDate: '1974-08-10', age: calculateHtmlKoreanManAge('1974-08-10') ?? 52, isGuest: false },
+      { id: 'p6', username: 'jimin', name: '한지민', grade: '은배', gender: 'F', role: 'member', birthDate: '1984-11-05', age: calculateHtmlKoreanManAge('1984-11-05') ?? 42, isGuest: false },
+      { id: 'p7', username: 'sujin', name: '최수진', grade: '개나리', gender: 'F', role: 'member', birthDate: '1978-04-12', age: calculateHtmlKoreanManAge('1978-04-12') ?? 48, isGuest: false },
+      { id: 'p8', username: 'joongki', name: '송중기', grade: '동배', gender: 'M', role: 'member', birthDate: '1987-09-19', age: calculateHtmlKoreanManAge('1987-09-19') ?? 39, isGuest: false },
+      { id: 'p9', username: 'insung', name: '조인성', grade: '은배', gender: 'M', role: 'member', birthDate: '1982-07-28', age: calculateHtmlKoreanManAge('1982-07-28') ?? 44, isGuest: false },
+      { id: 'p10', username: 'admin', name: '공유', grade: '금배', gender: 'M', role: 'admin', birthDate: '1979-07-10', age: calculateHtmlKoreanManAge('1979-07-10') ?? 47, isGuest: false },
+      { id: 'p11', name: '김태희', grade: '테린이', gender: 'F', role: 'member', birthDate: '1981-03-29', age: calculateHtmlKoreanManAge('1981-03-29') ?? 45, isGuest: true },
+      { id: 'p12', name: '정우성', grade: '은배', gender: 'M', role: 'member', birthDate: '1973-03-20', age: calculateHtmlKoreanManAge('1973-03-20') ?? 53, isGuest: true },
+      { id: 'p13', name: '전지현', grade: '국화', gender: 'F', role: 'member', birthDate: '1982-10-30', age: calculateHtmlKoreanManAge('1982-10-30') ?? 44, isGuest: true },
+      { id: 'p14', name: '현빈', grade: '동배', gender: 'M', role: 'member', birthDate: '1983-09-25', age: calculateHtmlKoreanManAge('1983-09-25') ?? 43, isGuest: true },
     ];
 
     // KDK 경기 실력 차이 최소화(Skill Gap Zero) 밸런싱 핵심 알고리즘
@@ -2255,6 +2453,7 @@
       grid.innerHTML = registeredPlayers.map(p => {
         const isSel = adminSelectedPlayerIds.includes(p.id);
         const w = getPlayerSkillWeight(p);
+        const ageLabel = formatHtmlManAgeLabel(p.birthDate, p.age);
         return `
           <button type="button" onclick="toggleAdminPlayerSelect('${p.id}'); renderModalPlayersList();" class="p-2 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
             isSel ? 'bg-emerald-950/80 border-emerald-400 text-white' : 'bg-slate-900/70 border-slate-800 text-slate-400'
@@ -2264,7 +2463,7 @@
                 <span class="text-[11px] font-bold truncate">${p.name}</span>
                 <span class="text-[8px] px-1 rounded ${p.isGuest ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">${p.isGuest ? '미가입' : '가입'}</span>
               </div>
-              <span class="text-[9px] text-slate-400 block">${p.grade} (${w}점)</span>
+              <span class="text-[9px] text-slate-400 block">${p.grade}${ageLabel ? `·${ageLabel}` : ''} (실력 ${w}점)</span>
             </div>
             <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${isSel ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-500'}">${isSel ? '✓' : '+'}</span>
           </button>
@@ -2881,13 +3080,47 @@
     };
 
     function ensurePlayerAge(p, idx = 0) {
-      if (typeof p.age !== 'number' || isNaN(p.age)) {
+      const fromBirth = calculateHtmlKoreanManAge(p.birthDate);
+      if (fromBirth !== null) {
+        p.age = fromBirth;
+      } else if (typeof p.age !== 'number' || isNaN(p.age)) {
         p.age = DEFAULT_PLAYER_AGES[p.name] || (40 + ((idx * 3) % 20));
       }
       if (typeof p.experienceYears !== 'number' || isNaN(p.experienceYears)) {
         p.experienceYears = DEFAULT_PLAYER_EXPERIENCES[p.name] ?? HTML_DEFAULT_EXP_BY_GRADE[p.grade] ?? 4;
       }
       return p;
+    }
+
+    function syncHtmlPlayerToKdkCourts(updatedPlayer) {
+      if (!updatedPlayer || typeof htmlKdkCourts === 'undefined') return;
+      ensurePlayerAge(updatedPlayer);
+      htmlKdkCourts.forEach(c => {
+        c.players.forEach(p => {
+          if (p.id === updatedPlayer.id) {
+            p.name = updatedPlayer.name;
+            p.grade = updatedPlayer.grade;
+            p.gender = updatedPlayer.gender;
+            p.birthDate = updatedPlayer.birthDate;
+            p.age = updatedPlayer.age;
+          }
+        });
+        c.games.forEach(g => {
+          [...g.teamA, ...g.teamB, ...(g.resting || [])].forEach(p => {
+            if (p.id === updatedPlayer.id) {
+              p.name = updatedPlayer.name;
+              p.grade = updatedPlayer.grade;
+              p.gender = updatedPlayer.gender;
+              p.birthDate = updatedPlayer.birthDate;
+              p.age = updatedPlayer.age;
+            }
+          });
+          g.teamAWeight = getHtmlCompositeSkillScore(g.teamA[0]) + getHtmlCompositeSkillScore(g.teamA[1]);
+          g.teamBWeight = getHtmlCompositeSkillScore(g.teamB[0]) + getHtmlCompositeSkillScore(g.teamB[1]);
+          g.skillDiff = Math.abs(g.teamAWeight - g.teamBWeight);
+        });
+      });
+      if (typeof renderKdk === 'function') renderKdk();
     }
 
     function getHtmlCompositeSkillScore(p) {
@@ -3378,17 +3611,18 @@
     function updateHtmlPlayerAge(pId, newAge) {
       if (!isAdminUser()) return;
       const safeAge = Math.max(10, Math.min(99, parseInt(newAge, 10) || 45));
-      registeredPlayers.forEach(p => { if (p.id === pId) p.age = safeAge; });
+      registeredPlayers.forEach(p => { if (p.id === pId) { p.age = safeAge; p.birthDate = undefined; } });
       htmlKdkCourts.forEach(c => {
-        c.players.forEach(p => { if (p.id === pId) p.age = safeAge; });
+        c.players.forEach(p => { if (p.id === pId) { p.age = safeAge; p.birthDate = undefined; } });
         c.games.forEach(g => {
-          g.teamA.forEach(p => { if (p.id === pId) p.age = safeAge; });
-          g.teamB.forEach(p => { if (p.id === pId) p.age = safeAge; });
+          g.teamA.forEach(p => { if (p.id === pId) { p.age = safeAge; p.birthDate = undefined; } });
+          g.teamB.forEach(p => { if (p.id === pId) { p.age = safeAge; p.birthDate = undefined; } });
           g.teamAWeight = getHtmlCompositeSkillScore(g.teamA[0]) + getHtmlCompositeSkillScore(g.teamA[1]);
           g.teamBWeight = getHtmlCompositeSkillScore(g.teamB[0]) + getHtmlCompositeSkillScore(g.teamB[1]);
           g.skillDiff = Math.abs(g.teamAWeight - g.teamBWeight);
         });
       });
+      syncHtmlUsersToStorage();
       renderKdk();
     }
 
@@ -3899,6 +4133,26 @@
     }
 
     let htmlIsEditingMyProfile = false;
+    let htmlShowMyHistoryAccordion = false;
+
+    function toggleHtmlMyHistoryAccordion(forceState) {
+      htmlShowMyHistoryAccordion =
+        typeof forceState === 'boolean' ? forceState : !htmlShowMyHistoryAccordion;
+      const wrap = document.getElementById('mypageHistoryAccordionWrap');
+      const btn = document.getElementById('btnToggleMyHistoryAccordion');
+      if (wrap) {
+        wrap.setAttribute('aria-hidden', String(!htmlShowMyHistoryAccordion));
+        wrap.className = htmlShowMyHistoryAccordion
+          ? 'grid transition-all duration-300 ease-in-out grid-rows-[1fr] opacity-100'
+          : 'grid transition-all duration-300 ease-in-out grid-rows-[0fr] opacity-0 !mt-0 pointer-events-none';
+      }
+      if (btn) {
+        btn.setAttribute('aria-expanded', String(htmlShowMyHistoryAccordion));
+        btn.innerText = htmlShowMyHistoryAccordion
+          ? '📜 상세 히스토리 접기 ▲'
+          : '📜 상세 히스토리 보기 ▼';
+      }
+    }
 
     function toggleHtmlMyProfileEdit(forceState) {
       htmlIsEditingMyProfile = typeof forceState === 'boolean' ? forceState : !htmlIsEditingMyProfile;
@@ -3924,14 +4178,35 @@
       const nameTitle = document.getElementById('mypageMemberName');
       const gradeBadge = document.getElementById('mypageMemberGrade');
       const roleBadge = document.getElementById('mypageMemberRoleBadge');
+      const ageBadge = document.getElementById('mypageMemberAgeBadge');
+      const birthText = document.getElementById('mypageMemberBirthText');
       const idBadge = document.getElementById('mypageMemberIdBadge');
       const readNameGender = document.getElementById('mypageReadNameGender');
       const readGradePhone = document.getElementById('mypageReadGradePhone');
+      const myAgeLabel = formatHtmlManAgeLabel(me.birthDate, me.age);
+      const myBirthStr = formatHtmlBirthDateDisplay(me.birthDate);
       if (nameTitle) nameTitle.innerText = isAdminUser() ? `👑 ${me.name} 관리자님` : `☀️ ${me.name} 회원님`;
       if (gradeBadge) gradeBadge.innerText = me.grade || '테린이';
       if (roleBadge) roleBadge.innerText = isAdminUser() ? '관리자 모드' : '회원 모드';
+      if (ageBadge) {
+        if (myAgeLabel) {
+          ageBadge.innerText = `🎂 ${myAgeLabel}`;
+          ageBadge.className = 'px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-950/85 text-emerald-300 shadow-sm';
+        } else {
+          ageBadge.innerText = '생년월일 미입력';
+          ageBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-950/50 text-amber-200';
+        }
+      }
+      if (birthText) {
+        if (myBirthStr) {
+          birthText.innerText = `생년월일: ${myBirthStr} (만 나이 실력균등 자동반영)`;
+          birthText.classList.remove('hidden');
+        } else {
+          birthText.classList.add('hidden');
+        }
+      }
       if (idBadge) idBadge.innerText = me.username || me.email || me.id;
-      if (readNameGender) readNameGender.innerText = `${me.name} (${me.gender === 'F' ? '여' : '남'})`;
+      if (readNameGender) readNameGender.innerText = `${me.name} (${me.gender === 'F' ? '여' : '남'}${myAgeLabel ? ` · ${myAgeLabel}` : ''})`;
       if (readGradePhone) readGradePhone.innerText = `${me.grade || '테린이'} · ${me.phone || '미등록'}`;
 
       const usernameInput = document.getElementById('myProfileUsername');
@@ -3949,6 +4224,7 @@
       if (phoneInput) phoneInput.value = me.phone || '';
       if (pwInput) pwInput.value = '';
       if (pwConfirmInput) pwConfirmInput.value = '';
+      setHtmlBirthDateSelects('myProfileBirth', me.birthDate || '', 'myProfileManAgeBadge');
       if (msgEl && !keepSavedMsg) msgEl.classList.add('hidden');
       toggleHtmlMyProfileEdit(false);
 
@@ -4117,7 +4393,7 @@
       }
     }
 
-    function saveHtmlMyProfile(e) {
+    async function saveHtmlMyProfile(e) {
       e.preventDefault();
       const me = registeredPlayers.find(p => p.id === currentHtmlUserId);
       if (!me) return;
@@ -4148,8 +4424,8 @@
         return;
       }
       if (newPw.length > 0) {
-        if (newPw.length < 4) {
-          alert('새 비밀번호는 최소 4자 이상 입력해 주세요.');
+        if (newPw.length < 6) {
+          alert('새 비밀번호는 최소 6자 이상 입력해 주세요.');
           return;
         }
         if (newPw !== newPwConfirm) {
@@ -4158,23 +4434,55 @@
         }
       }
 
+      const newBirthDate = readHtmlBirthDateSelects('myProfileBirth');
+      const computedAge = calculateHtmlKoreanManAge(newBirthDate);
+      const resolvedEmail = toHtmlAuthEmail(newUsername);
+
+      if (supabase) {
+        const { error: updateErr } = await supabase
+          .from('users')
+          .update({
+            username: newUsername,
+            email: resolvedEmail,
+            name: newName,
+            gender: newGender === 'F' ? 'F' : 'M',
+            grade: newGrade,
+            phone: newPhone || null,
+            birth_date: newBirthDate || null,
+            age: computedAge !== null ? computedAge : (me.age || null)
+          })
+          .eq('id', me.id);
+        if (updateErr) {
+          alert('내 정보 수정 실패: ' + updateErr.message);
+          return;
+        }
+        if (newPw) {
+          await supabase.auth.updateUser({ password: newPw });
+        }
+      }
+
       me.username = newUsername;
-      me.email = newUsername.includes('@') ? newUsername : (me.email || '');
+      me.email = resolvedEmail;
       me.name = newName;
       me.gender = newGender === 'F' ? 'F' : 'M';
       me.grade = newGrade;
       me.phone = newPhone;
-      if (newPw) me.password = newPw;
+      if (newBirthDate) {
+        me.birthDate = newBirthDate;
+        if (computedAge !== null) me.age = computedAge;
+      }
 
-      syncHtmlUsersToStorage();
+      await fetchHtmlUsersFromSupabase();
+      syncHtmlPlayerToKdkCourts(me);
       document.getElementById('headerMemberName').innerText = isAdminUser() ? `${me.name} 관리자님` : `${me.name} 회원님`;
       document.getElementById('headerMemberGrade').innerText = me.grade;
       populateHtmlMyProfile(true);
       saveHtmlSessionState();
 
+      const savedAgeLabel = formatHtmlManAgeLabel(me.birthDate, me.age);
       const msgEl = document.getElementById('myProfileSavedMsg');
       if (msgEl) {
-        msgEl.innerText = `✅ 내 정보가 저장되었습니다! (아이디: ${me.username}${newPw ? ' · 비밀번호 변경 완료' : ''})`;
+        msgEl.innerText = `✅ 내 정보가 Supabase DB에 실시간 저장되었습니다! (아이디: ${me.username}${savedAgeLabel ? ` · ${savedAgeLabel} 실력균등 반영` : ''}${newPw ? ' · 비밀번호 변경 완료' : ''})`;
         msgEl.classList.remove('hidden');
       }
     }
@@ -4499,6 +4807,8 @@
 
       grid.innerHTML = registeredPlayers.map(p => {
         const isSel = adminSelectedPlayerIds.includes(p.id);
+        const ageLabel = formatHtmlManAgeLabel(p.birthDate, p.age);
+        const skillPt = getPlayerSkillWeight(p);
         return `
           <button type="button" onclick="toggleAdminPlayerSelect('${p.id}')" class="p-2 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
             isSel ? 'bg-emerald-950/70 border-emerald-400 text-white' : 'bg-slate-950/70 border-slate-800 text-slate-400'
@@ -4508,7 +4818,7 @@
                 <span class="text-xs font-bold truncate">${p.name}</span>
                 <span class="text-[9px] px-1 rounded ${p.isGuest ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">${p.isGuest ? '비로그인' : '회원'}</span>
               </div>
-              <span class="text-[10px] text-slate-400 block">${p.grade}</span>
+              <span class="text-[10px] text-slate-400 block">${p.grade}${ageLabel ? ` · ${ageLabel}` : ''} (${skillPt}점)</span>
             </div>
             <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${isSel ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-500'}">${isSel ? '✓' : '+'}</span>
           </button>
@@ -4569,25 +4879,72 @@
       }
     }
 
-    function syncHtmlUsersToStorage() {
-      try {
-        localStorage.setItem('sun_tennis_registered_users', JSON.stringify(registeredPlayers));
-      } catch {}
+    const HTML_SUPABASE_URL = window.NEXT_PUBLIC_SUPABASE_URL || 'https://your-project.supabase.co';
+    const HTML_SUPABASE_ANON_KEY = window.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'your-anon-key-here';
+    const supabase = window.supabase && window.supabase.createClient
+      ? window.supabase.createClient(HTML_SUPABASE_URL, HTML_SUPABASE_ANON_KEY)
+      : null;
+
+    function toHtmlAuthEmail(loginIdOrEmail) {
+      const trimmed = String(loginIdOrEmail || '').trim().toLowerCase();
+      if (!trimmed) return '';
+      return trimmed.includes('@') ? trimmed : `${trimmed}@suntc.kr`;
     }
 
-    function loadHtmlUsersFromStorage() {
-      try {
-        const raw = localStorage.getItem('sun_tennis_registered_users');
-        if (raw) {
-          const saved = JSON.parse(raw);
-          if (Array.isArray(saved) && saved.length > 0) {
-            const byId = new Map();
-            registeredPlayers.forEach(u => byId.set(u.id, u));
-            saved.forEach(su => byId.set(su.id, { ...byId.get(su.id), ...su }));
-            registeredPlayers = Array.from(byId.values());
-          }
-        }
-      } catch {}
+    function mapHtmlSupabaseUserRow(row) {
+      if (!row) return null;
+      const email = row.email || '';
+      const username = row.username || (email.includes('@') ? email.split('@')[0] : email) || row.name || '';
+      const birthDate = row.birth_date || row.birthDate || DEFAULT_HTML_BIRTHDATES[row.id] || '';
+      const age = calculateHtmlKoreanManAge(birthDate) ?? row.age ?? 45;
+      const approvalStatus = (row.approval_status === 'pending' || row.approvalStatus === 'pending') ? 'pending' : 'approved';
+      return {
+        id: String(row.id),
+        username,
+        email,
+        name: row.name || username || '클럽회원',
+        gender: row.gender === 'F' || row.gender === '여' ? 'F' : 'M',
+        grade: row.grade || '테린이',
+        role: row.role === 'admin' ? 'admin' : 'member',
+        phone: row.phone || '',
+        birthDate,
+        age,
+        experienceYears: row.experience_years ?? row.experienceYears ?? 4,
+        isGuest: Boolean(row.is_guest ?? row.isGuest ?? false),
+        approvalStatus,
+        approval_status: approvalStatus,
+        requestedAt: row.requested_at || row.requestedAt || row.created_at || ''
+      };
+    }
+
+    async function fetchHtmlUsersFromSupabase() {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        registeredPlayers = data
+          .map(r => mapHtmlSupabaseUserRow(r))
+          .filter(Boolean)
+          .sort((a, b) => {
+            if (a.approvalStatus === 'pending' && b.approvalStatus !== 'pending') return -1;
+            if (a.approvalStatus !== 'pending' && b.approvalStatus === 'pending') return 1;
+            return 0;
+          });
+        registeredPlayers.forEach((p, idx) => ensurePlayerAge(p, idx));
+        renderAdminUsers();
+      }
+    }
+
+    if (supabase) {
+      supabase
+        .channel('public:users:html')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+          fetchHtmlUsersFromSupabase();
+        })
+        .subscribe();
     }
 
     function renderAdminUsers() {
@@ -4603,13 +4960,17 @@
         if (pendingList.length === 0) {
           pendingContainer.innerHTML = `<div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-center text-[11px] text-slate-400">현재 승인 대기 중인 회원가입 신청이 없습니다.</div>`;
         } else {
-          pendingContainer.innerHTML = pendingList.map(u => `
+          pendingContainer.innerHTML = pendingList.map(u => {
+            const ageBadge = formatHtmlManAgeLabel(u.birthDate, u.age);
+            const birthStr = formatHtmlBirthDateDisplay(u.birthDate);
+            return `
             <div class="bg-slate-950 border border-amber-500/40 rounded-xl p-3 space-y-2 text-xs">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span class="font-black text-white">${u.name}</span>
                   <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">${u.grade}</span>
-                  <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) · ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong></span>
+                  ${ageBadge ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">${ageBadge}</span>` : ''}
+                  <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'}) · ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong>${birthStr ? ` · ${birthStr}` : ''}</span>
                 </div>
                 <span class="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-black">승인 대기</span>
               </div>
@@ -4622,7 +4983,8 @@
                 </button>
               </div>
             </div>
-          `).join('');
+          `;
+          }).join('');
         }
       }
 
@@ -4632,6 +4994,8 @@
       if (!c) return;
       c.innerHTML = approvedList.map(u => {
         const isExp = Boolean(htmlExpandedMemberIds[u.id]);
+        const ageBadge = formatHtmlManAgeLabel(u.birthDate, u.age);
+        const birthStr = formatHtmlBirthDateDisplay(u.birthDate);
         return `
           <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-2 text-xs">
             <button type="button" onclick="toggleHtmlAdminMemberItem('${u.id}')" class="w-full flex items-center justify-between gap-2 text-left cursor-pointer">
@@ -4639,6 +5003,7 @@
                 <span class="font-bold text-white truncate">${u.name}</span>
                 <span class="text-[10px] px-1.5 py-0.2 rounded font-extrabold ${u.grade === '금배' ? 'badge-gold' : 'badge-silver'}">${u.grade}</span>
                 <span class="text-[10px] text-slate-400">(${u.gender === 'F' ? '여' : '남'})</span>
+                ${ageBadge ? `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">${ageBadge}</span>` : ''}
                 <span class="text-[10px] text-amber-300 font-bold">${u.role === 'admin' ? '👑 관리자' : '일반회원'}</span>
               </div>
               <span class="text-[10px] font-black px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 shrink-0">${isExp ? '접기 ▲' : '수정 ▼'}</span>
@@ -4646,7 +5011,7 @@
             ${isExp ? `
               <div class="space-y-2 pt-2 border-t border-slate-800/80">
                 <div class="text-[10px] text-slate-400">
-                  ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong> ${u.phone ? `· ${u.phone}` : ''} ${u.isGuest ? '[임의추가]' : ''}
+                  ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong> ${birthStr ? `· 생년월일: <strong class="text-emerald-300">${birthStr} (${ageBadge})</strong>` : '· <span class="text-amber-400/80">생년월일 미등록</span>'} ${u.phone ? `· ${u.phone}` : ''} ${u.isGuest ? '[임의추가]' : ''}
                 </div>
                 <div class="flex gap-2">
                   <button type="button" onclick="editHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] cursor-pointer">
@@ -4663,23 +5028,41 @@
       }).join('');
     }
 
-    function approveHtmlMember(userId) {
+    async function approveHtmlMember(userId) {
       const user = registeredPlayers.find(u => u.id === userId);
       if (!user) return;
+      if (supabase) {
+        const { error } = await supabase
+          .from('users')
+          .update({ approval_status: 'approved' })
+          .eq('id', userId);
+        if (error) {
+          alert('승인 처리 실패: ' + error.message);
+          return;
+        }
+      }
       user.approvalStatus = 'approved';
+      user.approval_status = 'approved';
       if (!adminSelectedPlayerIds.includes(user.id)) adminSelectedPlayerIds.push(user.id);
-      syncHtmlUsersToStorage();
+      await fetchHtmlUsersFromSupabase();
       renderAdminUsers();
-      alert(`✅ [${user.name} (ID: ${user.username || user.email || ''})] 님의 회원가입이 승인되었습니다!\n지금부터 로그인하여 접속할 수 있습니다.`);
+      alert(`✅ [${user.name} (ID: ${user.username || user.email || ''})] 님의 회원가입이 승인되었습니다!\n이제 모든 기기에서 로그인하여 접속할 수 있습니다.`);
     }
 
-    function rejectHtmlMember(userId) {
+    async function rejectHtmlMember(userId) {
       const user = registeredPlayers.find(u => u.id === userId);
       if (!user) return;
       if (!confirm(`⚠️ [${user.name}] 님의 회원가입 신청을 거절(취소)하시겠습니까?`)) return;
+      if (supabase) {
+        const { error } = await supabase.from('users').delete().eq('id', userId);
+        if (error) {
+          alert('거절 처리 실패: ' + error.message);
+          return;
+        }
+      }
       registeredPlayers = registeredPlayers.filter(u => u.id !== userId);
       adminSelectedPlayerIds = adminSelectedPlayerIds.filter(id => id !== userId);
-      syncHtmlUsersToStorage();
+      await fetchHtmlUsersFromSupabase();
       renderAdminUsers();
       alert(`❌ [${user.name}] 님의 회원가입 신청이 거절(삭제)되었습니다.`);
     }
@@ -4694,15 +5077,16 @@
       document.getElementById('memberEditModalTitle').innerHTML = `<span>✎</span> [${user.name}] 회원 정보 수정`;
       document.getElementById('editMemberUsername').value = user.username || user.email || '';
       const pwInput = document.getElementById('editMemberPassword');
-      pwInput.value = user.password || '';
+      pwInput.value = '';
       pwInput.type = 'text';
       document.getElementById('toggleEditMemberPwBtn').innerText = '🙈 숨김';
-      document.getElementById('editMemberPwStatus').innerText = user.password ? '설정됨' : '미설정';
+      document.getElementById('editMemberPwStatus').innerText = 'Supabase Auth';
       document.getElementById('editMemberName').value = user.name || '';
       document.getElementById('editMemberGender').value = user.gender === 'F' ? 'F' : 'M';
       document.getElementById('editMemberGrade').value = user.grade || '은배';
       document.getElementById('editMemberRole').value = user.role === 'admin' ? 'admin' : 'member';
       document.getElementById('editMemberPhone').value = user.phone || '';
+      setHtmlBirthDateSelects('editMemberBirth', user.birthDate || '', 'editMemberManAgeBadge');
       document.getElementById('memberEditModal').classList.remove('hidden');
     }
 
@@ -4723,7 +5107,7 @@
       }
     }
 
-    function saveHtmlMemberEdit(e) {
+    async function saveHtmlMemberEdit(e) {
       e.preventDefault();
       if (!htmlEditingMemberId) return;
       const user = registeredPlayers.find(u => u.id === htmlEditingMemberId);
@@ -4757,33 +5141,73 @@
           return;
         }
       }
-      if (newPassword.length > 0 && newPassword.length < 4) {
-        alert('비밀번호는 최소 4자 이상 입력해 주세요.');
+      if (newPassword.length > 0 && newPassword.length < 6) {
+        alert('비밀번호는 최소 6자 이상 입력해 주세요.');
         return;
+      }
+
+      const newBirthDate = readHtmlBirthDateSelects('editMemberBirth');
+      const computedAge = calculateHtmlKoreanManAge(newBirthDate);
+      const resolvedEmail = newUsername ? toHtmlAuthEmail(newUsername) : (user.email || '');
+
+      if (supabase) {
+        const { error } = await supabase
+          .from('users')
+          .update({
+            name: newName,
+            username: newUsername || null,
+            email: resolvedEmail || null,
+            gender: newGender === 'F' ? 'F' : 'M',
+            grade: newGrade,
+            role: newRole === 'admin' ? 'admin' : 'member',
+            phone: newPhone || null,
+            birth_date: newBirthDate || null,
+            age: computedAge !== null ? computedAge : (user.age || null)
+          })
+          .eq('id', user.id);
+        if (error) {
+          alert('회원 정보 수정 실패: ' + error.message);
+          return;
+        }
       }
 
       user.name = newName;
       user.username = newUsername;
-      user.email = newUsername.includes('@') ? newUsername : (user.email || '');
-      user.password = newPassword;
+      user.email = resolvedEmail;
       user.gender = newGender === 'F' ? 'F' : 'M';
       user.grade = newGrade;
       user.role = newRole === 'admin' ? 'admin' : 'member';
       user.phone = newPhone;
+      if (newBirthDate) {
+        user.birthDate = newBirthDate;
+        if (computedAge !== null) user.age = computedAge;
+      }
 
-      syncHtmlUsersToStorage();
+      await fetchHtmlUsersFromSupabase();
+      syncHtmlPlayerToKdkCourts(user);
+      if (user.id === currentHtmlUserId) {
+        populateHtmlMyProfile(true);
+      }
       renderAdminUsers();
       closeMemberEditModal();
-      alert(`✅ [${user.name} (${user.grade})] 회원의 정보가 수정되었습니다.\n아이디: ${user.username || '미설정'} / 비밀번호: ${user.password ? '저장 완료' : '미설정'}`);
+      const ageLabel = formatHtmlManAgeLabel(user.birthDate, user.age);
+      alert(`✅ [${user.name} (${user.grade}${ageLabel ? ` · ${ageLabel}` : ''})] 회원의 정보가 Supabase DB에 실시간 반영되었습니다.`);
     }
 
-    function cancelHtmlMember(userId) {
+    async function cancelHtmlMember(userId) {
       const user = registeredPlayers.find(u => u.id === userId);
       if (!user) return;
       if (!confirm(`⚠️ 정말 [${user.name} (${user.grade})] 회원의 회원가입을 취소(탈퇴 처리)하시겠습니까?`)) return;
+      if (supabase) {
+        const { error } = await supabase.from('users').delete().eq('id', userId);
+        if (error) {
+          alert('회원 탈퇴 처리 실패: ' + error.message);
+          return;
+        }
+      }
       registeredPlayers = registeredPlayers.filter(u => u.id !== userId);
       adminSelectedPlayerIds = adminSelectedPlayerIds.filter(id => id !== userId);
-      syncHtmlUsersToStorage();
+      await fetchHtmlUsersFromSupabase();
       renderAdminUsers();
       alert(`🗑️ [${user.name}] 회원의 회원가입 취소(탈퇴) 처리가 완료되었습니다.`);
     }
@@ -4820,10 +5244,14 @@
     // 로그인 & 회원가입 제어 함수
     let htmlIsSignUp = false;
 
-    function openAuthScreenModal() {
+    async function openAuthScreenModal() {
       htmlNavHistory = [];
       htmlLastRootBackTime = 0;
+      toggleHtmlMyHistoryAccordion(false);
       clearHtmlSessionState();
+      if (supabase) {
+        try { await supabase.auth.signOut(); } catch {}
+      }
       document.getElementById('authScreenModal').classList.remove('hidden');
     }
 
@@ -4908,7 +5336,7 @@
       document.getElementById('htmlAdminLoginModal').classList.add('hidden');
     }
 
-    function handleHtmlAdminLoginSubmit(e) {
+    async function handleHtmlAdminLoginSubmit(e) {
       e.preventDefault();
       const errEl = document.getElementById('htmlAdminLoginError');
       const adminId = (document.getElementById('htmlAdminLoginId')?.value || '').trim().toLowerCase();
@@ -4928,34 +5356,43 @@
         return;
       }
 
-      loadHtmlUsersFromStorage();
-      const matchedAdmin = registeredPlayers.find(
-        u =>
-          u.role === 'admin' &&
-          ((u.username && u.username.toLowerCase() === adminId) ||
-            (u.email && u.email.toLowerCase() === adminId))
-      );
+      if (!supabase) {
+        showErr('Supabase 클라이언트가 초기화되지 않았습니다.');
+        return;
+      }
 
-      const defaultAdminRecord = registeredPlayers.find(u => u.id === 'p10');
-      const isDefaultAdminUnchanged =
-        !defaultAdminRecord?.password &&
-        (!defaultAdminRecord?.username || defaultAdminRecord.username.toLowerCase() === 'admin');
+      const { data: lookupAdmin } = await supabase
+        .from('users')
+        .select('*')
+        .or(`username.ilike.${adminId},email.ilike.${adminId}`)
+        .maybeSingle();
 
-      const isDefaultAdminValid =
-        isDefaultAdminUnchanged &&
-        (adminId === 'admin' || adminId === 'admin@suntc.kr') && adminPw === 'admin1234';
+      const resolvedAdminEmail = (lookupAdmin && lookupAdmin.email) || toHtmlAuthEmail(adminId);
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: resolvedAdminEmail,
+        password: adminPw
+      });
 
-      const isMatchedAdminValid =
-        Boolean(matchedAdmin) &&
-        (matchedAdmin.password ? matchedAdmin.password === adminPw : adminPw === 'admin1234');
-
-      if (!isDefaultAdminValid && !isMatchedAdminValid) {
+      if (signInError || !signInData || !signInData.user) {
         showErr('관리자 아이디 또는 비밀번호가 일치하지 않습니다. 관리자 모드에 입장할 수 없습니다.');
         return;
       }
 
+      const { data: adminRow } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', signInData.user.id)
+        .maybeSingle();
+
+      const adminUser = mapHtmlSupabaseUserRow(adminRow || lookupAdmin);
+      if (!adminUser || adminUser.role !== 'admin') {
+        await supabase.auth.signOut();
+        showErr('관리자(admin) 권한이 없는 계정입니다.');
+        return;
+      }
+
+      await fetchHtmlUsersFromSupabase();
       currentUserRole = 'admin';
-      const adminUser = matchedAdmin || registeredPlayers.find(p => p.role === 'admin') || { id: 'p10', name: '공유', grade: '금배' };
       currentHtmlUserId = adminUser.id;
       document.getElementById('headerMemberName').innerText = `${adminUser.name} 관리자님`;
       document.getElementById('headerMemberGrade').innerText = adminUser.grade || '금배';
@@ -4969,11 +5406,16 @@
       saveHtmlSessionState();
     }
 
-    function handleHtmlAuthSubmit(e) {
+    async function handleHtmlAuthSubmit(e) {
       e.preventDefault();
       const loginId = document.getElementById('htmlAuthEmail').value.trim();
       const normalizedId = loginId.toLowerCase();
       const pw = document.getElementById('htmlAuthPassword').value;
+
+      if (!supabase) {
+        alert('Supabase 클라이언트가 초기화되지 않았습니다.');
+        return;
+      }
 
       if (htmlIsSignUp) {
         const name = document.getElementById('htmlSignUpName').value.trim();
@@ -4986,8 +5428,8 @@
           alert('아이디는 2자 이상 입력해 주세요. (이메일 형식 불필요)');
           return;
         }
-        if (pw.length < 4) {
-          alert('비밀번호는 4자 이상 입력해 주세요.');
+        if (pw.length < 6) {
+          alert('비밀번호는 6자 이상 입력해 주세요.');
           return;
         }
         if (pw !== pwConfirm) {
@@ -4998,65 +5440,116 @@
           alert('이름(실명)을 입력해 주세요.');
           return;
         }
-        const duplicate = registeredPlayers.find(
-          p => (p.username && p.username.toLowerCase() === normalizedId) || (p.email && p.email.toLowerCase() === normalizedId)
-        );
-        if (duplicate) {
+        const birthDate = readHtmlBirthDateSelects('htmlSignUpBirth');
+        const manAge = calculateHtmlKoreanManAge(birthDate);
+        if (!birthDate || manAge === null) {
+          alert('생년월일(출생년도, 월, 일)을 모두 선택해 주세요. 만 나이가 자동 계산되어 실력 균등 배정에 반영됩니다.');
+          return;
+        }
+
+        const authEmail = toHtmlAuthEmail(loginId);
+        const { data: existingRows } = await supabase
+          .from('users')
+          .select('id, username, email')
+          .or(`username.ilike.${normalizedId},email.ilike.${authEmail}`);
+
+        if (Array.isArray(existingRows) && existingRows.length > 0) {
           alert('이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.');
           return;
         }
 
-        const newPlayer = {
-          id: 'p_' + Date.now(),
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: authEmail,
+          password: pw,
+          options: {
+            data: {
+              username: loginId,
+              name,
+              grade,
+              gender,
+              phone,
+              birth_date: birthDate,
+              age: manAge,
+              role: 'member',
+              approval_status: 'pending'
+            }
+          }
+        });
+
+        if (signUpError) {
+          alert('회원가입 실패: ' + signUpError.message);
+          return;
+        }
+
+        const createdId = signUpData && signUpData.user ? signUpData.user.id : undefined;
+        await supabase.from('users').upsert({
+          ...(createdId ? { id: createdId } : {}),
           username: loginId,
+          email: authEmail,
           name,
           grade,
           gender,
-          phone,
-          password: pw,
+          phone: phone || null,
+          birth_date: birthDate,
+          age: manAge,
           role: 'member',
-          email: loginId,
-          isGuest: false,
-          approvalStatus: 'pending',
-          requestedAt: new Date().toLocaleString('ko-KR')
-        };
-        registeredPlayers.unshift(newPlayer);
-        syncHtmlUsersToStorage();
+          is_guest: false,
+          approval_status: 'pending',
+          requested_at: new Date().toISOString()
+        });
+
+        if (signUpData && signUpData.session) {
+          await supabase.auth.signOut();
+        }
+
+        await fetchHtmlUsersFromSupabase();
         document.getElementById('htmlAuthPassword').value = '';
         document.getElementById('htmlAuthConfirmPassword').value = '';
+        setHtmlBirthDateSelects('htmlSignUpBirth', '', 'htmlSignUpManAgeBadge');
         setHtmlAuthMode(false);
-        alert(`✅ 회원가입 신청이 접수되었습니다!\n신청 아이디: ${loginId} (${name} · ${grade})\n\n⏳ 운영자(관리자)의 확인 및 승인 완료 후 로그인하여 접속하실 수 있습니다.`);
+        alert(`✅ 회원가입 신청이 Supabase DB에 접수되었습니다!\n신청 아이디: ${loginId} (${name} · ${grade} · 만 ${manAge}세)\n\n⏳ 운영자(관리자)의 확인 및 승인 완료 후 모든 기기에서 로그인하실 수 있습니다.`);
       } else {
         if (!loginId || !pw) {
           alert('아이디와 비밀번호를 모두 입력해 주세요.');
           return;
         }
-        loadHtmlUsersFromStorage();
-        const matched = registeredPlayers.find(
-          p =>
-            (p.username && p.username.toLowerCase() === normalizedId) ||
-            (p.email && p.email.toLowerCase() === normalizedId) ||
-            p.name === loginId
-        );
-        if (!matched) {
-          alert('등록되지 않은 아이디입니다. 회원가입 신청 후 운영자(관리자) 승인을 받아 접속해 주세요.');
+
+        const { data: lookupRow } = await supabase
+          .from('users')
+          .select('*')
+          .or(`username.ilike.${normalizedId},email.ilike.${normalizedId}`)
+          .maybeSingle();
+
+        const resolvedEmail = (lookupRow && lookupRow.email) || toHtmlAuthEmail(loginId);
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: resolvedEmail,
+          password: pw
+        });
+
+        if (signInError || !signInData || !signInData.user) {
+          alert('아이디 또는 비밀번호가 일치하지 않거나 등록되지 않은 계정입니다.');
           return;
         }
-        if (matched.password && matched.password !== pw) {
-          alert('비밀번호가 일치하지 않습니다.');
-          return;
-        }
-        if (matched.approvalStatus === 'pending') {
+
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', signInData.user.id)
+          .maybeSingle();
+
+        const matched = mapHtmlSupabaseUserRow(userRow || lookupRow);
+        if (matched && matched.approvalStatus === 'pending') {
+          await supabase.auth.signOut();
           alert(`⏳ [${matched.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다.\n승인 완료 후 로그인하여 접속할 수 있습니다.`);
           return;
         }
 
-        // 메인 로그인 폼은 항상 회원 모드(본인 정보 수정 외 확인 전용)로 접속
+        await fetchHtmlUsersFromSupabase();
         currentUserRole = 'member';
-        currentHtmlUserId = matched.id;
+        currentHtmlUserId = matched ? matched.id : signInData.user.id;
         htmlNavHistory = [];
-        document.getElementById('headerMemberName').innerText = `${matched.name} 회원님`;
-        document.getElementById('headerMemberGrade').innerText = matched.grade || '테린이';
+        document.getElementById('headerMemberName').innerText = `${matched ? matched.name : loginId} 회원님`;
+        document.getElementById('headerMemberGrade').innerText = (matched && matched.grade) || '테린이';
         closeAuthScreenModal();
         applyRoleVisibility();
         switchTab('courts', true);
@@ -5312,8 +5805,12 @@
       triggerHtmlBackAction();
     }, false);
 
-    // 초기 실행 (새로고침 시 저장된 로그인 세션 및 화면 자동 복원)
-    loadHtmlUsersFromStorage();
+    // 초기 실행 (생년월일 드롭다운 초기화 + 새로고침 시 저장된 로그인 세션 및 화면 자동 복원)
+    initHtmlBirthDateSelects('htmlSignUpBirth');
+    initHtmlBirthDateSelects('myProfileBirth');
+    initHtmlBirthDateSelects('editMemberBirth');
+    fetchHtmlUsersFromSupabase();
+    registeredPlayers.forEach((p, idx) => ensurePlayerAge(p, idx));
     updateTournamentHeaderUI();
     if (!restoreHtmlSessionState()) {
       applyRoleVisibility();
