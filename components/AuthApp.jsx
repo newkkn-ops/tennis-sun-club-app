@@ -1,11 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase, toAuthEmail } from '../lib/supabase';
 import MyPage from './MyPage';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const GRADE_OPTIONS = ['금배', '은배', '동배', '국화', '개나리', '테린이', '고령자부'];
 
@@ -77,10 +73,12 @@ export function LoginComponent({ supabase, onAuthSuccess }) {
 
     setSubmitting(true);
     try {
+      const authEmail = toAuthEmail(email);
+      const username = email.includes('@') ? email.split('@')[0] : email.trim();
+
       if (isSignUp) {
-        const username = email.includes('@') ? email.split('@')[0] : email;
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: authEmail,
           password,
           options: {
             data: {
@@ -100,7 +98,7 @@ export function LoginComponent({ supabase, onAuthSuccess }) {
             await supabase.from('users').upsert({
               id: data.user.id,
               username,
-              email,
+              email: authEmail,
               name: name || '클럽회원',
               gender,
               grade,
@@ -117,7 +115,17 @@ export function LoginComponent({ supabase, onAuthSuccess }) {
           setIsSignUp(false);
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data: lookupRow } = await supabase
+          .from('users')
+          .select('*')
+          .or(`username.ilike.${username},email.ilike.${username}`)
+          .maybeSingle();
+
+        const resolvedEmail = lookupRow?.email || authEmail;
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: resolvedEmail,
+          password,
+        });
         if (error) {
           alert('로그인 실패: ' + error.message);
         } else if (data?.user) {

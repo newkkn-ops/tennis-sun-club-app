@@ -1,6 +1,11 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { supabase, toAuthEmail, mapSupabaseUserRow } from './lib/supabase';
+import {
+  supabase,
+  toAuthEmail,
+  mapSupabaseUserRow,
+  ensureDefaultAdminAccount,
+} from './lib/supabase';
 import AdminTournamentManager, {
   TournamentConfig,
   ParticipantPlayer,
@@ -1109,6 +1114,7 @@ export default function TennisApp() {
     };
 
     hydrateAuthAndUsers();
+    ensureDefaultAdminAccount().catch(() => {});
 
     // Supabase Auth 세션 변경 실시간 구독
     const {
@@ -1339,14 +1345,27 @@ export default function TennisApp() {
           .or(`username.ilike.${trimmedId},email.ilike.${trimmedId}`)
           .maybeSingle();
 
-        const resolvedEmail = lookupRow?.email || toAuthEmail(trimmedId);
+        let resolvedEmail = lookupRow?.email || toAuthEmail(trimmedId);
 
         // 2. Supabase Auth 로그인 검증 (supabase.auth.signInWithPassword)
-        const { data: signInData, error: signInError } =
+        let { data: signInData, error: signInError } =
           await supabase.auth.signInWithPassword({
             email: resolvedEmail,
             password,
           });
+
+        if (
+          (signInError || !signInData?.user) &&
+          (trimmedId === 'admin' || resolvedEmail.startsWith('admin@'))
+        ) {
+          await ensureDefaultAdminAccount();
+          const retryResult = await supabase.auth.signInWithPassword({
+            email: resolvedEmail,
+            password,
+          });
+          signInData = retryResult.data;
+          signInError = retryResult.error;
+        }
 
         if (signInError || !signInData?.user) {
           setAuthMessage({
@@ -1563,13 +1582,27 @@ export default function TennisApp() {
       .or(`username.ilike.${trimmedAdminId},email.ilike.${trimmedAdminId}`)
       .maybeSingle();
 
-    const resolvedAdminEmail = lookupAdmin?.email || toAuthEmail(trimmedAdminId);
+    let resolvedAdminEmail = lookupAdmin?.email || toAuthEmail(trimmedAdminId);
 
-    const { data: signInData, error: signInError } =
+    let { data: signInData, error: signInError } =
       await supabase.auth.signInWithPassword({
         email: resolvedAdminEmail,
         password: trimmedAdminPw,
       });
+
+    // 기본 admin 계정이 아직 Supabase에 등록되지 않은 경우 즉시 생성 후 1회 재시도
+    if (
+      (signInError || !signInData?.user) &&
+      (trimmedAdminId === 'admin' || resolvedAdminEmail.startsWith('admin@'))
+    ) {
+      await ensureDefaultAdminAccount();
+      const retryResult = await supabase.auth.signInWithPassword({
+        email: resolvedAdminEmail,
+        password: trimmedAdminPw,
+      });
+      signInData = retryResult.data;
+      signInError = retryResult.error;
+    }
 
     if (signInError || !signInData?.user) {
       setAdminLoginError(

@@ -4885,10 +4885,72 @@
       ? window.supabase.createClient(HTML_SUPABASE_URL, HTML_SUPABASE_ANON_KEY)
       : null;
 
+    const VIRTUAL_AUTH_DOMAIN = 'suntennis.local';
+
     function toHtmlAuthEmail(loginIdOrEmail) {
-      const trimmed = String(loginIdOrEmail || '').trim().toLowerCase();
+      const trimmed = String(loginIdOrEmail || '').trim();
       if (!trimmed) return '';
-      return trimmed.includes('@') ? trimmed : `${trimmed}@suntc.kr`;
+      if (trimmed.includes('@')) return trimmed.toLowerCase();
+      if (/^[a-zA-Z0-9_.-]+$/.test(trimmed)) {
+        return `${trimmed.toLowerCase()}@${VIRTUAL_AUTH_DOMAIN}`;
+      }
+      const safeAscii = encodeURIComponent(trimmed).replace(/%/g, '').toLowerCase();
+      return `u_${safeAscii}@${VIRTUAL_AUTH_DOMAIN}`;
+    }
+
+    async function ensureHtmlDefaultAdminAccount() {
+      if (!supabase) return;
+      try {
+        const adminEmail = `admin@${VIRTUAL_AUTH_DOMAIN}`;
+        const { data: existingAdmin } = await supabase
+          .from('users')
+          .select('*')
+          .or(`username.eq.admin,email.eq.${adminEmail}`)
+          .maybeSingle();
+
+        let adminId = existingAdmin ? existingAdmin.id : null;
+        try {
+          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+            email: adminEmail,
+            password: 'admin1234',
+            options: {
+              data: {
+                username: 'admin',
+                name: '공유 관리자',
+                gender: 'M',
+                grade: '금배',
+                role: 'admin',
+                approval_status: 'approved'
+              }
+            }
+          });
+          if (!signUpErr && signUpData && signUpData.user) {
+            adminId = signUpData.user.id;
+          }
+          if (signUpData && signUpData.session) {
+            await supabase.auth.signOut();
+          }
+        } catch (e) {}
+
+        if (!existingAdmin || existingAdmin.role !== 'admin' || existingAdmin.approval_status !== 'approved') {
+          const payload = {
+            ...(adminId ? { id: adminId } : {}),
+            username: 'admin',
+            email: adminEmail,
+            name: existingAdmin && existingAdmin.name ? existingAdmin.name : '공유 관리자',
+            gender: 'M',
+            grade: '금배',
+            role: 'admin',
+            approval_status: 'approved',
+            status: 'approved',
+            is_guest: false,
+            requested_at: new Date().toISOString()
+          };
+          await supabase.from('users').upsert(payload, { onConflict: 'username' });
+        }
+      } catch (err) {
+        console.warn('ensureHtmlDefaultAdminAccount notice:', err);
+      }
     }
 
     function mapHtmlSupabaseUserRow(row) {
@@ -4943,6 +5005,7 @@
         .channel('public:users:html')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
           fetchHtmlUsersFromSupabase();
+    ensureHtmlDefaultAdminAccount();
         })
         .subscribe();
     }
@@ -5368,10 +5431,20 @@
         .maybeSingle();
 
       const resolvedAdminEmail = (lookupAdmin && lookupAdmin.email) || toHtmlAuthEmail(adminId);
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: resolvedAdminEmail,
         password: adminPw
       });
+
+      if ((signInError || !signInData || !signInData.user) && (adminId === 'admin' || resolvedAdminEmail.startsWith('admin@'))) {
+        await ensureHtmlDefaultAdminAccount();
+        const retry = await supabase.auth.signInWithPassword({
+          email: resolvedAdminEmail,
+          password: adminPw
+        });
+        signInData = retry.data;
+        signInError = retry.error;
+      }
 
       if (signInError || !signInData || !signInData.user) {
         showErr('관리자 아이디 또는 비밀번호가 일치하지 않습니다. 관리자 모드에 입장할 수 없습니다.');
@@ -5521,10 +5594,20 @@
           .maybeSingle();
 
         const resolvedEmail = (lookupRow && lookupRow.email) || toHtmlAuthEmail(loginId);
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: resolvedEmail,
           password: pw
         });
+
+        if ((signInError || !signInData || !signInData.user) && (normalizedId === 'admin' || resolvedEmail.startsWith('admin@'))) {
+          await ensureHtmlDefaultAdminAccount();
+          const retry = await supabase.auth.signInWithPassword({
+            email: resolvedEmail,
+            password: pw
+          });
+          signInData = retry.data;
+          signInError = retry.error;
+        }
 
         if (signInError || !signInData || !signInData.user) {
           alert('아이디 또는 비밀번호가 일치하지 않거나 등록되지 않은 계정입니다.');
@@ -5810,6 +5893,7 @@
     initHtmlBirthDateSelects('myProfileBirth');
     initHtmlBirthDateSelects('editMemberBirth');
     fetchHtmlUsersFromSupabase();
+    ensureHtmlDefaultAdminAccount();
     registeredPlayers.forEach((p, idx) => ensurePlayerAge(p, idx));
     updateTournamentHeaderUI();
     if (!restoreHtmlSessionState()) {
