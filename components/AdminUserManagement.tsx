@@ -281,8 +281,28 @@ export default function AdminUserManagement({
     if (onUpdateMember) onUpdateMember(updated);
   };
 
-  // 인라인 권한 빠른 변경 (Supabase users 테이블 업데이트)
+  // 인라인 권한 빠른 변경 및 관리자모드 권한 부여/해제 (Supabase users 테이블 실시간 업데이트)
   const handleQuickRoleChange = async (member: ManagedMember, newRoleVal: 'member' | 'admin') => {
+    if (member.role === newRoleVal) return;
+
+    const isSelf = currentUserId && String(member.id) === String(currentUserId);
+    if (isSelf && newRoleVal === 'member') {
+      const selfConfirm = window.confirm(
+        `⚠️ 본인(${member.name})의 관리자 권한을 해제하면 운영관리 화면에서 일반회원 모드로 전환됩니다.\n정말 일반회원으로 전환하시겠습니까?`
+      );
+      if (!selfConfirm) return;
+    } else if (newRoleVal === 'admin') {
+      const grantConfirm = window.confirm(
+        `👑 [${member.name} (${member.username || member.email || '회원'})] 회원에게 관리자모드 권한을 부여하시겠습니까?\n\n부여 시 해당 회원도 관리자 모드로 로그인하여 대회·코트·회원 관리가 가능합니다.`
+      );
+      if (!grantConfirm) return;
+    } else {
+      const revokeConfirm = window.confirm(
+        `👤 [${member.name}] 회원의 관리자모드 권한을 해제하고 일반회원으로 전환하시겠습니까?`
+      );
+      if (!revokeConfirm) return;
+    }
+
     const { error } = await supabase
       .from('users')
       .update({ role: newRoleVal })
@@ -296,6 +316,15 @@ export default function AdminUserManagement({
     const updated: ManagedMember = { ...member, role: newRoleVal };
     setUsers((prev) => prev.map((u) => (u.id === member.id ? updated : u)));
     if (onUpdateMember) onUpdateMember(updated);
+    await fetchUsersFromDb();
+
+    if (newRoleVal === 'admin') {
+      alert(
+        `👑 [${member.name}] 회원에게 관리자모드 권한이 부여되었습니다!\n이제 해당 계정으로 관리자 모드에 로그인할 수 있습니다.`
+      );
+    } else {
+      alert(`👤 [${member.name}] 회원이 일반회원으로 전환되었습니다.`);
+    }
   };
 
   // 회원가입 승인 핸들러 (대기 pending -> 정회원 approved 실시간 DB 반영)
@@ -478,7 +507,6 @@ export default function AdminUserManagement({
       insertedRow = retry.data;
       insertError = retry.error;
     }
-      .single();
 
     if (insertError) {
       alert(`신규 회원 등록 실패: ${insertError.message}`);
@@ -907,6 +935,26 @@ export default function AdminUserManagement({
                         </select>
                       </div>
                     </div>
+
+                    {/* 관리자모드 권한 부여 / 해제 전용 원클릭 버튼 */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleQuickRoleChange(u, u.role === 'admin' ? 'member' : 'admin')
+                      }
+                      className={`w-full py-2 px-3 rounded-xl font-black text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ${
+                        u.role === 'admin'
+                          ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700'
+                          : 'bg-gradient-to-r from-amber-500/20 via-red-500/20 to-orange-500/20 hover:from-amber-500/35 hover:to-red-500/35 text-amber-300 border border-amber-500/45'
+                      }`}
+                    >
+                      <span>{u.role === 'admin' ? '👤' : '👑'}</span>
+                      <span>
+                        {u.role === 'admin'
+                          ? '관리자모드 권한 해제 (일반회원 전환)'
+                          : '관리자모드 권한 부여'}
+                      </span>
+                    </button>
 
                     {/* 하단: [회원정보 수정] 버튼 & [회원가입 취소(탈퇴)] 버튼 */}
                     <div className="flex gap-2">
