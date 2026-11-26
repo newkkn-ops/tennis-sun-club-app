@@ -1165,6 +1165,21 @@ export default function TennisApp() {
     };
   }, [fetchUsersFromSupabase]);
 
+  // 다른 기기/관리자에 의해 현재 로그인 계정의 관리자 권한(role)이 실시간 변경될 때 즉시 반영
+  useEffect(() => {
+    if (!currentUser) return;
+    const latest = registeredPlayers.find((p) => p.id === currentUser.id);
+    if (!latest) return;
+    const nextRole: 'member' | 'admin' = latest.role === 'admin' ? 'admin' : 'member';
+    if (nextRole !== role || currentUser.role !== nextRole) {
+      setRole(nextRole);
+      setCurrentUser((prev) => (prev ? { ...prev, role: nextRole } : prev));
+      if (nextRole !== 'admin' && activeTab === 'admin') {
+        setActiveTab('courts');
+      }
+    }
+  }, [registeredPlayers, currentUser?.id, currentUser?.role, role, activeTab]);
+
   // 로그인 상태에서 현재 탭/토너먼트 단계 자동 저장 (새로고침 시 동일 화면 유지)
   useEffect(() => {
     if (!authHydrated || !currentUser) return;
@@ -3910,6 +3925,12 @@ export default function TennisApp() {
                         role: updated.role,
                       };
                       setCurrentUser(nextCurrentUser);
+                      const nextRole: 'member' | 'admin' =
+                        updated.role === 'admin' ? 'admin' : 'member';
+                      setRole(nextRole);
+                      if (nextRole !== 'admin' && activeTab === 'admin') {
+                        setActiveTab('courts');
+                      }
                     }
                   }}
                   onCancelMembership={(cancelledId: string, cancelledName: string) => {

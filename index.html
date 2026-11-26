@@ -4996,6 +4996,20 @@
             return 0;
           });
         registeredPlayers.forEach((p, idx) => ensurePlayerAge(p, idx));
+        if (currentHtmlUserId) {
+          const meLatest = registeredPlayers.find(p => p.id === currentHtmlUserId);
+          if (meLatest) {
+            const nextRole = meLatest.role === 'admin' ? 'admin' : 'member';
+            if (nextRole !== currentUserRole) {
+              currentUserRole = nextRole;
+              const headerName = document.getElementById('headerMemberName');
+              if (headerName) {
+                headerName.innerText = nextRole === 'admin' ? `${meLatest.name} 관리자님` : `${meLatest.name} 회원님`;
+              }
+              applyRoleVisibility();
+            }
+          }
+        }
         renderAdminUsers();
       }
     }
@@ -5076,6 +5090,14 @@
                 <div class="text-[10px] text-slate-400">
                   ID: <strong class="text-slate-200">${u.username || u.email || '미등록'}</strong> ${birthStr ? `· 생년월일: <strong class="text-emerald-300">${birthStr} (${ageBadge})</strong>` : '· <span class="text-amber-400/80">생년월일 미등록</span>'} ${u.phone ? `· ${u.phone}` : ''} ${u.isGuest ? '[임의추가]' : ''}
                 </div>
+                <button type="button" onclick="toggleHtmlMemberAdminRole('${u.id}')" class="w-full py-2 px-3 rounded-xl font-black text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ${
+                  u.role === 'admin'
+                    ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700'
+                    : 'bg-gradient-to-r from-amber-500/20 via-red-500/20 to-orange-500/20 hover:from-amber-500/35 hover:to-red-500/35 text-amber-300 border border-amber-500/45'
+                }">
+                  <span>${u.role === 'admin' ? '👤' : '👑'}</span>
+                  <span>${u.role === 'admin' ? '관리자모드 권한 해제 (일반회원 전환)' : '관리자모드 권한 부여'}</span>
+                </button>
                 <div class="flex gap-2">
                   <button type="button" onclick="editHtmlMember('${u.id}')" class="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold text-[11px] cursor-pointer">
                     ✎ 회원정보 수정
@@ -5089,6 +5111,50 @@
           </div>
         `;
       }).join('');
+    }
+
+    async function toggleHtmlMemberAdminRole(userId) {
+      if (!isAdminUser()) return;
+      const user = registeredPlayers.find(u => u.id === userId);
+      if (!user) return;
+      const nextRole = user.role === 'admin' ? 'member' : 'admin';
+
+      if (user.id === currentHtmlUserId && nextRole === 'member') {
+        if (!confirm(`⚠️ 본인(${user.name})의 관리자 권한을 해제하면 운영관리 화면에서 일반회원 모드로 전환됩니다.\n정말 일반회원으로 전환하시겠습니까?`)) return;
+      } else if (nextRole === 'admin') {
+        if (!confirm(`👑 [${user.name} (${user.username || user.email || '회원'})] 회원에게 관리자모드 권한을 부여하시겠습니까?\n\n부여 시 해당 회원도 관리자 모드로 로그인하여 대회·코트·회원 관리가 가능합니다.`)) return;
+      } else {
+        if (!confirm(`👤 [${user.name}] 회원의 관리자모드 권한을 해제하고 일반회원으로 전환하시겠습니까?`)) return;
+      }
+
+      if (supabase) {
+        const { error } = await supabase
+          .from('users')
+          .update({ role: nextRole })
+          .eq('id', userId);
+        if (error) {
+          alert('권한 변경 실패: ' + error.message);
+          return;
+        }
+      }
+
+      user.role = nextRole;
+      if (user.id === currentHtmlUserId) {
+        currentUserRole = nextRole;
+        const headerName = document.getElementById('headerMemberName');
+        if (headerName) {
+          headerName.innerText = nextRole === 'admin' ? `${user.name} 관리자님` : `${user.name} 회원님`;
+        }
+        applyRoleVisibility();
+        saveHtmlSessionState();
+      }
+      await fetchHtmlUsersFromSupabase();
+      renderAdminUsers();
+      if (nextRole === 'admin') {
+        alert(`👑 [${user.name}] 회원에게 관리자모드 권한이 부여되었습니다!\n이제 해당 계정으로 관리자 모드에 로그인할 수 있습니다.`);
+      } else {
+        alert(`👤 [${user.name}] 회원이 일반회원으로 전환되었습니다.`);
+      }
     }
 
     async function approveHtmlMember(userId) {
