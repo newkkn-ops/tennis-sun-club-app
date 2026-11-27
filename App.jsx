@@ -2254,7 +2254,8 @@ export default function TennisApp() {
             </div>
           </div>
 
-          {/* 현재 진행 대회 안내 카드 */}
+          {/* 현재 진행 대회 안내 카드 (운영관리 탭에서만 노출) */}
+          {activeTab === 'admin' && (
           <div className="bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/30 rounded-3xl p-4 shadow-xl space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
@@ -2315,6 +2316,7 @@ export default function TennisApp() {
               </select>
             </div>
           </div>
+          )}
 
           {/* PC 메뉴 바로가기 */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-2">
@@ -2465,7 +2467,8 @@ export default function TennisApp() {
           {/* 메인 탭 컨텐츠 영역 */}
           <div className="p-4 space-y-4 flex-1">
             
-            {/* 대회 정보 상단 배너 & 관리자 새 대회 개설 버튼 */}
+            {/* 대회 정보 상단 배너 & 관리자 새 대회 개설 버튼 (운영관리 탭에서만 노출) */}
+            {activeTab === 'admin' && (
             <div className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-slate-900 p-3.5 rounded-2xl border border-amber-500/30 shadow-lg space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20">
@@ -2515,6 +2518,7 @@ export default function TennisApp() {
                 </div>
               )}
             </div>
+            )}
 
             {/* ---------------------------------------------------- */}
             {/* [탭 1]: 실시간 코트 현황 & 관리자 코트/선수 배정 패널 */}

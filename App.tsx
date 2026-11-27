@@ -11,6 +11,7 @@ import {
   signInWithLoginId,
   hasActiveSession,
   MIN_AUTH_PASSWORD_LENGTH,
+  recordMatchResultToSupabase,
 } from './lib/supabase';
 import SafeBoundary from './components/SafeBoundary';
 import AdminTournamentManager, {
@@ -976,6 +977,184 @@ export default function TennisApp() {
       )
     );
     setSelectedCourt(null);
+  };
+
+  /**
+   * 코트 카드 [경기종료] 버튼 핸들러
+   * 1. 현재 경기 점수/결과를 Supabase matches 및 로컬/누적 전적에 저장
+   * 2. KDK 파트너 순환 큐 또는 대진표에서 다음 대기 매치를 찾아 해당 코트에 자동 배정
+   * 3. 다음 대진이 있으면 'playing'(점수 0:0 초기화), 남은 대진이 없으면 'waiting'(대기중)으로 자동 전환
+   */
+  const handleFinishCourtMatch = async (court: CourtMatch) => {
+    if (!isAdmin) return;
+
+    const courtNum = court.courtNumber;
+    const finalScoreA = Number(court.scoreA) || 0;
+    const finalScoreB = Number(court.scoreB) || 0;
+
+    const confirmFinish = window.confirm(
+      `🏁 [${courtNum}번 코트 경기 종료 확인]\n\n` +
+        `TEAM A (${court.teamA.join(', ')}) : ${finalScoreA}점\n` +
+        `TEAM B (${court.teamB.join(', ')}) : ${finalScoreB}점\n\n` +
+        `이 경기를 종료하고 결과를 저장한 뒤 다음 대기 선수를 코트에 자동 배정하시겠습니까?`
+    );
+    if (!confirmFinish) return;
+
+    // 선수명에서 선수 객체 매칭하여 UUID 추출 (Supabase matches 외래키 연동용)
+    const findUserIds = (nameList: string[]): string[] => {
+      const ids: string[] = [];
+      nameList.forEach((raw) => {
+        const cleanName = raw.split('(')[0].trim();
+        const found = registeredPlayers.find((p) => p.name === cleanName);
+        if (found && found.id) {
+          ids.push(found.id);
+        }
+      });
+      return ids;
+    };
+
+    const teamAUuids = findUserIds(court.teamA);
+    const teamBUuids = findUserIds(court.teamB);
+
+    // 1. Supabase matches 테이블 및 player_stats 테이블에 경기 결과 저장
+    recordMatchResultToSupabase({
+      tournamentId: currentTournament.id,
+      roundName: `${currentTournament.name} - ${courtNum}번 코트`,
+      courtNumber: courtNum,
+      teamAPlayerIds: teamAUuids,
+      teamBPlayerIds: teamBUuids,
+      scoreA: finalScoreA,
+      scoreB: finalScoreB,
+    }).catch(() => {});
+
+    // 2. KDK 로컬스토리지 큐가 있는 경우 해당 코트의 현재 게임을 completed로 마킹하고 다음 대기 게임 탐색
+    let nextMatchData: {
+      teamA: string[];
+      teamB: string[];
+      teamAWeight?: number;
+      teamBWeight?: number;
+      skillDiff?: number;
+    } | null = null;
+    let nextGameNumber: number | null = null;
+
+    try {
+      const kdkStorageKey = 'sun_tennis_kdk_courts_v3';
+      const rawKdk = localStorage.getItem(kdkStorageKey);
+      if (rawKdk) {
+        const parsedKdk = JSON.parse(rawKdk);
+        if (Array.isArray(parsedKdk)) {
+          let updatedKdk = false;
+          const nextKdkCourts = parsedKdk.map((kc: any) => {
+            if (kc.courtNumber === courtNum && Array.isArray(kc.games)) {
+              // 현재 미완료된 첫 번째 게임 완료 처리
+              const uncompletedIdx = kc.games.findIndex((g: any) => !g.completed);
+              if (uncompletedIdx !== -1) {
+                kc.games[uncompletedIdx] = {
+                  ...kc.games[uncompletedIdx],
+                  scoreA: finalScoreA,
+                  scoreB: finalScoreB,
+                  completed: true,
+                };
+                updatedKdk = true;
+
+                // 다음 대기 게임 탐색
+                const nextWaiting = kc.games.find((g: any) => !g.completed);
+                if (nextWaiting && Array.isArray(nextWaiting.teamA) && Array.isArray(nextWaiting.teamB)) {
+                  nextGameNumber = nextWaiting.gameNumber;
+                  nextMatchData = {
+                    teamA: [
+                      `${nextWaiting.teamA[0].name} (${nextWaiting.teamA[0].grade})`,
+                      `${nextWaiting.teamA[1].name} (${nextWaiting.teamA[1].grade})`,
+                    ],
+                    teamB: [
+                      `${nextWaiting.teamB[0].name} (${nextWaiting.teamB[0].grade})`,
+                      `${nextWaiting.teamB[1].name} (${nextWaiting.teamB[1].grade})`,
+                    ],
+                    teamAWeight: nextWaiting.teamAWeight,
+                    teamBWeight: nextWaiting.teamBWeight,
+                    skillDiff: nextWaiting.skillDiff,
+                  };
+                }
+              }
+              const allDone = kc.games.length >= 2 && kc.games.every((g: any) => g.completed);
+              kc.isFinished = allDone;
+            }
+            return kc;
+          });
+
+          if (updatedKdk) {
+            localStorage.setItem(kdkStorageKey, JSON.stringify(nextKdkCourts));
+            window.dispatchEvent(new CustomEvent('sun-tennis-kdk-sync'));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('KDK rotation notice:', e);
+    }
+
+    // 3. 코트 상태 업데이트 (다음 선수가 있으면 playing / 점수 0:0, 없으면 waiting)
+    setCourts((prev) =>
+      prev.map((c) => {
+        if (c.id === court.id) {
+          if (nextMatchData) {
+            return {
+              ...c,
+              status: 'playing',
+              teamA: nextMatchData.teamA,
+              teamB: nextMatchData.teamB,
+              teamAWeight: nextMatchData.teamAWeight,
+              teamBWeight: nextMatchData.teamBWeight,
+              skillDiff: nextMatchData.skillDiff,
+              scoreA: 0,
+              scoreB: 0,
+            };
+          } else {
+            return {
+              ...c,
+              status: 'waiting',
+              scoreA: finalScoreA,
+              scoreB: finalScoreB,
+            };
+          }
+        }
+        return c;
+      })
+    );
+
+    if (nextMatchData) {
+      alert(
+        `✅ [${courtNum}번 코트] 경기 결과가 저장되었습니다!\n\n` +
+          `🔄 다음 ${nextGameNumber ? `제 ${nextGameNumber} 게임 ` : ''}대기 선수가 코트에 자동 투입되어 [🔴 LIVE 경기 진행중] 상태로 전환되었습니다.\n` +
+          `• TEAM A: ${nextMatchData.teamA.join(', ')}\n` +
+          `• TEAM B: ${nextMatchData.teamB.join(', ')}`
+      );
+    } else {
+      alert(
+        `✅ [${courtNum}번 코트] 경기 결과가 저장되었습니다!\n\n` +
+          `⚪ 예정된 다음 대기 매치가 모두 완료되어 코트가 [대기중] 상태로 전환되었습니다.\n` +
+          `필요 시 하단 [선수 수동 배정 및 수정] 버튼으로 다음 선수를 직접 배정할 수 있습니다.`
+      );
+    }
+  };
+
+  /** 코트 카드에서 즉시 점수를 1점씩 가감하는 인라인 핸들러 */
+  const handleQuickAdjustCourtScore = (courtId: number, team: 'A' | 'B', delta: number) => {
+    if (!isAdmin) return;
+    setCourts((prev) =>
+      prev.map((c) => {
+        if (c.id === courtId) {
+          const nextScoreA = team === 'A' ? Math.max(0, (c.scoreA || 0) + delta) : c.scoreA;
+          const nextScoreB = team === 'B' ? Math.max(0, (c.scoreB || 0) + delta) : c.scoreB;
+          return {
+            ...c,
+            scoreA: nextScoreA,
+            scoreB: nextScoreB,
+            status: c.status === 'waiting' ? 'playing' : c.status,
+          };
+        }
+        return c;
+      })
+    );
   };
 
   // ----------------------------------------------------
@@ -2254,7 +2433,8 @@ export default function TennisApp() {
             </div>
           </div>
 
-          {/* 현재 진행 대회 안내 카드 */}
+          {/* 현재 진행 대회 안내 카드 (운영관리 탭에서만 노출) */}
+          {activeTab === 'admin' && (
           <div className="bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/30 rounded-3xl p-4 shadow-xl space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
@@ -2315,6 +2495,7 @@ export default function TennisApp() {
               </select>
             </div>
           </div>
+          )}
 
           {/* PC 메뉴 바로가기 */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-2">
@@ -2465,7 +2646,8 @@ export default function TennisApp() {
           {/* 메인 탭 컨텐츠 영역 */}
           <div className="p-4 space-y-4 flex-1">
             
-            {/* 대회 정보 상단 배너 & 관리자 새 대회 개설 버튼 */}
+            {/* 대회 정보 상단 배너 & 관리자 새 대회 개설 버튼 (운영관리 탭에서만 노출) */}
+            {activeTab === 'admin' && (
             <div className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-slate-900 p-3.5 rounded-2xl border border-amber-500/30 shadow-lg space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20">
@@ -2515,6 +2697,7 @@ export default function TennisApp() {
                 </div>
               )}
             </div>
+            )}
 
             {/* ---------------------------------------------------- */}
             {/* [탭 1]: 실시간 코트 현황 & 관리자 코트/선수 배정 패널 */}
@@ -2706,6 +2889,16 @@ export default function TennisApp() {
                         {isAdmin && (
                           <div className="flex items-center gap-1.5">
                             <button
+                              type="button"
+                              onClick={() => handleFinishCourtMatch(court)}
+                              className="text-[11px] px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black shadow-md transition cursor-pointer flex items-center gap-1"
+                              title="현재 경기 점수를 확정·종료하고 다음 선수를 자동 배정합니다"
+                            >
+                              <span>🏁</span>
+                              <span>경기종료</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => openScoreModal(court)}
                               className="text-[11px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold border border-slate-700 transition cursor-pointer"
                             >
@@ -2713,6 +2906,7 @@ export default function TennisApp() {
                             </button>
                             {courts.length > 1 && (
                               <button
+                                type="button"
                                 onClick={() => handleDeleteCourt(court.id)}
                                 className="text-[11px] px-2 py-1 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 font-bold border border-red-500/30 transition cursor-pointer"
                                 title="코트 삭제"
@@ -2737,7 +2931,33 @@ export default function TennisApp() {
                         >
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-amber-400">TEAM A</span>
-                            <span className="text-xl font-black text-white">{court.scoreA}</span>
+                            <div className="flex items-center gap-1.5">
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickAdjustCourtScore(court.id, 'A', -1);
+                                  }}
+                                  className="w-5 h-5 rounded bg-slate-850 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer border border-slate-750"
+                                >
+                                  -
+                                </button>
+                              )}
+                              <span className="text-xl font-black text-white px-0.5">{court.scoreA}</span>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickAdjustCourtScore(court.id, 'A', 1);
+                                  }}
+                                  className="w-5 h-5 rounded bg-slate-850 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer border border-slate-750"
+                                >
+                                  +
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div className="text-xs font-bold text-slate-200">
                             {court.teamA.map((m, idx) => (
@@ -2760,7 +2980,33 @@ export default function TennisApp() {
                         >
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-emerald-400">TEAM B</span>
-                            <span className="text-xl font-black text-white">{court.scoreB}</span>
+                            <div className="flex items-center gap-1.5">
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickAdjustCourtScore(court.id, 'B', -1);
+                                  }}
+                                  className="w-5 h-5 rounded bg-slate-850 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer border border-slate-750"
+                                >
+                                  -
+                                </button>
+                              )}
+                              <span className="text-xl font-black text-white px-0.5">{court.scoreB}</span>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickAdjustCourtScore(court.id, 'B', 1);
+                                  }}
+                                  className="w-5 h-5 rounded bg-slate-850 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center cursor-pointer border border-slate-750"
+                                >
+                                  +
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div className="text-xs font-bold text-slate-200">
                             {court.teamB.map((m, idx) => (
@@ -2773,15 +3019,26 @@ export default function TennisApp() {
                         </div>
                       </div>
 
-                      {/* 하단 수동 배정/수정 바 (관리자 전용) */}
+                      {/* 하단 경기종료 및 수동 배정/수정 액션 바 (관리자 전용) */}
                       {isAdmin && (
-                        <button
-                          onClick={() => openCourtPlayerEditModal(court)}
-                          className="w-full py-1.5 bg-slate-950/90 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-[11px] border border-slate-800 transition flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>👤</span>
-                          <span>{court.courtNumber}번 코트 선수 수동 배정 및 수정</span>
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleFinishCourtMatch(court)}
+                            className="py-2 px-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <span>🏁</span>
+                            <span>{court.courtNumber}번 코트 경기종료 · 다음 선수 자동배정</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCourtPlayerEditModal(court)}
+                            className="py-2 px-3 bg-slate-950/90 hover:bg-slate-800 text-slate-300 hover:text-white font-bold rounded-xl text-xs border border-slate-800 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <span>👤</span>
+                            <span>선수 수동 배정 및 수정</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   );
