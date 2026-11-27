@@ -4768,19 +4768,41 @@ export default function TennisApp() {
               </select>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="space-y-2 pt-2">
               <button
-                onClick={() => setSelectedCourt(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
+                type="button"
+                onClick={() => {
+                  if (!selectedCourt) return;
+                  const courtToFinish: CourtMatch = {
+                    ...selectedCourt,
+                    scoreA: Number(inputScoreA),
+                    scoreB: Number(inputScoreB),
+                  };
+                  setSelectedCourt(null);
+                  handleFinishCourtMatch(courtToFinish);
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                닫기
+                <span>🏁</span>
+                <span>현재 점수 확정 & 경기종료 (다음 선수 자동배정)</span>
               </button>
-              <button
-                onClick={saveCourtScore}
-                className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-amber-500/20"
-              >
-                저장 완료
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCourt(null)}
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  닫기
+                </button>
+                <button
+                  type="button"
+                  onClick={saveCourtScore}
+                  className="flex-1 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-md cursor-pointer"
+                >
+                  점수만 수정 저장
+                </button>
+              </div>
             </div>
           </div>
         </div>

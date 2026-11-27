@@ -15,6 +15,7 @@ import {
   calculateKdkStandingsWithAgeTiebreak,
 } from '../lib/kdk';
 import { calculateKoreanManAge } from '../lib/age';
+import { recordMatchResultToSupabase } from '../lib/supabase';
 
 export interface KdkCourtState {
   courtNumber: number;
@@ -1046,6 +1047,16 @@ export default function KdkCourtOperations({
       const allDone = nextGames.length >= 2 && nextGames.every((g) => g.completed);
 
       if (willComplete && targetGame) {
+        // Supabase matches 테이블 및 player_stats 누적 집계에 경기 결과 실시간 저장
+        recordMatchResultToSupabase({
+          roundName: `${tournamentName} - ${court.courtNumber}번 코트 제 ${targetGame.gameNumber} 게임`,
+          courtNumber: court.courtNumber,
+          teamAPlayerIds: [targetGame.teamA[0]?.id, targetGame.teamA[1]?.id].filter(Boolean),
+          teamBPlayerIds: [targetGame.teamB[0]?.id, targetGame.teamB[1]?.id].filter(Boolean),
+          scoreA: targetGame.scoreA,
+          scoreB: targetGame.scoreB,
+        }).catch(() => {});
+
         // 방금 종료된 게임 다음으로 대기 중인 미완료 게임 탐색
         const nextWaitingGame = nextGames.find((g) => !g.completed);
         if (nextWaitingGame) {

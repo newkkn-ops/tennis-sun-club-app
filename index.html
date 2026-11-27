@@ -2928,6 +2928,9 @@
             </div>
             ${adminMode ? `
               <div class="flex items-center gap-1.5">
+                <button onclick="finishCourtMatch(${court.id})" class="text-[11px] px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black shadow-md cursor-pointer flex items-center gap-1">
+                  <span>🏁</span><span>경기종료</span>
+                </button>
                 <button onclick="openScoreModal(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-slate-800 text-amber-300 font-bold border border-slate-700 cursor-pointer">점수 수정 ✎</button>
                 ${courtsData.length > 1 ? `<button onclick="deleteCourt(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-red-950/60 text-red-300 font-bold border border-red-500/30 cursor-pointer">✕</button>` : ''}
               </div>
@@ -2959,9 +2962,14 @@
           </div>
 
           ${adminMode ? `
-            <button onclick="openPlayerEditModal(${court.id})" class="w-full py-1.5 bg-slate-950/90 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-[11px] border border-slate-800 transition flex items-center justify-center gap-1 cursor-pointer">
-              <span>👤</span><span>${court.courtNumber}번 코트 선수 수동 배정 및 수정</span>
-            </button>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button onclick="finishCourtMatch(${court.id})" class="py-2 px-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer">
+                <span>🏁</span><span>${court.courtNumber}번 코트 경기종료 · 다음 선수 자동배정</span>
+              </button>
+              <button onclick="openPlayerEditModal(${court.id})" class="py-2 px-3 bg-slate-950/90 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs border border-slate-800 transition flex items-center justify-center gap-1 cursor-pointer">
+                <span>👤</span><span>선수 수동 배정 및 수정</span>
+              </button>
+            </div>
           ` : ''}
         </div>
       `).join('');
@@ -5348,6 +5356,72 @@
       await fetchHtmlUsersFromSupabase();
       renderAdminUsers();
       alert(`🗑️ [${user.name}] 회원의 회원가입 취소(탈퇴) 처리가 완료되었습니다.`);
+    }
+
+    // 코트 경기종료 및 다음 선수 자동 배정 핸들러
+    async function finishCourtMatch(courtId) {
+      if (!isAdminUser()) return;
+      const court = courtsData.find(c => c.id === courtId);
+      if (!court) return;
+
+      const confirmFinish = confirm(`🏁 [${court.courtNumber}번 코트 경기 종료 확인]\n\nTEAM A (${court.teamA.join(', ')}) : ${court.scoreA}점\nTEAM B (${court.teamB.join(', ')}) : ${court.scoreB}점\n\n이 경기를 종료하고 다음 대기 선수를 자동 배정하시겠습니까?`);
+      if (!confirmFinish) return;
+
+      // Supabase matches 기록 시도
+      try {
+        if (supabase) {
+          await supabase.from('matches').insert({
+            court_number: court.courtNumber,
+            round_name: `${currentTournamentTitle} - ${court.courtNumber}번 코트`,
+            score_a: court.scoreA,
+            score_b: court.scoreB,
+            status: 'completed'
+          });
+        }
+      } catch (e) {}
+
+      // 다음 대기 게임 탐색 (KDK 코트 로컬 큐 연동)
+      let nextMatch = null;
+      try {
+        const raw = localStorage.getItem('sun_tennis_kdk_courts_v3');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach(kc => {
+              if (kc.courtNumber === court.courtNumber && Array.isArray(kc.games)) {
+                const uncompleted = kc.games.find(g => !g.completed);
+                if (uncompleted) {
+                  uncompleted.scoreA = court.scoreA;
+                  uncompleted.scoreB = court.scoreB;
+                  uncompleted.completed = true;
+                  const nextGame = kc.games.find(g => !g.completed);
+                  if (nextGame && nextGame.teamA && nextGame.teamB) {
+                    nextMatch = {
+                      teamA: [`${nextGame.teamA[0].name} (${nextGame.teamA[0].grade})`, `${nextGame.teamA[1].name} (${nextGame.teamA[1].grade})`],
+                      teamB: [`${nextGame.teamB[0].name} (${nextGame.teamB[0].grade})`, `${nextGame.teamB[1].name} (${nextGame.teamB[1].grade})`]
+                    };
+                  }
+                }
+              }
+            });
+            localStorage.setItem('sun_tennis_kdk_courts_v3', JSON.stringify(parsed));
+          }
+        }
+      } catch (err) {}
+
+      if (nextMatch) {
+        court.teamA = nextMatch.teamA;
+        court.teamB = nextMatch.teamB;
+        court.scoreA = 0;
+        court.scoreB = 0;
+        court.status = 'playing';
+        renderCourts();
+        alert(`✅ [${court.courtNumber}번 코트] 경기 결과가 저장되었습니다!\n\n🔄 다음 대기 선수가 코트에 자동 투입되어 [🔴 LIVE 경기 진행중] 상태로 전환되었습니다.\n• TEAM A: ${nextMatch.teamA.join(', ')}\n• TEAM B: ${nextMatch.teamB.join(', ')}`);
+      } else {
+        court.status = 'waiting';
+        renderCourts();
+        alert(`✅ [${court.courtNumber}번 코트] 경기 결과가 저장되었습니다!\n\n⚪ 예정된 다음 대기 매치가 완료되어 [대기중] 상태로 전환되었습니다.\n하단 [선수 수동 배정 및 수정] 버튼으로 다음 선수를 직접 배정할 수 있습니다.`);
+      }
     }
 
     // 스코어 모달
