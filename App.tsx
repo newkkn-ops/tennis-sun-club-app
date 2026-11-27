@@ -737,6 +737,39 @@ export default function TennisApp() {
     },
   ]);
 
+  // 각 코트별 다음 대기 경기(NEXT) 정보 조회 헬퍼
+  const getNextWaitingMatchForCourt = (courtNum: number) => {
+    try {
+      const rawKdk = localStorage.getItem('sun_tennis_kdk_courts_v3');
+      if (rawKdk) {
+        const parsedKdk = JSON.parse(rawKdk);
+        if (Array.isArray(parsedKdk)) {
+          const kc = parsedKdk.find((c: any) => c.courtNumber === courtNum);
+          if (kc && Array.isArray(kc.games)) {
+            // 미완료 게임 중 현재 진행 중인 첫 번째 게임을 제외한 바로 다음 게임 탐색
+            const uncompleted = kc.games.filter((g: any) => !g.completed);
+            // 현재 코트의 경기 중인 첫 번째 게임 제외한 다음 게임, 또는 첫 번째가 아직 시작 전 대기 상태면 2번째/첫번째 판단
+            const nextGame = uncompleted.length > 1 ? uncompleted[1] : null;
+            if (nextGame && Array.isArray(nextGame.teamA) && Array.isArray(nextGame.teamB)) {
+              return {
+                gameNumber: nextGame.gameNumber,
+                teamA: [
+                  `${nextGame.teamA[0]?.name || ''} (${nextGame.teamA[0]?.grade || ''})`,
+                  `${nextGame.teamA[1]?.name || ''} (${nextGame.teamA[1]?.grade || ''})`,
+                ],
+                teamB: [
+                  `${nextGame.teamB[0]?.name || ''} (${nextGame.teamB[0]?.grade || ''})`,
+                  `${nextGame.teamB[1]?.name || ''} (${nextGame.teamB[1]?.grade || ''})`,
+                ],
+              };
+            }
+          }
+        }
+      }
+    } catch {}
+    return null;
+  };
+
   // 관리자가 코트 넘버를 코트 수에 맞게 계속 생성하는 함수 (+)
   const handleAddCourt = () => {
     setCourts((prev) => {
@@ -846,20 +879,49 @@ export default function TennisApp() {
   const saveCourtPlayerAssignment = () => {
     if (!courtEditTarget) return;
 
+    const pA1 = manualPlayerA1.trim() || '선수 미지정';
+    const pA2 = manualPlayerA2.trim() || '선수 미지정';
+    const pB1 = manualPlayerB1.trim() || '선수 미지정';
+    const pB2 = manualPlayerB2.trim() || '선수 미지정';
+
+    // 1. 동일 선수 중복 배정 원천 차단 검증
+    const slots = [
+      { name: pA1, slot: 'TEAM A 선수 1' },
+      { name: pA2, slot: 'TEAM A 선수 2' },
+      { name: pB1, slot: 'TEAM B 선수 1' },
+      { name: pB2, slot: 'TEAM B 선수 2' },
+    ];
+
+    // 유효한 선수명(선수 미지정 제외) 중복 검사
+    const cleanName = (val: string) => val.split('(')[0].trim();
+    const seenNames: Record<string, string> = {};
+    for (const s of slots) {
+      if (s.name && s.name !== '선수 미지정') {
+        const key = cleanName(s.name);
+        if (seenNames[key]) {
+          alert(
+            `⚠️ [동일 선수 중복 배정 차단]\n\n'${key}' 선수가 [${seenNames[key]}]과 [${s.slot}]에 중복으로 선택되어 있습니다.\n한 경기에 동일 선수가 2번 이상 출전할 수 없습니다. 다른 선수를 선택해 주세요.`
+          );
+          return;
+        }
+        seenNames[key] = s.slot;
+      }
+    }
+
     setCourts((prev) =>
       prev.map((c) =>
         c.id === courtEditTarget.id
           ? {
               ...c,
-              teamA: [manualPlayerA1.trim() || '선수 미지정', manualPlayerA2.trim() || '선수 미지정'],
-              teamB: [manualPlayerB1.trim() || '선수 미지정', manualPlayerB2.trim() || '선수 미지정'],
+              teamA: [pA1, pA2],
+              teamB: [pB1, pB2],
             }
           : c
       )
     );
 
     setCourtEditTarget(null);
-    alert(`${courtEditTarget.courtNumber}번 코트의 선수 배정 및 수정이 완료되었습니다!`);
+    alert(`✅ ${courtEditTarget.courtNumber}번 코트의 선수 배정 및 수정이 완료되었습니다!`);
   };
 
   // ----------------------------------------------------
@@ -1093,7 +1155,7 @@ export default function TennisApp() {
       console.warn('KDK rotation notice:', e);
     }
 
-    // 3. 코트 상태 업데이트 (다음 선수가 있으면 playing / 점수 0:0, 없으면 waiting)
+    // 3. 코트 상태 업데이트 (다음 선수가 있으면 playing / 점수 0:0, 없으면 waiting / 점수 0:0 초기화)
     setCourts((prev) =>
       prev.map((c) => {
         if (c.id === court.id) {
@@ -1113,8 +1175,8 @@ export default function TennisApp() {
             return {
               ...c,
               status: 'waiting',
-              scoreA: finalScoreA,
-              scoreB: finalScoreB,
+              scoreA: 0,
+              scoreB: 0,
             };
           }
         }
@@ -3020,6 +3082,40 @@ export default function TennisApp() {
                         </div>
                       </div>
 
+                      {/* 2. 경기종료 전 '다음 대기 선수(NEXT)' 미리보기 배너 */}
+                      {(() => {
+                        const nextMatch = getNextWaitingMatchForCourt(court.courtNumber);
+                        return (
+                          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl px-3 py-2 text-[11px] space-y-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="font-black text-amber-400 flex items-center gap-1">
+                                <span>⏳</span> 다음 대기 선수 (NEXT {nextMatch ? `제 ${nextMatch.gameNumber}G` : ''})
+                              </span>
+                              <span className="text-[9px] text-slate-500">
+                                {nextMatch ? '경기종료 시 즉시 투입' : '대기 매치 없음'}
+                              </span>
+                            </div>
+                            {nextMatch ? (
+                              <div className="flex items-center justify-between gap-2 text-slate-300 font-bold text-xs truncate">
+                                <div className="truncate text-emerald-300">
+                                  <span className="text-[10px] text-slate-500 mr-1">A조:</span>
+                                  {nextMatch.teamA.join(' · ')}
+                                </div>
+                                <span className="text-slate-600 font-black text-[10px]">VS</span>
+                                <div className="truncate text-amber-300 text-right">
+                                  <span className="text-[10px] text-slate-500 mr-1">B조:</span>
+                                  {nextMatch.teamB.join(' · ')}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-slate-500 italic">
+                                다음 대기 경기 없음 (수동 배정 필요)
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* 하단 경기종료 및 수동 배정/수정 액션 바 (관리자 전용) */}
                       {isAdmin && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -4543,6 +4639,11 @@ export default function TennisApp() {
             </div>
 
             <div className="space-y-3.5">
+              {/* 중복 방지 안내 문구 */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-300">
+                💡 <strong>동일 선수 중복 배정 방지</strong>: 이미 다른 슬롯에 배정된 선수는 드롭다운에서 선택할 수 없습니다(비활성화). 한 경기에는 서로 다른 4명의 선수가 배정되어야 합니다.
+              </div>
+
               {/* TEAM A 배정 */}
               <div className="bg-slate-950 p-3 rounded-2xl border border-amber-500/30 space-y-2">
                 <span className="text-[11px] font-black text-amber-400 block">TEAM A 선수 구성</span>
@@ -4551,17 +4652,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 1 (드롭다운 선택 또는 직접 수정)</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerA1}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerA1(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA2.includes(p.name)) ||
+                          (manualPlayerB1.includes(p.name)) ||
+                          (manualPlayerB2.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
@@ -4577,17 +4686,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 2</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerA2}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerA2(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA1.includes(p.name)) ||
+                          (manualPlayerB1.includes(p.name)) ||
+                          (manualPlayerB2.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
@@ -4608,17 +4725,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 1</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerB1}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerB1(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA1.includes(p.name)) ||
+                          (manualPlayerA2.includes(p.name)) ||
+                          (manualPlayerB2.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
@@ -4634,17 +4759,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 2</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerB2}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerB2(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA1.includes(p.name)) ||
+                          (manualPlayerA2.includes(p.name)) ||
+                          (manualPlayerB1.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
