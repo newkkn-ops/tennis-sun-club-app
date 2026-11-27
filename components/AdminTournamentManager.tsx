@@ -129,8 +129,8 @@ export default function AdminTournamentManager({
   // [KDK 코트별 선수 우선 배정 & 시드 관리 상태]
   // 코트별 배정 선수 ID 목록: Record<courtNumber, playerId[]>
   const [courtPlayerMap, setCourtPlayerMap] = useState<Record<number, string[]>>({});
-  // 코트별 수동 시드 지정 상태: Record<courtNumber, Record<playerId, 'seed1' | 'seed2' | 'none'>>
-  const [courtSeedMap, setCourtSeedMap] = useState<Record<number, Record<string, 'seed1' | 'seed2' | 'none'>>>({});
+  // 코트별 수동 시드 지정 상태: Record<courtNumber, Record<playerId, string>> ('none' | 'seed1' ~ 'seed10')
+  const [courtSeedMap, setCourtSeedMap] = useState<Record<number, Record<string, string>>>({});
   // 현재 탭에서 편집 중인 코트 번호
   const [activeEditingCourt, setActiveEditingCourt] = useState<number>(1);
 
@@ -150,7 +150,7 @@ export default function AdminTournamentManager({
     });
 
     setCourtSeedMap((prev) => {
-      const next: Record<number, Record<string, 'seed1' | 'seed2' | 'none'>> = {};
+      const next: Record<number, Record<string, string>> = {};
       selectedCourts.forEach((cNum) => {
         next[cNum] = prev[cNum] || {};
       });
@@ -180,10 +180,10 @@ export default function AdminTournamentManager({
 
     setCourtSeedMap((prev) => {
       let changed = false;
-      const next: Record<number, Record<string, 'seed1' | 'seed2' | 'none'>> = {};
+      const next: Record<number, Record<string, string>> = {};
       Object.entries(prev).forEach(([cStr, sMap]) => {
         const cNum = Number(cStr);
-        const nextSub: Record<string, 'seed1' | 'seed2' | 'none'> = {};
+        const nextSub: Record<string, string> = {};
         Object.entries(sMap).forEach(([id, seedVal]) => {
           if (validIds.has(id)) {
             nextSub[id] = seedVal;
@@ -222,17 +222,17 @@ export default function AdminTournamentManager({
     });
   };
 
-  // 특정 코트의 선수 시드 수동 지정 ('seed1' | 'seed2' | 'none')
+  // 특정 코트의 선수 시드 수동 지정 ('none' | 'seed1' ~ 'seed10')
   const handleSetPlayerSeed = (
     courtNum: number,
     playerId: string,
-    seedType: 'seed1' | 'seed2' | 'none'
+    seedType: string
   ) => {
     setCourtSeedMap((prev) => {
       const currentSub = { ...(prev[courtNum] || {}) };
 
-      // 동일 코트 내에 이미 해당 시드(seed1 또는 seed2)를 가진 다른 선수가 있다면 그 선수는 'none'으로 변경
-      if (seedType === 'seed1' || seedType === 'seed2') {
+      // 동일 코트 내에 이미 해당 시드(seed1 ~ seed10)를 가진 다른 선수가 있다면 그 선수는 'none'으로 자동 해제
+      if (seedType && seedType !== 'none') {
         Object.keys(currentSub).forEach((otherId) => {
           if (otherId !== playerId && currentSub[otherId] === seedType) {
             currentSub[otherId] = 'none';
@@ -474,14 +474,17 @@ export default function AdminTournamentManager({
         .map((id) => selectedParticipants.find((p) => p.id === id))
         .filter(Boolean) as ParticipantPlayer[];
 
-      // 관리자가 수동 지정한 시드 정보 조회
+      // 관리자가 수동 지정한 시드 정보 조회 (1시드 ~ 10시드 순번대로 정렬)
       const seedMap = courtSeedMap[cNum] || {};
-      const seed1Id = Object.keys(seedMap).find((id) => seedMap[id] === 'seed1');
-      const seed2Id = Object.keys(seedMap).find((id) => seedMap[id] === 'seed2');
+      const parseSeedRank = (s?: string) => {
+        if (!s || s === 'none') return 999;
+        const match = s.match(/seed(\d+)/);
+        return match ? parseInt(match[1], 10) : 999;
+      };
 
-      const manualSeedIds: string[] = [];
-      if (seed1Id && courtPlayers.some((p) => p.id === seed1Id)) manualSeedIds.push(seed1Id);
-      if (seed2Id && courtPlayers.some((p) => p.id === seed2Id)) manualSeedIds.push(seed2Id);
+      const manualSeedIds = Object.keys(seedMap)
+        .filter((id) => seedMap[id] && seedMap[id] !== 'none' && courtPlayers.some((p) => p.id === id))
+        .sort((a, b) => parseSeedRank(seedMap[a]) - parseSeedRank(seedMap[b]));
 
       // Player 타입 매핑
       const mappedPlayers = courtPlayers.map((p) => ({
@@ -1386,16 +1389,16 @@ export default function AdminTournamentManager({
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-400">
-                        선수 클릭: 코트 배정 토글 | 시드 버튼: 1시드 / 2시드 지정
+                        선수 클릭: 코트 배정 토글 | 시드 지정: 1시드 ~ 10시드 지정
                       </span>
                     </div>
 
                     {/* 배정된 선수 태그 및 수동 시드 지정 리스트 */}
                     <div className="space-y-1.5">
-                      <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                      <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between flex-wrap gap-1">
                         <span>현재 {activeEditingCourt}번 코트에 배정된 선수 목록:</span>
                         <span className="text-[10px] text-amber-400">
-                          * 1시드와 2시드는 실력균등 자동배치 시 상대편(Team A vs Team B)으로 자동 분산·고정됩니다.
+                          * 1시드 ~ 10시드 지정 시 지정된 시드 순번대로 코트/팀에 균형 분산·고정됩니다.
                         </span>
                       </div>
 
@@ -1404,7 +1407,7 @@ export default function AdminTournamentManager({
                           현재 {activeEditingCourt}번 코트에 배정된 선수가 없습니다. 아래 [전체 참여 선수 풀]에서 선수를 클릭하여 배정해 주세요.
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        <div className="space-y-1.5">
                           {(courtPlayerMap[activeEditingCourt] || []).map((pId) => {
                             const p = selectedParticipants.find((item) => item.id === pId);
                             if (!p) return null;
@@ -1420,67 +1423,75 @@ export default function AdminTournamentManager({
                             const diffVal = regUser?.totalPtsDiff ?? regUser?.ptsDiff ?? 0;
                             const diffStr = typeof diffVal === 'number' ? (diffVal >= 0 ? `+${diffVal}` : `${diffVal}`) : '0';
 
+                            const isSeedActive = currentSeed && currentSeed !== 'none';
+
                             return (
                               <div
                                 key={p.id}
-                                className={`p-2 rounded-xl border flex items-center justify-between gap-2 transition ${
-                                  currentSeed === 'seed1'
-                                    ? 'bg-amber-950/60 border-amber-400 text-white'
-                                    : currentSeed === 'seed2'
-                                    ? 'bg-orange-950/60 border-orange-400 text-white'
-                                    : 'bg-slate-950 border-slate-800 text-slate-200'
+                                className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 transition ${
+                                  isSeedActive
+                                    ? 'bg-amber-950/40 border-amber-400/80 text-white'
+                                    : 'bg-slate-950 border-slate-800/80 text-slate-200'
                                 }`}
                               >
+                                {/* 왼쪽 영역: 선수 이름(굵게) + 부수·점수 배지 (한 줄 whitespace-nowrap) + 아래 한 줄 통계 */}
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-xs font-black truncate">{p.name}</span>
-                                    <span className="text-[10px] font-bold text-amber-300 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
-                                      {p.grade} ({weight}점)
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black text-white truncate">{p.name}</span>
+                                    <span className="text-[10px] font-bold text-amber-300 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20 whitespace-nowrap shrink-0">
+                                      {p.grade} {weight}점
                                     </span>
-                                    {ageLabel && (
-                                      <span className="text-[9px] text-slate-400 font-mono">
-                                        {ageLabel}
-                                      </span>
-                                    )}
                                   </div>
-                                  <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                                  <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden truncate">
+                                    <span>{ageLabel || '나이 미지정'}</span>
+                                    <span>·</span>
                                     <span className="text-emerald-400 font-bold">승률 {winRateStr}</span>
                                     <span>·</span>
                                     <span className="text-amber-400 font-bold">득실 {diffStr}</span>
                                     {p.isGuest && (
-                                      <span className="text-[9px] text-slate-500">[임의선수]</span>
+                                      <span className="text-[9px] text-slate-500 font-medium">[임의선수]</span>
                                     )}
                                   </div>
                                 </div>
 
-                                {/* 수동 시드(Seed) 지정 드롭다운 / 버튼 */}
-                                <div className="flex items-center gap-1 shrink-0">
+                                {/* 오른쪽 영역: 시드 선택 드롭다운 (1시드~10시드) + 제외 (✕) 버튼 한 줄 배치 */}
+                                <div className="flex items-center gap-1.5 shrink-0">
                                   <select
                                     value={currentSeed}
                                     onChange={(e) =>
                                       handleSetPlayerSeed(
                                         activeEditingCourt,
                                         p.id,
-                                        e.target.value as 'seed1' | 'seed2' | 'none'
+                                        e.target.value
                                       )
                                     }
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-black border cursor-pointer ${
+                                    className={`px-2 py-1.5 rounded-lg text-[10px] font-black border cursor-pointer ${
                                       currentSeed === 'seed1'
                                         ? 'bg-amber-400 text-slate-950 border-amber-300 font-extrabold'
                                         : currentSeed === 'seed2'
                                         ? 'bg-orange-500 text-slate-950 border-orange-400 font-extrabold'
-                                        : 'bg-slate-900 text-slate-400 border-slate-700'
+                                        : isSeedActive
+                                        ? 'bg-yellow-400 text-slate-950 border-yellow-300 font-extrabold'
+                                        : 'bg-slate-900 text-slate-300 border-slate-700'
                                     }`}
                                   >
                                     <option value="none">시드 없음</option>
                                     <option value="seed1">🥇 1시드</option>
                                     <option value="seed2">🥈 2시드</option>
+                                    <option value="seed3">🥉 3시드</option>
+                                    <option value="seed4">🌟 4시드</option>
+                                    <option value="seed5">🌟 5시드</option>
+                                    <option value="seed6">🌟 6시드</option>
+                                    <option value="seed7">🌟 7시드</option>
+                                    <option value="seed8">🌟 8시드</option>
+                                    <option value="seed9">🌟 9시드</option>
+                                    <option value="seed10">🌟 10시드</option>
                                   </select>
 
                                   <button
                                     type="button"
                                     onClick={() => togglePlayerInCourt(activeEditingCourt, p.id)}
-                                    className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-rose-950 hover:text-rose-300 text-slate-400 flex items-center justify-center text-xs font-bold transition cursor-pointer"
+                                    className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-rose-950 hover:text-rose-300 text-slate-400 flex items-center justify-center text-xs font-bold transition cursor-pointer"
                                     title="이 코트 배정에서 제외"
                                   >
                                     ✕

@@ -282,13 +282,19 @@ export function generateCourtKDKGames(
     courtPlayers.some((p) => p.id === id)
   );
   const autoSeedCount = courtPlayers.length >= 6 ? 2 : Math.min(2, courtPlayers.length);
-  const resolvedSeedSet = new Set<string>(
+  const resolvedSeedList =
     mode === 'SEED_AUTO'
       ? explicitSeedIds.length > 0
         ? explicitSeedIds
         : sortedBySkill.slice(0, autoSeedCount).map((p) => p.id)
-      : []
-  );
+      : [];
+  const resolvedSeedSet = new Set<string>(resolvedSeedList);
+
+  // 시드 순번(0-based rank) 매핑: 0 = 1시드, 1 = 2시드, ...
+  const seedRankMap: Record<string, number> = {};
+  resolvedSeedList.forEach((id, idx) => {
+    seedRankMap[id] = idx;
+  });
 
   const stats: Record<string, PlayerStatTracking> = {};
   courtPlayers.forEach((p) => {
@@ -371,12 +377,41 @@ export function generateCourtKDKGames(
         // 종합 실력(등급+구력+나이) 차이 최소화 + 파트너 중복 방지
         let penalty = skillDiff * 24 + skillDiff * skillDiff * 3;
 
-        // SEED_AUTO 모드: 시드 선수가 2명 이상 출전한 경기에서 시드끼리 한 팀에 몰리지 않고 양 팀으로 분산 배치
+        // SEED_AUTO 모드: 시드 선수가 2명 이상 출전한 경기에서 시드끼리 한 팀에 몰리지 않고 양 팀으로 균형 분산 배치
         if (mode === 'SEED_AUTO') {
-          const seedsInA = (stats[teamA[0].id].isSeed ? 1 : 0) + (stats[teamA[1].id].isSeed ? 1 : 0);
-          const seedsInB = (stats[teamB[0].id].isSeed ? 1 : 0) + (stats[teamB[1].id].isSeed ? 1 : 0);
-          if ((seedsInA === 2 && seedsInB === 0) || (seedsInB === 2 && seedsInA === 0)) {
-            penalty += 900; // 실력자 시드 분리 최우선
+          const seedsA = teamA.filter((p) => resolvedSeedSet.has(p.id));
+          const seedsB = teamB.filter((p) => resolvedSeedSet.has(p.id));
+          const totalSeedsInGame = seedsA.length + seedsB.length;
+
+          if (totalSeedsInGame >= 2) {
+            // 양 팀 간 시드 선수 수의 차이가 벌어지면 매우 강한 페널티 (2:0, 3:1 등 몰림 방지)
+            const countDiff = Math.abs(seedsA.length - seedsB.length);
+            if (countDiff > 0) {
+              penalty += countDiff * 950;
+            }
+
+            // 시드 순번(Rank) 기준 균형 분산 (예: 1시드와 2시드가 상대편으로 갈라지도록, 또는 홀수/짝수 균형)
+            // 각 팀 시드 순번의 합격 페널티 비교
+            const seedRanksA = seedsA.map((p) => seedRankMap[p.id] ?? 99);
+            const seedRanksB = seedsB.map((p) => seedRankMap[p.id] ?? 99);
+
+            // 1시드와 2시드가 동시에 들어왔는데 같은 팀이면 추가 페널티
+            const hasSeed0InA = seedRanksA.includes(0);
+            const hasSeed1InA = seedRanksA.includes(1);
+            const hasSeed0InB = seedRanksB.includes(0);
+            const hasSeed1InB = seedRanksB.includes(1);
+            if ((hasSeed0InA && hasSeed1InA) || (hasSeed0InB && hasSeed1InB)) {
+              penalty += 600;
+            }
+
+            // 3시드와 4시드가 같은 팀일 때도 완만한 페널티
+            const hasSeed2InA = seedRanksA.includes(2);
+            const hasSeed3InA = seedRanksA.includes(3);
+            const hasSeed2InB = seedRanksB.includes(2);
+            const hasSeed3InB = seedRanksB.includes(3);
+            if ((hasSeed2InA && hasSeed3InA) || (hasSeed2InB && hasSeed3InB)) {
+              penalty += 300;
+            }
           }
         }
 
