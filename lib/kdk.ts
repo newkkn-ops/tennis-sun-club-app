@@ -592,40 +592,65 @@ export function calculateKdkStandingsWithAgeTiebreak(
   });
 
   const sorted = Object.values(map).sort((a, b) => {
-    // 1. 승수
+    // 1순위: 승수 높은 순 (다승)
     if (b.wins !== a.wins) return b.wins - a.wins;
-    // 2. 득실차
+    // 2순위: 득실차 높은 순 (게임 득점 - 게임 실점)
     if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff;
-    // 3. 총 득점
+    // 3순위: 다득점 순 (총 게임 득점 높은 순)
     if (b.pointsFor !== a.pointsFor) return b.pointsFor - a.pointsFor;
-    // 4. 동점 시 나이합산(팀 나이합산 누적 높은 순 -> 동률 시 개인 연장자 순)
-    if (b.ageSumWithPartners !== a.ageSumWithPartners) {
-      return b.ageSumWithPartners - a.ageSumWithPartners;
+    // 4순위: 나이순 (연장자 우선, 나이 정보 없는 경우 후순위)
+    const ageA = typeof a.age === 'number' && !isNaN(a.age) && a.age > 0 ? a.age : -1;
+    const ageB = typeof b.age === 'number' && !isNaN(b.age) && b.age > 0 ? b.age : -1;
+    if (ageB !== ageA) {
+      return ageB - ageA;
     }
-    return b.age - a.age;
+    // 5순위: 실력순 (하위 부수 우선: 테린이[3점] > 개나리[5점] > 동배[6점] > 국화[7점] > 은배[8점] > 금배[10점] - 가중치가 낮을수록 우선)
+    const weightA = GRADE_WEIGHTS[a.grade] ?? 6;
+    const weightB = GRADE_WEIGHTS[b.grade] ?? 6;
+    if (weightA !== weightB) {
+      return weightA - weightB; // 낮은 가중치(하위 부수)가 상위 순위
+    }
+    return a.name.localeCompare(b.name, 'ko');
   });
 
-  // 동점(승수·득실차·득점 동일)으로 나이합산 타이브레이커가 적용된 선수 표시
+  // 동점(1~3순위 동일) 발생 시 4순위(연장자) 또는 5순위(하위부수) 판정 사유 기록
   sorted.forEach((row, idx) => {
     row.rank = idx + 1;
     const prev = idx > 0 ? sorted[idx - 1] : null;
     const next = idx < sorted.length - 1 ? sorted[idx + 1] : null;
-    const tiedWithPrev =
+
+    const tiedStatsWithPrev =
       prev &&
       prev.matches > 0 &&
       prev.wins === row.wins &&
       prev.pointDiff === row.pointDiff &&
       prev.pointsFor === row.pointsFor;
-    const tiedWithNext =
+
+    const tiedStatsWithNext =
       next &&
       next.matches > 0 &&
       next.wins === row.wins &&
       next.pointDiff === row.pointDiff &&
       next.pointsFor === row.pointsFor;
 
-    if (tiedWithPrev || tiedWithNext) {
+    if (tiedStatsWithPrev || tiedStatsWithNext) {
       row.tieBreakApplied = true;
-      row.tieBreakReason = `동점→만 나이합산(${row.ageSumWithPartners}세)`;
+      // 인접 동점자와 비교하여 4순위(나이) 또는 5순위(부수) 판정 사유 생성
+      const compareTarget = tiedStatsWithPrev ? prev : next;
+      const targetAge = compareTarget && typeof compareTarget.age === 'number' ? compareTarget.age : -1;
+      const myAge = typeof row.age === 'number' ? row.age : -1;
+
+      if (targetAge !== myAge) {
+        row.tieBreakReason = `연장자 우세(만 ${myAge}세)`;
+      } else {
+        const myWeight = GRADE_WEIGHTS[row.grade] ?? 6;
+        const targetWeight = compareTarget ? (GRADE_WEIGHTS[compareTarget.grade] ?? 6) : 6;
+        if (myWeight !== targetWeight) {
+          row.tieBreakReason = `부수 우세(${row.grade})`;
+        } else {
+          row.tieBreakReason = `동점(만 ${myAge}세·${row.grade})`;
+        }
+      }
     }
   });
 

@@ -2173,7 +2173,7 @@ export default function KdkCourtOperations({
           </div>
 
           {/* ========================================================== */}
-          {/* 3. 코트별 자동 집계 1등·2등·3등 시상대 & 상세 순위표 (동점 시 나이합산) */}
+          {/* 3. 코트별 자동 집계 1등·2등·3등 시상대 & 상세 순위표 (5단계 동점자 우선순위) */}
           {/* ========================================================== */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/30 rounded-2xl p-4 shadow-xl space-y-3">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -2182,7 +2182,7 @@ export default function KdkCourtOperations({
                   <span>🏆</span> {activeCourt.courtNumber}번 코트 자동 집계 순위 (1등 · 2등 · 3등)
                 </h4>
                 <p className="text-[10px] text-slate-400">
-                  정렬기준: 승수 ➔ 득실차 ➔ 총득점 ➔ <strong className="text-amber-300">동점 시 나이합산 우대</strong>
+                  정렬기준: ① 승수 ➔ ② 득실차 ➔ ③ 다득점 ➔ ④ <strong className="text-amber-300">연장자순</strong> ➔ ⑤ <strong className="text-emerald-300">하위부수순</strong>
                 </p>
               </div>
               <span
@@ -2319,10 +2319,20 @@ export default function KdkCourtOperations({
             <div className="pt-3 border-t border-slate-800/80 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
-                  <span>📊</span> KDK_V2025 개인별 라운드 종합 기록표 (라운드별 실시간 득실 연동)
+                  <span>📊</span> KDK_V2025 개인별 라운드 종합 기록표 (5단계 순위 산정 기준 실시간 집계)
                 </span>
                 <span className="text-[10px] text-slate-400">
                   선택 게임 수({activeCourt.minGamesPerPlayer}G) 기준 동적 라운드 표시
+                </span>
+              </div>
+
+              {/* 순위 산정 기준 공식 안내 배너 */}
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 text-[10px] text-slate-300 flex items-center justify-between flex-wrap gap-1">
+                <span>
+                  ※ <strong className="text-amber-300">순위 산정 기준</strong>: ① 승수 ➔ ② 득실차 ➔ ③ 다득점 ➔ ④ 연장자순(만 나이) ➔ ⑤ 하위부수순(테린이&gt;개나리&gt;동배&gt;국화&gt;은배&gt;금배)
+                </span>
+                <span className="text-[9px] text-slate-400">
+                  * 1~3순위 동률 시 연장자/하위부수 우대 배지 표기
                 </span>
               </div>
 
@@ -2341,7 +2351,7 @@ export default function KdkCourtOperations({
                       <th className="py-2 px-2 text-emerald-400">게임 득</th>
                       <th className="py-2 px-2 text-rose-400">게임 실</th>
                       <th className="py-2 px-2 text-cyan-300 font-extrabold bg-cyan-400/5">득실차</th>
-                      <th className="py-2 px-2.5 text-amber-400 font-black">순위</th>
+                      <th className="py-2 px-2.5 text-amber-400 font-black">결과 순위</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70 text-[11px]">
@@ -2371,7 +2381,7 @@ export default function KdkCourtOperations({
                           <td className="py-2 px-2.5 text-left font-black text-white">
                             <span className="truncate">{s.name}</span>
                             <span className="text-[10px] text-slate-400 font-normal ml-1">
-                              ({s.grade})
+                              ({s.grade}·만{s.age}세)
                             </span>
                           </td>
 
@@ -2429,9 +2439,25 @@ export default function KdkCourtOperations({
                             {s.pointDiff >= 0 ? `+${s.pointDiff}` : s.pointDiff}
                           </td>
 
-                          {/* 순위 */}
-                          <td className="py-2 px-2.5 font-black text-amber-400">
-                            {s.rank === 1 ? '🥇 1' : s.rank === 2 ? '🥈 2' : s.rank === 3 ? '🥉 3' : `${s.rank}`}
+                          {/* 결과 순위 + 동점 사유 배지 */}
+                          <td className="py-2 px-2.5 font-black text-amber-400 text-center">
+                            <div className="flex items-center justify-center gap-1 flex-wrap">
+                              <span>
+                                {s.rank === 1 ? '🥇 1' : s.rank === 2 ? '🥈 2' : s.rank === 3 ? '🥉 3' : `${s.rank}`}
+                              </span>
+                              {s.tieBreakApplied && s.tieBreakReason && (
+                                <span
+                                  className="text-[9px] px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 font-bold"
+                                  title={`동점자 판정 근거: ${s.tieBreakReason}`}
+                                >
+                                  {s.tieBreakReason.includes('연장자')
+                                    ? '연장자 우세'
+                                    : s.tieBreakReason.includes('부수')
+                                    ? '부수 우세'
+                                    : '동점 우대'}
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
