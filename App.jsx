@@ -41,6 +41,7 @@ export interface TournamentRecord {
   date: string; // 진행날짜 자동 생성 (YYYY-MM-DD)
   format: 'kdk' | 'tournament'; // 대회 진행 방식: KDK 순환 or 예선/본선 토너먼트
   courtCount: number;
+  minGamesPerPlayer?: number;
   status: 'in_progress' | 'completed';
 }
 
@@ -736,6 +737,142 @@ export default function TennisApp() {
     },
   ]);
 
+  // KDK 스토리지 변경 시 NEXT 미리보기 및 코트 상태 실시간 재계산을 위한 동기화 트리거 상태
+  const [kdkStorageVersion, setKdkStorageVersion] = useState<number>(0);
+
+  useEffect(() => {
+    const handleKdkSync = () => {
+      setKdkStorageVersion((v) => v + 1);
+    };
+    window.addEventListener('sun-tennis-kdk-sync', handleKdkSync);
+    window.addEventListener('storage', handleKdkSync);
+    return () => {
+      window.removeEventListener('sun-tennis-kdk-sync', handleKdkSync);
+      window.removeEventListener('storage', handleKdkSync);
+    };
+  }, []);
+
+  // KDK_V2025 순서표 기준 다음 게임 탐색 헬퍼:
+  // 1) status !== 'completed' (미완료 게임)
+  // 2) 현재 어떤 코트에서도 LIVE 진행 중(status === 'playing')으로 사용 중인 선수들이 아닌 경기
+  // 3) 해당 코트 전용 KDK 순서표에서 가장 빠른 순번(gameNumber 오름차순), 없으면 전체 코트 순환 큐에서 가장 빠른 순번
+  const getNextWaitingMatchForCourt = (courtNum: number) => {
+    try {
+      const rawKdk = localStorage.getItem('sun_tennis_kdk_courts_v3');
+      if (!rawKdk) return null;
+      const parsedKdk = JSON.parse(rawKdk);
+      if (!Array.isArray(parsedKdk)) return null;
+
+      // 현재 다른 코트들(또는 해당 코트)에서 현재 live 경기 중인 선수 이름 목록 수집
+      const busyPlayerNames = new Set<string>();
+      courts.forEach((c) => {
+        if (c.status === 'playing') {
+          (c.teamA || []).forEach((pStr) => {
+            const clean = pStr.split('(')[0].trim();
+            if (clean && clean !== '선수 배정 필요') busyPlayerNames.add(clean);
+          });
+          (c.teamB || []).forEach((pStr) => {
+            const clean = pStr.split('(')[0].trim();
+            if (clean && clean !== '선수 배정 필요') busyPlayerNames.add(clean);
+          });
+        }
+      });
+
+      // 1순위: 해당 코트의 KDK_V2025 순서표 확인
+      const thisCourtKdk = parsedKdk.find((c: any) => c.courtNumber === courtNum);
+      if (thisCourtKdk && Array.isArray(thisCourtKdk.games)) {
+        // 미완료 게임들을 순번(gameNumber) 오름차순 정렬
+        const uncompleted = thisCourtKdk.games
+          .filter((g: any) => !g.completed && Array.isArray(g.teamA) && Array.isArray(g.teamB))
+          .sort((a: any, b: any) => (a.gameNumber || 0) - (b.gameNumber || 0));
+
+        // 코트가 이미 playing 중인 경우:
+        // 현재 이 코트에서 진행 중인 매치가 uncompleted[0]과 동일할 수 있으므로,
+        // 현재 코트의 매치가 uncompleted[0]과 같다면 그 다음 순번부터 탐색
+        const curCourt = courts.find((c) => c.courtNumber === courtNum);
+        let candidateGames = uncompleted;
+        if (curCourt && curCourt.status === 'playing' && uncompleted.length > 0) {
+          const first = uncompleted[0];
+          const firstA0 = first.teamA[0]?.name || '';
+          const isSameLiveMatch = (curCourt.teamA || []).some((n) => n.includes(firstA0));
+          if (isSameLiveMatch) {
+            candidateGames = uncompleted.slice(1);
+          }
+        }
+
+        // 후보 게임 중 동일 코트 내 양 팀 동일 선수 중복 배정 방지 확인
+        for (const g of candidateGames) {
+          const a0 = g.teamA[0]?.name || '';
+          const a1 = g.teamA[1]?.name || '';
+          const b0 = g.teamB[0]?.name || '';
+          const b1 = g.teamB[1]?.name || '';
+          const names = [a0, a1, b0, b1].filter(Boolean);
+          const uniqueNames = new Set(names);
+          // 동일 선수가 양 팀에 중복 배정된 게임 제외
+          if (uniqueNames.size === 4) {
+            return {
+              gameNumber: g.gameNumber,
+              courtNumber: courtNum,
+              teamA: [
+                `${g.teamA[0]?.name || ''} (${g.teamA[0]?.grade || ''})`,
+                `${g.teamA[1]?.name || ''} (${g.teamA[1]?.grade || ''})`,
+              ],
+              teamB: [
+                `${g.teamB[0]?.name || ''} (${g.teamB[0]?.grade || ''})`,
+                `${g.teamB[1]?.name || ''} (${g.teamB[1]?.grade || ''})`,
+              ],
+              teamAWeight: g.teamAWeight,
+              teamBWeight: g.teamBWeight,
+              skillDiff: g.skillDiff,
+            };
+          }
+        }
+      }
+
+      // 2순위: 전체 코트 통합 큐에서 미진행 게임 중 가장 빠른 순번 탐색
+      const allUncompleted: any[] = [];
+      parsedKdk.forEach((kc: any) => {
+        if (Array.isArray(kc.games)) {
+          kc.games.forEach((g: any) => {
+            if (!g.completed && Array.isArray(g.teamA) && Array.isArray(g.teamB)) {
+              allUncompleted.push({ ...g, parentCourtNumber: kc.courtNumber });
+            }
+          });
+        }
+      });
+
+      // 전체 게임번호 오름차순 정렬
+      allUncompleted.sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+
+      for (const g of allUncompleted) {
+        const a0 = g.teamA[0]?.name || '';
+        const a1 = g.teamA[1]?.name || '';
+        const b0 = g.teamB[0]?.name || '';
+        const b1 = g.teamB[1]?.name || '';
+        const names = [a0, a1, b0, b1].filter(Boolean);
+        const uniqueNames = new Set(names);
+        if (uniqueNames.size === 4) {
+          return {
+            gameNumber: g.gameNumber,
+            courtNumber: g.parentCourtNumber || courtNum,
+            teamA: [
+              `${g.teamA[0]?.name || ''} (${g.teamA[0]?.grade || ''})`,
+              `${g.teamA[1]?.name || ''} (${g.teamA[1]?.grade || ''})`,
+            ],
+            teamB: [
+              `${g.teamB[0]?.name || ''} (${g.teamB[0]?.grade || ''})`,
+              `${g.teamB[1]?.name || ''} (${g.teamB[1]?.grade || ''})`,
+            ],
+            teamAWeight: g.teamAWeight,
+            teamBWeight: g.teamBWeight,
+            skillDiff: g.skillDiff,
+          };
+        }
+      }
+    } catch {}
+    return null;
+  };
+
   // 관리자가 코트 넘버를 코트 수에 맞게 계속 생성하는 함수 (+)
   const handleAddCourt = () => {
     setCourts((prev) => {
@@ -845,20 +982,49 @@ export default function TennisApp() {
   const saveCourtPlayerAssignment = () => {
     if (!courtEditTarget) return;
 
+    const pA1 = manualPlayerA1.trim() || '선수 미지정';
+    const pA2 = manualPlayerA2.trim() || '선수 미지정';
+    const pB1 = manualPlayerB1.trim() || '선수 미지정';
+    const pB2 = manualPlayerB2.trim() || '선수 미지정';
+
+    // 1. 동일 선수 중복 배정 원천 차단 검증
+    const slots = [
+      { name: pA1, slot: 'TEAM A 선수 1' },
+      { name: pA2, slot: 'TEAM A 선수 2' },
+      { name: pB1, slot: 'TEAM B 선수 1' },
+      { name: pB2, slot: 'TEAM B 선수 2' },
+    ];
+
+    // 유효한 선수명(선수 미지정 제외) 중복 검사
+    const cleanName = (val: string) => val.split('(')[0].trim();
+    const seenNames: Record<string, string> = {};
+    for (const s of slots) {
+      if (s.name && s.name !== '선수 미지정') {
+        const key = cleanName(s.name);
+        if (seenNames[key]) {
+          alert(
+            `⚠️ [동일 선수 중복 배정 차단]\n\n'${key}' 선수가 [${seenNames[key]}]과 [${s.slot}]에 중복으로 선택되어 있습니다.\n한 경기에 동일 선수가 2번 이상 출전할 수 없습니다. 다른 선수를 선택해 주세요.`
+          );
+          return;
+        }
+        seenNames[key] = s.slot;
+      }
+    }
+
     setCourts((prev) =>
       prev.map((c) =>
         c.id === courtEditTarget.id
           ? {
               ...c,
-              teamA: [manualPlayerA1.trim() || '선수 미지정', manualPlayerA2.trim() || '선수 미지정'],
-              teamB: [manualPlayerB1.trim() || '선수 미지정', manualPlayerB2.trim() || '선수 미지정'],
+              teamA: [pA1, pA2],
+              teamB: [pB1, pB2],
             }
           : c
       )
     );
 
     setCourtEditTarget(null);
-    alert(`${courtEditTarget.courtNumber}번 코트의 선수 배정 및 수정이 완료되었습니다!`);
+    alert(`✅ ${courtEditTarget.courtNumber}번 코트의 선수 배정 및 수정이 완료되었습니다!`);
   };
 
   // ----------------------------------------------------
@@ -1027,7 +1193,7 @@ export default function TennisApp() {
       scoreB: finalScoreB,
     }).catch(() => {});
 
-    // 2. KDK 로컬스토리지 큐가 있는 경우 해당 코트의 현재 게임을 completed로 마킹하고 다음 대기 게임 탐색
+    // 2. KDK_V2025 대진 순서표에서 현재 게임을 완료 처리하고, 다음 가장 빠른 순번의 미진행 게임 탐색 및 자동 배정
     let nextMatchData: {
       teamA: string[];
       teamB: string[];
@@ -1044,46 +1210,112 @@ export default function TennisApp() {
         const parsedKdk = JSON.parse(rawKdk);
         if (Array.isArray(parsedKdk)) {
           let updatedKdk = false;
-          const nextKdkCourts = parsedKdk.map((kc: any) => {
-            if (kc.courtNumber === courtNum && Array.isArray(kc.games)) {
-              // 현재 미완료된 첫 번째 게임 완료 처리
-              const uncompletedIdx = kc.games.findIndex((g: any) => !g.completed);
-              if (uncompletedIdx !== -1) {
-                kc.games[uncompletedIdx] = {
-                  ...kc.games[uncompletedIdx],
-                  scoreA: finalScoreA,
-                  scoreB: finalScoreB,
-                  completed: true,
-                };
-                updatedKdk = true;
 
-                // 다음 대기 게임 탐색
-                const nextWaiting = kc.games.find((g: any) => !g.completed);
-                if (nextWaiting && Array.isArray(nextWaiting.teamA) && Array.isArray(nextWaiting.teamB)) {
-                  nextGameNumber = nextWaiting.gameNumber;
-                  nextMatchData = {
-                    teamA: [
-                      `${nextWaiting.teamA[0].name} (${nextWaiting.teamA[0].grade})`,
-                      `${nextWaiting.teamA[1].name} (${nextWaiting.teamA[1].grade})`,
-                    ],
-                    teamB: [
-                      `${nextWaiting.teamB[0].name} (${nextWaiting.teamB[0].grade})`,
-                      `${nextWaiting.teamB[1].name} (${nextWaiting.teamB[1].grade})`,
-                    ],
-                    teamAWeight: nextWaiting.teamAWeight,
-                    teamBWeight: nextWaiting.teamBWeight,
-                    skillDiff: nextWaiting.skillDiff,
-                  };
-                }
-              }
-              const allDone = kc.games.length >= 2 && kc.games.every((g: any) => g.completed);
-              kc.isFinished = allDone;
+          // 2-1. 현재 코트의 현재 미완료 게임 중 점수를 기록하고 completed 처리
+          const targetCourtKdk = parsedKdk.find((kc: any) => kc.courtNumber === courtNum);
+          if (targetCourtKdk && Array.isArray(targetCourtKdk.games)) {
+            const uncompletedIdx = targetCourtKdk.games.findIndex((g: any) => !g.completed);
+            if (uncompletedIdx !== -1) {
+              targetCourtKdk.games[uncompletedIdx] = {
+                ...targetCourtKdk.games[uncompletedIdx],
+                scoreA: finalScoreA,
+                scoreB: finalScoreB,
+                completed: true,
+              };
+              updatedKdk = true;
             }
-            return kc;
+            const allDone = targetCourtKdk.games.length >= 2 && targetCourtKdk.games.every((g: any) => g.completed);
+            targetCourtKdk.isFinished = allDone;
+          }
+
+          // 2-2. KDK_V2025 순서표 기준 다음 게임 탐색 규칙:
+          // - status !== 'completed'
+          // - 다른 코트에서 진행 중(status === 'playing')으로 점유된 선수와 겹치지 않는 게임
+          // - 한 코트 내에서 동일 선수가 양 팀에 중복 배정되지 않은 정상 4명 게임
+          // - 1순위: 해당 코트의 미진행 게임 중 가장 빠른 순번(gameNumber)
+          // - 2순위: 전체 코트의 미진행 게임 중 가장 빠른 순번(gameNumber)
+          const otherBusyNames = new Set<string>();
+          courts.forEach((c) => {
+            if (c.courtNumber !== courtNum && c.status === 'playing') {
+              (c.teamA || []).forEach((n) => {
+                const clean = n.split('(')[0].trim();
+                if (clean && clean !== '선수 배정 필요') otherBusyNames.add(clean);
+              });
+              (c.teamB || []).forEach((n) => {
+                const clean = n.split('(')[0].trim();
+                if (clean && clean !== '선수 배정 필요') otherBusyNames.add(clean);
+              });
+            }
           });
 
+          let chosenGame: any = null;
+
+          // 1순위 탐색: 해당 코트 전용 순서표
+          if (targetCourtKdk && Array.isArray(targetCourtKdk.games)) {
+            const thisCourtWaiting = targetCourtKdk.games
+              .filter((g: any) => !g.completed && Array.isArray(g.teamA) && Array.isArray(g.teamB))
+              .sort((a: any, b: any) => (a.gameNumber || 0) - (b.gameNumber || 0));
+
+            for (const g of thisCourtWaiting) {
+              const a0 = g.teamA[0]?.name || '';
+              const a1 = g.teamA[1]?.name || '';
+              const b0 = g.teamB[0]?.name || '';
+              const b1 = g.teamB[1]?.name || '';
+              const names = [a0, a1, b0, b1].filter(Boolean);
+              // 동일 코트 내 동일 선수 중복 차단
+              if (new Set(names).size === 4) {
+                chosenGame = g;
+                break;
+              }
+            }
+          }
+
+          // 2순위 탐색: 전체 코트 통합 미진행 게임 중 가장 빠른 순번
+          if (!chosenGame) {
+            const allRemaining: any[] = [];
+            parsedKdk.forEach((kc: any) => {
+              if (Array.isArray(kc.games)) {
+                kc.games.forEach((g: any) => {
+                  if (!g.completed && Array.isArray(g.teamA) && Array.isArray(g.teamB)) {
+                    allRemaining.push(g);
+                  }
+                });
+              }
+            });
+            allRemaining.sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+
+            for (const g of allRemaining) {
+              const a0 = g.teamA[0]?.name || '';
+              const a1 = g.teamA[1]?.name || '';
+              const b0 = g.teamB[0]?.name || '';
+              const b1 = g.teamB[1]?.name || '';
+              const names = [a0, a1, b0, b1].filter(Boolean);
+              if (new Set(names).size === 4) {
+                chosenGame = g;
+                break;
+              }
+            }
+          }
+
+          if (chosenGame) {
+            nextGameNumber = chosenGame.gameNumber;
+            nextMatchData = {
+              teamA: [
+                `${chosenGame.teamA[0].name} (${chosenGame.teamA[0].grade || '은배'})`,
+                `${chosenGame.teamA[1].name} (${chosenGame.teamA[1].grade || '은배'})`,
+              ],
+              teamB: [
+                `${chosenGame.teamB[0].name} (${chosenGame.teamB[0].grade || '은배'})`,
+                `${chosenGame.teamB[1].name} (${chosenGame.teamB[1].grade || '은배'})`,
+              ],
+              teamAWeight: chosenGame.teamAWeight,
+              teamBWeight: chosenGame.teamBWeight,
+              skillDiff: chosenGame.skillDiff,
+            };
+          }
+
           if (updatedKdk) {
-            localStorage.setItem(kdkStorageKey, JSON.stringify(nextKdkCourts));
+            localStorage.setItem(kdkStorageKey, JSON.stringify(parsedKdk));
             window.dispatchEvent(new CustomEvent('sun-tennis-kdk-sync'));
           }
         }
@@ -1092,7 +1324,7 @@ export default function TennisApp() {
       console.warn('KDK rotation notice:', e);
     }
 
-    // 3. 코트 상태 업데이트 (다음 선수가 있으면 playing / 점수 0:0, 없으면 waiting)
+    // 3. 코트 상태 업데이트 (다음 선수가 있으면 playing / 점수 0:0, 없으면 waiting / 점수 0:0 초기화)
     setCourts((prev) =>
       prev.map((c) => {
         if (c.id === court.id) {
@@ -1112,8 +1344,8 @@ export default function TennisApp() {
             return {
               ...c,
               status: 'waiting',
-              scoreA: finalScoreA,
-              scoreB: finalScoreB,
+              scoreA: 0,
+              scoreB: 0,
             };
           }
         }
@@ -3019,6 +3251,42 @@ export default function TennisApp() {
                         </div>
                       </div>
 
+                      {/* 2. 경기종료 전 '다음 대기 선수(NEXT)' 미리보기 배너 (KDK_V2025 대진 순서표 실시간 연동) */}
+                      {(() => {
+                        // kdkStorageVersion을 키로 참조하여 실시간 동적 재렌더링
+                        const _ver = kdkStorageVersion;
+                        const nextMatch = getNextWaitingMatchForCourt(court.courtNumber);
+                        return (
+                          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl px-3 py-2 text-[11px] space-y-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="font-black text-amber-400 flex items-center gap-1">
+                                <span>⏳</span> NEXT [게임 {nextMatch ? nextMatch.gameNumber : '대기'}] KDK 순서표 다음 대기
+                              </span>
+                              <span className="text-[9px] text-slate-500">
+                                {nextMatch ? '경기종료 시 즉시 자동 투입' : '예정 매치 완료됨'}
+                              </span>
+                            </div>
+                            {nextMatch ? (
+                              <div className="flex items-center justify-between gap-2 text-slate-300 font-bold text-xs truncate">
+                                <div className="truncate text-emerald-300">
+                                  <span className="text-[10px] text-slate-500 mr-1">Team A:</span>
+                                  {nextMatch.teamA.join(' · ')}
+                                </div>
+                                <span className="text-slate-600 font-black text-[10px]">VS</span>
+                                <div className="truncate text-amber-300 text-right">
+                                  <span className="text-[10px] text-slate-500 mr-1">Team B:</span>
+                                  {nextMatch.teamB.join(' · ')}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-slate-500 italic">
+                                KDK 순서표의 모든 게임이 배정/완료되었습니다.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* 하단 경기종료 및 수동 배정/수정 액션 바 (관리자 전용) */}
                       {isAdmin && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -4417,6 +4685,7 @@ export default function TennisApp() {
                     date: autoDate,
                     format: config.mode === 'KDK' ? 'kdk' : 'tournament',
                     courtCount: config.selectedCourts.length || 3,
+                    minGamesPerPlayer: config.minGamesPerPlayer || 3,
                     status: 'in_progress',
                   };
                   setTournamentHistory((prev) => {
@@ -4425,6 +4694,50 @@ export default function TennisApp() {
                     return next;
                   });
                   setCurrentTournament(newTour);
+
+                  // KDK 대회일 경우 KdkCourtOperations 스토리지에 새 대회 매치와 참여자 자동 동기화
+                  if (config.mode === 'KDK' && Array.isArray(config.matches) && config.matches.length > 0) {
+                    try {
+                      const courtNums = config.selectedCourts && config.selectedCourts.length > 0 ? config.selectedCourts : [1, 2];
+                      const kdkCourtsPayload = courtNums.map((cNum) => {
+                        const courtMatches = config.matches.filter((m) => m.courtNumber === cNum);
+                        const courtPlayersMap: Record<string, any> = {};
+                        courtMatches.forEach((m) => {
+                          [...m.teamA, ...m.teamB].forEach((p) => {
+                            if (p && p.id) courtPlayersMap[p.id] = p;
+                          });
+                        });
+                        const cPlayers = Object.values(courtPlayersMap);
+                        const cGames = courtMatches.map((m, gIdx) => ({
+                          id: m.id || `c${cNum}_g${gIdx + 1}`,
+                          courtNumber: cNum,
+                          gameNumber: gIdx + 1,
+                          teamA: m.teamA,
+                          teamB: m.teamB,
+                          teamAWeight: m.teamAWeight || 0,
+                          teamBWeight: m.teamBWeight || 0,
+                          skillDiff: m.skillDiff || 0,
+                          scoreA: m.scoreA || 0,
+                          scoreB: m.scoreB || 0,
+                          completed: m.status === 'completed',
+                          resting: [],
+                        }));
+                        return {
+                          courtNumber: cNum,
+                          targetPlayerCount: cPlayers.length,
+                          minGamesPerPlayer: config.minGamesPerPlayer || 3,
+                          gameCount: cGames.length,
+                          assignMode: 'AUTO',
+                          seedPlayerIds: [],
+                          players: cPlayers,
+                          games: cGames,
+                          isFinished: false,
+                        };
+                      });
+                      localStorage.setItem('sun_tennis_kdk_courts_v3', JSON.stringify(kdkCourtsPayload));
+                      window.dispatchEvent(new Event('sun-tennis-kdk-sync'));
+                    } catch {}
+                  }
 
                   const mappedCourts: CourtMatch[] = (Array.isArray(config?.matches) ? config.matches : [])
                     .filter((m) => m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1])
@@ -4497,6 +4810,11 @@ export default function TennisApp() {
             </div>
 
             <div className="space-y-3.5">
+              {/* 중복 방지 안내 문구 */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-300">
+                💡 <strong>동일 선수 중복 배정 방지</strong>: 이미 다른 슬롯에 배정된 선수는 드롭다운에서 선택할 수 없습니다(비활성화). 한 경기에는 서로 다른 4명의 선수가 배정되어야 합니다.
+              </div>
+
               {/* TEAM A 배정 */}
               <div className="bg-slate-950 p-3 rounded-2xl border border-amber-500/30 space-y-2">
                 <span className="text-[11px] font-black text-amber-400 block">TEAM A 선수 구성</span>
@@ -4505,17 +4823,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 1 (드롭다운 선택 또는 직접 수정)</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerA1}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerA1(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA2.includes(p.name)) ||
+                          (manualPlayerB1.includes(p.name)) ||
+                          (manualPlayerB2.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
@@ -4531,17 +4857,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 2</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerA2}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerA2(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA1.includes(p.name)) ||
+                          (manualPlayerB1.includes(p.name)) ||
+                          (manualPlayerB2.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
@@ -4562,17 +4896,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 1</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerB1}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerB1(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA1.includes(p.name)) ||
+                          (manualPlayerA2.includes(p.name)) ||
+                          (manualPlayerB2.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
@@ -4588,17 +4930,25 @@ export default function TennisApp() {
                   <label className="text-[10px] text-slate-400 block mb-0.5">선수 2</label>
                   <div className="flex gap-1.5">
                     <select
+                      value={manualPlayerB2}
                       onChange={(e) => {
                         if (e.target.value) setManualPlayerB2(e.target.value);
                       }}
                       className="bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-300 w-28"
                     >
-                      <option value="">등록선수</option>
-                      {registeredPlayers.map((p) => (
-                        <option key={p.id} value={`${p.name} (${p.grade})`}>
-                          {p.name} ({p.grade})
-                        </option>
-                      ))}
+                      <option value="">등록선수 선택</option>
+                      {registeredPlayers.map((p) => {
+                        const optVal = `${p.name} (${p.grade})`;
+                        const isTakenElsewhere =
+                          (manualPlayerA1.includes(p.name)) ||
+                          (manualPlayerA2.includes(p.name)) ||
+                          (manualPlayerB1.includes(p.name));
+                        return (
+                          <option key={p.id} value={optVal} disabled={isTakenElsewhere}>
+                            {p.name} ({p.grade}){isTakenElsewhere ? ' (이미 선택됨)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       type="text"
