@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   generateKDKSchedule,
+  generateCourtKDKGames,
   GRADE_WEIGHTS,
   getCompositeSkillScore,
   resolvePlayerAge,
@@ -125,10 +126,155 @@ export default function AdminTournamentManager({
   );
   const [autoBalanceOption, setAutoBalanceOption] = useState<'BALANCE' | 'RANDOM'>('BALANCE');
 
+  // [KDK 코트별 선수 우선 배정 & 시드 관리 상태]
+  // 코트별 배정 선수 ID 목록: Record<courtNumber, playerId[]>
+  const [courtPlayerMap, setCourtPlayerMap] = useState<Record<number, string[]>>({});
+  // 코트별 수동 시드 지정 상태: Record<courtNumber, Record<playerId, 'seed1' | 'seed2' | 'none'>>
+  const [courtSeedMap, setCourtSeedMap] = useState<Record<number, Record<string, 'seed1' | 'seed2' | 'none'>>>({});
+  // 현재 탭에서 편집 중인 코트 번호
+  const [activeEditingCourt, setActiveEditingCourt] = useState<number>(1);
+
   // 배정된 매치 리스트
   const [assignedMatches, setAssignedMatches] = useState<AssignedMatch[]>(
     activeTournament?.matches || []
   );
+
+  // 선택된 코트 목록이 바뀔 때 courtPlayerMap 초기화/정리 (신규 코트 키 생성, 삭제된 코트 정리)
+  useEffect(() => {
+    setCourtPlayerMap((prev) => {
+      const next: Record<number, string[]> = {};
+      selectedCourts.forEach((cNum) => {
+        next[cNum] = prev[cNum] || [];
+      });
+      return next;
+    });
+
+    setCourtSeedMap((prev) => {
+      const next: Record<number, Record<string, 'seed1' | 'seed2' | 'none'>> = {};
+      selectedCourts.forEach((cNum) => {
+        next[cNum] = prev[cNum] || {};
+      });
+      return next;
+    });
+
+    if (!selectedCourts.includes(activeEditingCourt) && selectedCourts.length > 0) {
+      setActiveEditingCourt(selectedCourts[0]);
+    }
+  }, [selectedCourts]);
+
+  // 참여 확정 선수(selectedParticipants) 변경 시, 코트 배정 명단 및 시드에서 제외된 선수 자동 정리
+  useEffect(() => {
+    const validIds = new Set(selectedParticipants.map((p) => p.id));
+
+    setCourtPlayerMap((prev) => {
+      let changed = false;
+      const next: Record<number, string[]> = {};
+      Object.entries(prev).forEach(([cStr, pIds]) => {
+        const cNum = Number(cStr);
+        const filtered = pIds.filter((id) => validIds.has(id));
+        if (filtered.length !== pIds.length) changed = true;
+        next[cNum] = filtered;
+      });
+      return changed ? next : prev;
+    });
+
+    setCourtSeedMap((prev) => {
+      let changed = false;
+      const next: Record<number, Record<string, 'seed1' | 'seed2' | 'none'>> = {};
+      Object.entries(prev).forEach(([cStr, sMap]) => {
+        const cNum = Number(cStr);
+        const nextSub: Record<string, 'seed1' | 'seed2' | 'none'> = {};
+        Object.entries(sMap).forEach(([id, seedVal]) => {
+          if (validIds.has(id)) {
+            nextSub[id] = seedVal;
+          } else {
+            changed = true;
+          }
+        });
+        next[cNum] = nextSub;
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedParticipants]);
+
+  // 특정 코트에 선수 추가/제거 토글
+  const togglePlayerInCourt = (courtNum: number, playerId: string) => {
+    setCourtPlayerMap((prev) => {
+      const currentList = prev[courtNum] || [];
+      const exists = currentList.includes(playerId);
+      const nextList = exists
+        ? currentList.filter((id) => id !== playerId)
+        : [...currentList, playerId];
+
+      // 만약 선수가 제거되면 해당 코트의 시드도 초기화
+      if (exists) {
+        setCourtSeedMap((sPrev) => {
+          const sub = { ...(sPrev[courtNum] || {}) };
+          delete sub[playerId];
+          return { ...sPrev, [courtNum]: sub };
+        });
+      }
+
+      return {
+        ...prev,
+        [courtNum]: nextList,
+      };
+    });
+  };
+
+  // 특정 코트의 선수 시드 수동 지정 ('seed1' | 'seed2' | 'none')
+  const handleSetPlayerSeed = (
+    courtNum: number,
+    playerId: string,
+    seedType: 'seed1' | 'seed2' | 'none'
+  ) => {
+    setCourtSeedMap((prev) => {
+      const currentSub = { ...(prev[courtNum] || {}) };
+
+      // 동일 코트 내에 이미 해당 시드(seed1 또는 seed2)를 가진 다른 선수가 있다면 그 선수는 'none'으로 변경
+      if (seedType === 'seed1' || seedType === 'seed2') {
+        Object.keys(currentSub).forEach((otherId) => {
+          if (otherId !== playerId && currentSub[otherId] === seedType) {
+            currentSub[otherId] = 'none';
+          }
+        });
+      }
+
+      currentSub[playerId] = seedType;
+      return {
+        ...prev,
+        [courtNum]: currentSub,
+      };
+    });
+  };
+
+  // 코트별 선수 자동 분배 (전체 참여자를 코트들에 골고루 배정해주는 편의 버튼)
+  const handleAutoDistributeParticipantsToCourts = () => {
+    if (selectedParticipants.length < 4) {
+      alert('참여선수를 최소 4명 이상 선택해 주세요.');
+      return;
+    }
+    const courts = selectedCourts.length > 0 ? selectedCourts : [1, 2];
+    const sorted = [...selectedParticipants].sort(
+      (a, b) => getCompositeSkillScore(b) - getCompositeSkillScore(a)
+    );
+
+    const newMap: Record<number, string[]> = {};
+    courts.forEach((c) => {
+      newMap[c] = [];
+    });
+
+    // 스네이크 방식으로 코트별 인원 및 실력 고루 분배
+    sorted.forEach((p, idx) => {
+      const roundIdx = Math.floor(idx / courts.length);
+      const pos = idx % courts.length;
+      const cIdx = roundIdx % 2 === 0 ? pos : courts.length - 1 - pos;
+      const targetCourt = courts[cIdx];
+      newMap[targetCourt].push(p.id);
+    });
+
+    setCourtPlayerMap(newMap);
+  };
 
   // 수동 추가용 개별 매치 슬롯 상태
   const [manualCourt, setManualCourt] = useState<number>(1);
@@ -299,7 +445,94 @@ export default function AdminTournamentManager({
   };
 
   // ============================================================================
-  // [자동 배정 엔진]: KDK 실력 차이 최소화(Skill Gap 0) 및 토너먼트 밸런스 배정
+  // [3. 시드 고정 후 나머지 인원 실력균등 자동배치 실행 버튼 엔진]
+  // ============================================================================
+  const handleAssignKdkWithFixedSeeds = () => {
+    if (!tournamentTitle.trim()) {
+      alert('먼저 대회명을 입력해 주세요.');
+      return;
+    }
+    const courts = selectedCourts.length > 0 ? selectedCourts : [1, 2];
+
+    // 코트별 최소 인원 검증
+    for (const cNum of courts) {
+      const assignedIds = courtPlayerMap[cNum] || [];
+      if (assignedIds.length < 4) {
+        alert(
+          `${cNum}번 코트에 배정된 선수가 ${assignedIds.length}명입니다. 경기를 진행하려면 각 코트마다 최소 4명 이상의 선수를 배정해 주세요.`
+        );
+        return;
+      }
+    }
+
+    const generated: AssignedMatch[] = [];
+
+    // 각 코트별로 독립적으로 KDK 대진 편성 실행
+    courts.forEach((cNum) => {
+      const assignedIds = courtPlayerMap[cNum] || [];
+      const courtPlayers = assignedIds
+        .map((id) => selectedParticipants.find((p) => p.id === id))
+        .filter(Boolean) as ParticipantPlayer[];
+
+      // 관리자가 수동 지정한 시드 정보 조회
+      const seedMap = courtSeedMap[cNum] || {};
+      const seed1Id = Object.keys(seedMap).find((id) => seedMap[id] === 'seed1');
+      const seed2Id = Object.keys(seedMap).find((id) => seedMap[id] === 'seed2');
+
+      const manualSeedIds: string[] = [];
+      if (seed1Id && courtPlayers.some((p) => p.id === seed1Id)) manualSeedIds.push(seed1Id);
+      if (seed2Id && courtPlayers.some((p) => p.id === seed2Id)) manualSeedIds.push(seed2Id);
+
+      // Player 타입 매핑
+      const mappedPlayers = courtPlayers.map((p) => ({
+        id: p.id,
+        name: p.name,
+        grade: p.grade,
+        birthDate: p.birthDate,
+        age: p.age,
+        experienceYears: p.experienceYears,
+        gender: p.gender,
+        isGuest: p.isGuest,
+      }));
+
+      // 단일 코트 KDK 게임 생성 함수 호출 (시드 우선 모드 및 수동 시드 ID 목록 전달)
+      const games = generateCourtKDKGames(cNum, mappedPlayers, 2, {
+        minGamesPerPlayer: 2,
+        assignMode: manualSeedIds.length > 0 ? 'SEED_AUTO' : 'AUTO',
+        seedPlayerIds: manualSeedIds,
+        overrideTotalGames: Math.max(kdkRoundsCount, Math.ceil((mappedPlayers.length * 2) / 4)),
+      });
+
+      // AssignedMatch 형식으로 변환하여 추가
+      games.forEach((g) => {
+        const pA1 = courtPlayers.find((p) => p.id === g.teamA[0].id) || (g.teamA[0] as ParticipantPlayer);
+        const pA2 = courtPlayers.find((p) => p.id === g.teamA[1].id) || (g.teamA[1] as ParticipantPlayer);
+        const pB1 = courtPlayers.find((p) => p.id === g.teamB[0].id) || (g.teamB[0] as ParticipantPlayer);
+        const pB2 = courtPlayers.find((p) => p.id === g.teamB[1].id) || (g.teamB[1] as ParticipantPlayer);
+
+        const weights = calcMatchWeights([pA1, pA2], [pB1, pB2]);
+        const seedNote = manualSeedIds.length > 0 ? ` · 시드(${manualSeedIds.length}명) 고정` : '';
+
+        generated.push({
+          id: `match_kdk_seed_c${cNum}_g${g.gameNumber}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          round: g.gameNumber,
+          roundName: `${cNum}코트 제 ${g.gameNumber}경기 (KDK 실력균등${seedNote})`,
+          courtNumber: cNum,
+          teamA: [pA1, pA2],
+          teamB: [pB1, pB2],
+          ...weights,
+          scoreA: 0,
+          scoreB: 0,
+          status: g.gameNumber === 1 ? 'playing' : 'waiting',
+        });
+      });
+    });
+
+    setAssignedMatches(generated);
+  };
+
+  // ============================================================================
+  // [기존 자동 배정 엔진]: KDK 일괄 실력 차이 최소화(Skill Gap 0) 및 토너먼트 밸런스 배정
   // ============================================================================
   const handleAutoAssign = () => {
     if (!tournamentTitle.trim()) {
@@ -1060,69 +1293,331 @@ export default function AdminTournamentManager({
 
         {/* [A] 자동 방식 설정 패널 */}
         {assignmentType === 'AUTO' && (
-          <div className="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-300">배정 기준:</span>
-                <button
-                  type="button"
-                  onClick={() => setAutoBalanceOption('BALANCE')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                    autoBalanceOption === 'BALANCE'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400'
-                      : 'bg-slate-900 text-slate-400 border-slate-800'
-                  }`}
-                >
-                  ⚖️ 경기 실력차 제로(0) 균형 배정 (권장)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAutoBalanceOption('RANDOM')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                    autoBalanceOption === 'RANDOM'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400'
-                      : 'bg-slate-900 text-slate-400 border-slate-800'
-                  }`}
-                >
-                  🎲 무작위 추첨
-                </button>
-              </div>
+          <div className="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3.5">
+            {tournamentMode === 'KDK' ? (
+              /* KDK 전용: 코트별 선수 우선 배정 및 수동 시드 지정 워크플로우 */
+              <div className="space-y-3.5">
+                {/* 1. 코트별 참여선수 우선 배정 헤더 & 코트 탭 전환 */}
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-[11px] flex items-center justify-center">
+                        1
+                      </span>
+                      <span className="text-xs font-black text-white">코트별 참여선수 우선 배정</span>
+                      <span className="text-[10px] text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 font-bold">
+                        코트 지정 시 자동 생성 방지
+                      </span>
+                    </div>
 
-              {tournamentMode === 'KDK' && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400 font-bold">라운드 수:</span>
-                  {[2, 3, 4].map((rNum) => (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleAutoDistributeParticipantsToCourts}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 cursor-pointer transition"
+                        title="전체 참여선수를 선택된 코트들에 실력 스네이크 방식으로 고루 1차 균등 분배합니다."
+                      >
+                        ⚡ 전체 인원 코트별 1차 균등분배
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    선택된 각 코트({selectedCourts.map((c) => `${c}코트`).join(', ')})별로 참여할 선수들을 먼저 선택하고, 각 코트 내 실적자에게 <strong>1시드 / 2시드</strong>를 지정하세요.
+                  </p>
+
+                  {/* 코트 탭 선택 버튼 */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {selectedCourts.map((cNum) => {
+                      const count = (courtPlayerMap[cNum] || []).length;
+                      const isActive = activeEditingCourt === cNum;
+                      const seed1Count = Object.values(courtSeedMap[cNum] || {}).filter((v) => v === 'seed1').length;
+                      const seed2Count = Object.values(courtSeedMap[cNum] || {}).filter((v) => v === 'seed2').length;
+                      const hasSeeds = seed1Count > 0 || seed2Count > 0;
+
+                      return (
+                        <button
+                          key={cNum}
+                          type="button"
+                          onClick={() => setActiveEditingCourt(cNum)}
+                          className={`px-3 py-2 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1.5 ${
+                            isActive
+                              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md ring-2 ring-amber-400/40'
+                              : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <span>{cNum}번 코트</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                              isActive
+                                ? 'bg-slate-950/20 text-slate-950'
+                                : count >= 4
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-red-500/20 text-red-300'
+                            }`}
+                          >
+                            {count}명
+                          </span>
+                          {hasSeeds && (
+                            <span
+                              className={`text-[9px] px-1 py-0.2 rounded font-black ${
+                                isActive ? 'bg-slate-950 text-amber-300' : 'bg-amber-400/20 text-amber-300'
+                              }`}
+                            >
+                              시드
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. 현재 선택된 코트의 참여선수 체크 & 시드 지정 UI */}
+                {selectedCourts.includes(activeEditingCourt) && (
+                  <div className="bg-slate-900 border border-amber-500/30 rounded-xl p-3 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-amber-300">
+                          🎾 {activeEditingCourt}번 코트 참여 명단 & 수동 시드(Seed) 설정
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          (현재 {(courtPlayerMap[activeEditingCourt] || []).length}명 배정됨 / 최소 4명 필요)
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        선수 클릭: 코트 배정 토글 | 시드 버튼: 1시드 / 2시드 지정
+                      </span>
+                    </div>
+
+                    {/* 배정된 선수 태그 및 수동 시드 지정 리스트 */}
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                        <span>현재 {activeEditingCourt}번 코트에 배정된 선수 목록:</span>
+                        <span className="text-[10px] text-amber-400">
+                          * 1시드와 2시드는 실력균등 자동배치 시 상대편(Team A vs Team B)으로 자동 분산·고정됩니다.
+                        </span>
+                      </div>
+
+                      {(courtPlayerMap[activeEditingCourt] || []).length === 0 ? (
+                        <div className="p-3 rounded-xl bg-slate-950 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+                          현재 {activeEditingCourt}번 코트에 배정된 선수가 없습니다. 아래 [전체 참여 선수 풀]에서 선수를 클릭하여 배정해 주세요.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {(courtPlayerMap[activeEditingCourt] || []).map((pId) => {
+                            const p = selectedParticipants.find((item) => item.id === pId);
+                            if (!p) return null;
+                            const weight = getPlayerWeight(p);
+                            const ageLabel = formatManAgeLabel(p.birthDate, p.age);
+                            const currentSeed = courtSeedMap[activeEditingCourt]?.[p.id] || 'none';
+
+                            // 누적 승률/득실차 정보 조회 (가입회원 통계 기반)
+                            const regUser = safeRegisteredUsers.find((u) => String(u.id) === p.id || u.name === p.name);
+                            const winRateStr = regUser?.winRate !== undefined
+                              ? `${regUser.winRate}%`
+                              : regUser?.winRateStr || (p.isGuest ? '신규/미집계' : '0.0%');
+                            const diffVal = regUser?.totalPtsDiff ?? regUser?.ptsDiff ?? 0;
+                            const diffStr = typeof diffVal === 'number' ? (diffVal >= 0 ? `+${diffVal}` : `${diffVal}`) : '0';
+
+                            return (
+                              <div
+                                key={p.id}
+                                className={`p-2 rounded-xl border flex items-center justify-between gap-2 transition ${
+                                  currentSeed === 'seed1'
+                                    ? 'bg-amber-950/60 border-amber-400 text-white'
+                                    : currentSeed === 'seed2'
+                                    ? 'bg-orange-950/60 border-orange-400 text-white'
+                                    : 'bg-slate-950 border-slate-800 text-slate-200'
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-black truncate">{p.name}</span>
+                                    <span className="text-[10px] font-bold text-amber-300 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
+                                      {p.grade} ({weight}점)
+                                    </span>
+                                    {ageLabel && (
+                                      <span className="text-[9px] text-slate-400 font-mono">
+                                        {ageLabel}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                                    <span className="text-emerald-400 font-bold">승률 {winRateStr}</span>
+                                    <span>·</span>
+                                    <span className="text-amber-400 font-bold">득실 {diffStr}</span>
+                                    {p.isGuest && (
+                                      <span className="text-[9px] text-slate-500">[임의선수]</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* 수동 시드(Seed) 지정 드롭다운 / 버튼 */}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <select
+                                    value={currentSeed}
+                                    onChange={(e) =>
+                                      handleSetPlayerSeed(
+                                        activeEditingCourt,
+                                        p.id,
+                                        e.target.value as 'seed1' | 'seed2' | 'none'
+                                      )
+                                    }
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-black border cursor-pointer ${
+                                      currentSeed === 'seed1'
+                                        ? 'bg-amber-400 text-slate-950 border-amber-300 font-extrabold'
+                                        : currentSeed === 'seed2'
+                                        ? 'bg-orange-500 text-slate-950 border-orange-400 font-extrabold'
+                                        : 'bg-slate-900 text-slate-400 border-slate-700'
+                                    }`}
+                                  >
+                                    <option value="none">시드 없음</option>
+                                    <option value="seed1">🥇 1시드</option>
+                                    <option value="seed2">🥈 2시드</option>
+                                  </select>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePlayerInCourt(activeEditingCourt, p.id)}
+                                    className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-rose-950 hover:text-rose-300 text-slate-400 flex items-center justify-center text-xs font-bold transition cursor-pointer"
+                                    title="이 코트 배정에서 제외"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 전체 참여 선수 풀에서 이 코트로 추가하기 */}
+                    <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 block">
+                        + 전체 참여 확정 선수 중 {activeEditingCourt}번 코트에 배정할 선수 선택 (클릭 시 즉시 배정/해제):
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-0.5">
+                        {selectedParticipants.map((p) => {
+                          const isAssignedToThisCourt = (courtPlayerMap[activeEditingCourt] || []).includes(p.id);
+                          // 다른 코트에 배정되어 있는지 확인
+                          const assignedOtherCourt = Object.keys(courtPlayerMap).find(
+                            (c) => Number(c) !== activeEditingCourt && courtPlayerMap[Number(c)]?.includes(p.id)
+                          );
+                          const weight = getPlayerWeight(p);
+
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => togglePlayerInCourt(activeEditingCourt, p.id)}
+                              className={`p-1.5 rounded-xl text-left border transition text-xs flex items-center justify-between cursor-pointer ${
+                                isAssignedToThisCourt
+                                  ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-sm'
+                                  : assignedOtherCourt
+                                  ? 'bg-slate-950/50 text-slate-500 border-slate-800/80 hover:border-slate-700'
+                                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-amber-500/50'
+                              }`}
+                            >
+                              <div className="truncate pr-1">
+                                <span className="font-bold truncate block">{p.name}</span>
+                                <span className="text-[9px] opacity-80 block">
+                                  {p.grade}·{weight}점
+                                  {assignedOtherCourt && !isAssignedToThisCourt
+                                    ? ` (${assignedOtherCourt}코트)`
+                                    : ''}
+                                </span>
+                              </div>
+                              <span
+                                className={`text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                                  isAssignedToThisCourt
+                                    ? 'bg-slate-950 text-amber-300'
+                                    : 'bg-slate-800 text-slate-400'
+                                }`}
+                              >
+                                {isAssignedToThisCourt ? '✓' : '+'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. [시드 고정 후 나머지 인원 실력균등 자동배치] 전용 실행 버튼 */}
+                <div className="bg-gradient-to-r from-amber-950/40 via-slate-900 to-emerald-950/40 border border-amber-500/30 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                      <span>⚖️</span> 시드 고정 및 나머지 인원 실력균등 자동배치
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      가중치: 금배 10점 · 은배 8점 · 국화 7점 · 동배 6점 · 개나리 5점 · 테린이 3점
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    관리자가 수동으로 지정한 <strong>1시드·2시드 선수는 상대편으로 자동 분산되어 자리가 고정(유지)</strong>되고, 시드가 미지정된 나머지 인원들만 복식 가중치를 계산하여 <strong>Team A와 Team B의 실력 점수 차이가 최소(0점)</strong>가 되도록 KDK 대진표를 편성합니다.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleAssignKdkWithFixedSeeds}
+                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-slate-950 font-black rounded-xl text-xs transition shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>⚖️</span>
+                    <span>시드 고정 및 나머지 인원 실력균등 자동배치 실행 ({selectedCourts.length}개 코트)</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* 토너먼트 모드 전용 설정 */
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-300">배정 기준:</span>
                     <button
-                      key={rNum}
                       type="button"
-                      onClick={() => setKdkRoundsCount(rNum)}
-                      className={`px-2 py-0.5 rounded text-[11px] font-black border cursor-pointer ${
-                        kdkRoundsCount === rNum
-                          ? 'bg-amber-400 text-slate-950 border-amber-300'
+                      onClick={() => setAutoBalanceOption('BALANCE')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                        autoBalanceOption === 'BALANCE'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400'
                           : 'bg-slate-900 text-slate-400 border-slate-800'
                       }`}
                     >
-                      {rNum}R
+                      ⚖️ 경기 실력차 제로(0) 균형 배정 (권장)
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setAutoBalanceOption('RANDOM')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                        autoBalanceOption === 'RANDOM'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400'
+                          : 'bg-slate-900 text-slate-400 border-slate-800'
+                      }`}
+                    >
+                      🎲 무작위 추첨
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
-              💡 <strong>실력차 제로(0) 자동배정 원리</strong>: 금배(10점)·은배(8점)·국화(7점)·동배(6점)·개나리(5점)·테린이(3점) 가중치를 합산하여 <strong>Team A와 Team B의 실력 합산 점수 차이가 0점(최소)</strong>이 되도록 파트너를 자동 조합합니다.
-            </div>
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
+                  💡 <strong>실력차 제로(0) 자동배정 원리</strong>: 금배(10점)·은배(8점)·국화(7점)·동배(6점)·개나리(5점)·테린이(3점) 가중치를 합산하여 <strong>Team A와 Team B의 실력 합산 점수 차이가 0점(최소)</strong>이 되도록 파트너를 자동 조합합니다.
+                </div>
 
-            <button
-              type="button"
-              onClick={handleAutoAssign}
-              className="w-full py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>⚖️</span>
-              <span>
-                {tournamentMode === 'KDK' ? 'KDK 실력균형' : '토너먼트'} 코트 및 선수 자동 배정 실행 ({selectedParticipants.length}명 / {selectedCourts.length}개 코트)
-              </span>
-            </button>
+                <button
+                  type="button"
+                  onClick={handleAutoAssign}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>⚖️</span>
+                  <span>
+                    토너먼트 코트 및 선수 자동 배정 실행 ({selectedParticipants.length}명 / {selectedCourts.length}개 코트)
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
