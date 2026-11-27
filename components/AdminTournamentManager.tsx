@@ -54,6 +54,8 @@ interface AdminTournamentManagerProps {
   activeTournament: TournamentConfig | null;
   onApplyTournament: (config: TournamentConfig) => void;
   onAddCustomUserToClub?: (newUser: ParticipantPlayer) => void;
+  onClose?: () => void;
+  isModal?: boolean;
 }
 
 const GRADE_OPTIONS = ['금배', '은배', '국화', '동배', '개나리', '고령자부', '테린이'];
@@ -64,6 +66,8 @@ export default function AdminTournamentManager({
   activeTournament,
   onApplyTournament,
   onAddCustomUserToClub,
+  onClose,
+  isModal = false,
 }: AdminTournamentManagerProps) {
   // 1단계: 새 대회 개설 - 대회명 설정
   const [tournamentTitle, setTournamentTitle] = useState<string>(
@@ -134,12 +138,12 @@ export default function AdminTournamentManager({
   const [manualTeamB1, setManualTeamB1] = useState<string>('');
   const [manualTeamB2, setManualTeamB2] = useState<string>('');
 
-  // 단계별 및 매치별 접기/펼치기 아코디언 상태 (기본값: 접힌 상태, 항목 클릭 시 펼쳐서 수정)
+  // 단계별 및 매치별 접기/펼치기 아코디언 상태 (기본값: 모두 펼쳐진 상태로 한눈에 설정 가능)
   const [openSteps, setOpenSteps] = useState<Record<'step1' | 'step2' | 'step3' | 'step4', boolean>>({
-    step1: false,
-    step2: false,
-    step3: false,
-    step4: false,
+    step1: true,
+    step2: true,
+    step3: true,
+    step4: true,
   });
   const [expandedMatchIds, setExpandedMatchIds] = useState<Record<string, boolean>>({});
 
@@ -531,19 +535,31 @@ export default function AdminTournamentManager({
               NEW TOURNAMENT
             </span>
             <span className="text-xs font-extrabold text-amber-300">
-              새 대회 개설 · 코트/선수 배정 (항목을 누르면 펼쳐서 수정)
+              새 대회 개설 · 코트/선수 배정 콘솔
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => toggleAllSteps(!allStepsOpen)}
-            className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-slate-950/90 hover:bg-slate-800 text-amber-300 border border-amber-500/30 cursor-pointer transition"
-          >
-            {allStepsOpen ? '📁 단계 모두 접기 ▲' : '📂 단계 모두 펼치기 ▼'}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => toggleAllSteps(!allStepsOpen)}
+              className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-slate-950/90 hover:bg-slate-800 text-amber-300 border border-amber-500/30 cursor-pointer transition"
+            >
+              {allStepsOpen ? '📁 단계 모두 접기 ▲' : '📂 단계 모두 펼치기 ▼'}
+            </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-7 h-7 rounded-full bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center font-bold text-xs border border-slate-700 cursor-pointer transition"
+                title="닫기"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-          아래 각 단계(①대회명 ➔ ②방식 ➔ ③참여선수 ➔ ④코트·선수배정) 항목을 클릭하면 펼쳐져서 내용을 수정할 수 있습니다.
+          대회명 → 방식 → 참여선수 → 코트·선수 배정 4단계가 모두 펼쳐져 있습니다. 순서대로 설정 후 맨 아래 버튼을 누르면 새 대회가 즉시 개설됩니다.
         </p>
       </div>
 

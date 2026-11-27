@@ -1088,7 +1088,8 @@ export default function TennisApp() {
             .maybeSingle();
 
           const norm = mapSupabaseUserRow(userRow);
-          if (norm && norm.approvalStatus === 'pending') {
+          // public.users.status 컬럼 기준 승인 판별 (approved 또는 관리자만 세션 유지)
+          if (!userRow || (String(userRow.status ?? '') !== 'approved' && userRow.role !== 'admin')) {
             await supabase.auth.signOut();
             setCurrentUser(null);
             setRole('member');
@@ -1161,7 +1162,7 @@ export default function TennisApp() {
         .maybeSingle();
 
       const norm = mapSupabaseUserRow(userRow);
-      if (norm && norm.approvalStatus !== 'pending' && isMounted) {
+      if (norm && userRow && (String(userRow.status ?? '') === 'approved' || userRow.role === 'admin') && isMounted) {
         const resolvedBreakBirth =
           norm.birthDate || DEFAULT_SAMPLE_BIRTHDATES[norm.id];
         setCurrentUser({
@@ -1372,29 +1373,47 @@ export default function TennisApp() {
           return;
         }
 
-        // 2. public.users 테이블에서 최신 회원 프로필 및 승인 상태(status) 확인
-        const { data: userRow } = await supabase
+        // 2. public.users 테이블에서 회원 행을 조회하여 status 컬럼으로만 승인 여부 판별
+        const { data: userRow, error: userRowError } = await supabase
           .from('users')
           .select('*')
           .eq('id', signInData.user.id)
-          .maybeSingle();
+          .single();
 
-        const profile = mapSupabaseUserRow(userRow || {
-          id: signInData.user.id,
-          name: trimmedId,
-          email: authEmail,
-          ...signInData.user.user_metadata,
-        });
-
-        // 3. 운영자 승인 대기(pending / 미승인) 중인 계정 접속 차단 및 로그아웃
-        if (profile && profile.approvalStatus === 'pending') {
+        if (userRowError || !userRow) {
           await supabase.auth.signOut();
           setAuthMessage({
             type: 'error',
-            text: `⏳ [${profile.name}] 님의 계정은 현재 운영자(관리자) 승인 대기 중입니다. 승인 완료 후 로그인하여 접속할 수 있습니다.`,
+            text: `회원 정보를 불러오지 못했습니다. 운영자에게 문의해 주세요. (${
+              userRowError?.message || '회원 행 없음'
+            })`,
           });
           return;
         }
+
+        const rowStatus = String(userRow.status ?? '').trim();
+
+        // 3. status === 'pending'일 때만 승인 대기 안내 후 로그아웃
+        if (rowStatus === 'pending') {
+          await supabase.auth.signOut();
+          setAuthMessage({
+            type: 'error',
+            text: `⏳ [${userRow.name || trimmedId}] 님의 계정은 현재 운영자 승인 대기 중입니다. 승인 완료 후 로그인하여 접속할 수 있습니다.`,
+          });
+          return;
+        }
+
+        // status가 'approved'가 아닌 기타 값이면 접속 차단 (관리자 계정은 예외 허용)
+        if (rowStatus !== 'approved' && userRow.role !== 'admin') {
+          await supabase.auth.signOut();
+          setAuthMessage({
+            type: 'error',
+            text: `접속이 허용되지 않은 계정 상태입니다. (status: ${rowStatus || '없음'}) 운영자에게 문의해 주세요.`,
+          });
+          return;
+        }
+
+        const profile = mapSupabaseUserRow(userRow);
 
         // 4. 승인 완료 회원: role('admin' 또는 'member')에 맞는 화면으로 정상 연결
         const resolvedRole: 'member' | 'admin' =
@@ -2261,7 +2280,7 @@ export default function TennisApp() {
             </div>
 
             {/* 대회 히스토리 셀렉터 */}
-            <div className="pt-2 border-t border-slate-800 space-y-2">
+            <div className="pt-2 border-t border-slate-800 space-y-2 w-full max-w-full overflow-hidden">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold text-slate-400">
                   📜 대회 기록 관리 ({tournamentHistory.length}개)
@@ -2270,7 +2289,7 @@ export default function TennisApp() {
                   <button
                     type="button"
                     onClick={() => handleDeleteTournament(currentTournament.id)}
-                    className="text-[10px] px-2 py-0.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold cursor-pointer transition"
+                    className="text-[10px] px-2 py-0.5 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-500/40 font-bold cursor-pointer transition shrink-0"
                   >
                     🗑️ 선택 대회 삭제
                   </button>
@@ -2282,7 +2301,7 @@ export default function TennisApp() {
                   const selected = tournamentHistory.find((t) => t.id === e.target.value);
                   if (selected) setCurrentTournament(selected);
                 }}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none"
+                className="w-full max-w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none truncate"
               >
                 {tournamentHistory.length === 0 ? (
                   <option value="tour-empty">개설된 대회가 없습니다</option>
@@ -2477,7 +2496,7 @@ export default function TennisApp() {
               </div>
 
               {tournamentHistory.length > 1 && (
-                <div className="pt-1.5 border-t border-slate-800/80 flex items-center gap-2">
+                <div className="pt-1.5 border-t border-slate-800/80 flex items-center gap-2 w-full max-w-full overflow-hidden">
                   <span className="text-[10px] font-bold text-slate-400 shrink-0">📜 대회 기록 보기:</span>
                   <select
                     value={currentTournament.id}
@@ -2485,7 +2504,7 @@ export default function TennisApp() {
                       const selected = tournamentHistory.find((t) => t.id === e.target.value);
                       if (selected) setCurrentTournament(selected);
                     }}
-                    className="flex-1 bg-slate-950/90 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-200 font-bold focus:outline-none"
+                    className="w-full min-w-0 max-w-full flex-1 bg-slate-950/90 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-amber-200 font-bold focus:outline-none truncate"
                   >
                     {tournamentHistory.map((t) => (
                       <option key={t.id} value={t.id}>
@@ -3919,10 +3938,13 @@ export default function TennisApp() {
                 <AdminUserManagement
                   externalUsers={registeredPlayers}
                   currentUserId={currentUser?.id}
+                  onRefreshUsers={fetchUsersFromSupabase}
                   onApproveMember={(approved: ManagedMember) => {
                     setRegisteredPlayers((prev) =>
                       prev.map((p) =>
-                        p.id === approved.id ? { ...p, approvalStatus: 'approved' } : p
+                        p.id === approved.id
+                          ? { ...p, status: 'approved', approvalStatus: 'approved' }
+                          : p
                       )
                     );
                     if (!participantsInput.includes(approved.name)) {
@@ -4169,302 +4191,99 @@ export default function TennisApp() {
       {/* [모달 1]: 새 대회 개설 모달 (참여선수 선택/임의등록 & 실력균형 자동/수동 배정) */}
       {/* ======================================================== */}
       {isAdmin && showNewTourModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-750 w-full max-w-lg rounded-3xl p-5 shadow-2xl space-y-4 my-auto max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-slate-900 border border-amber-500/40 w-full max-w-2xl rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 my-auto max-h-[94vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <div>
-                <h3 className="text-sm font-black text-amber-400 flex items-center gap-1.5">
-                  <span>🏆</span> 새로운 대회 개설 & 참여선수/코트 배정
+                <h3 className="text-base font-black text-amber-400 flex items-center gap-2">
+                  <span>🏆</span> 새로운 대회 개설 & 코트/선수 배정 콘솔
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  가입회원·미가입회원 선택 및 임의 선수 등록, KDK 실력차 제로 자동/수동 배정
+                <p className="text-xs text-slate-400 mt-0.5">
+                  1~4단계 설정(대회명 ➔ 방식 ➔ 참여선수 ➔ 코트·선수 배정)을 위에서 아래로 한 번에 설정합니다.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowNewTourModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs"
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center font-bold text-sm border border-slate-700 cursor-pointer transition shrink-0"
+                title="닫기"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateTournament} className="space-y-3.5">
-              {/* 1. 대회명 & 진행날짜 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    대회명 입력 <span className="text-amber-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="예: 2026 썬 테니스 12월 윈터 챔피언십"
-                    value={newTourName}
-                    onChange={(e) => setNewTourName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    진행 날짜 <span className="text-emerald-400 font-normal">(자동)</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={newTourDate}
-                    onChange={(e) => setNewTourDate(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-400 font-mono"
-                  />
-                </div>
-              </div>
+            <SafeBoundary title="새 대회 개설 콘솔">
+              <AdminTournamentManager
+                registeredUsers={approvedPlayers}
+                currentUser={currentUser}
+                activeTournament={null}
+                isModal={true}
+                onClose={() => setShowNewTourModal(false)}
+                onApplyTournament={(config: TournamentConfig) => {
+                  const autoDate = new Date().toISOString().split('T')[0];
+                  const newTour: TournamentRecord = {
+                    id: config.id || `tour-${Date.now()}`,
+                    name: config.title,
+                    date: autoDate,
+                    format: config.mode === 'KDK' ? 'kdk' : 'tournament',
+                    courtCount: config.selectedCourts.length || 3,
+                    status: 'in_progress',
+                  };
+                  setTournamentHistory((prev) => {
+                    const next = [newTour, ...prev];
+                    persistTournamentHistory(next);
+                    return next;
+                  });
+                  setCurrentTournament(newTour);
 
-              {/* 2. 대회 진행 방식 선택 */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                  대회 진행 방식 선택 <span className="text-amber-400">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div
-                    onClick={() => setNewTourFormat('kdk')}
-                    className={`p-3 rounded-2xl border cursor-pointer transition ${
-                      newTourFormat === 'kdk'
-                        ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-md'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 font-black text-xs text-emerald-400">
-                      <span>🔄</span>
-                      <span>KDK 실력균형 순환 리그</span>
-                    </div>
-                    <p className="text-[10px] text-slate-300 mt-1 leading-snug">
-                      경기 실력 차이가 없도록 팀 밸런스 자동/수동 배정
-                    </p>
-                  </div>
-
-                  <div
-                    onClick={() => setNewTourFormat('tournament')}
-                    className={`p-3 rounded-2xl border cursor-pointer transition ${
-                      newTourFormat === 'tournament'
-                        ? 'bg-amber-950/60 border-amber-400 text-white shadow-md'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 font-black text-xs text-amber-400">
-                      <span>🏆</span>
-                      <span>예선/본선 토너먼트</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
-                      조별 풀리그 ➔ 4강/결승 녹아웃 토너먼트
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. 참여선수 선택 (가입회원 & 미가입회원) + 임의 선수 이름 직접 등록 */}
-              <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2.5">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-black text-white flex items-center gap-1.5">
-                    <span>👥</span> 참여선수 선택 (가입회원 & 미가입회원)
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-black text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
-                      참여 {newTourSelectedPlayerIds.length}명
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNewTourSelectedPlayerIds(
-                          newTourSelectedPlayerIds.length === registeredPlayers.length
-                            ? []
-                            : registeredPlayers.map((p) => p.id)
-                        )
-                      }
-                      className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 cursor-pointer"
-                    >
-                      {newTourSelectedPlayerIds.length === registeredPlayers.length ? '전체해제' : '전체선택'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 가입회원 / 미가입회원 선택 그리드 */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-0.5">
-                  {registeredPlayers.map((p) => {
-                    const isSelected = newTourSelectedPlayerIds.includes(p.id);
-                    const pt = getCompositeSkillScore(p);
-                    const ageLabel = formatManAgeLabel(p.birthDate, p.age);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => toggleNewTourPlayer(p.id)}
-                        className={`p-2 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-                          isSelected
-                            ? 'bg-emerald-950/80 border-emerald-400 text-white'
-                            : 'bg-slate-900/70 border-slate-800 text-slate-400'
-                        }`}
-                      >
-                        <div className="truncate pr-1">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] font-bold truncate">{p.name}</span>
-                            <span
-                              className={`text-[8px] px-1 rounded ${
-                                p.isGuest
-                                  ? 'bg-amber-500/20 text-amber-300'
-                                  : 'bg-emerald-500/20 text-emerald-300'
-                              }`}
-                            >
-                              {p.isGuest ? '미가입' : '가입'}
-                            </span>
-                          </div>
-                          <span className="text-[9px] text-slate-400 block">
-                            {p.grade}{ageLabel ? `·${ageLabel}` : ''} (실력 {pt}점)
-                          </span>
-                        </div>
-                        <span
-                          className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${
-                            isSelected ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-500'
-                          }`}
-                        >
-                          {isSelected ? '✓' : '+'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* 미가입 회원 / 임의 선수 이름 직접 등록 입력창 */}
-                <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                  <label className="text-[11px] font-extrabold text-amber-300 block">
-                    ✍️ 미가입 회원 또는 임의 선수 이름 직접 등록 (쉼표로 복수 입력 가능)
-                  </label>
-                  <div className="grid grid-cols-12 gap-1.5">
-                    <input
-                      type="text"
-                      value={newTourCustomName}
-                      onChange={(e) => setNewTourCustomName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddNewTourCustomPlayer();
-                        }
-                      }}
-                      placeholder="예: 홍길동 또는 홍길동, 이순신"
-                      className="col-span-6 px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
-                    />
-                    <select
-                      value={newTourCustomGrade}
-                      onChange={(e) => setNewTourCustomGrade(e.target.value)}
-                      className="col-span-3 px-2 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300 font-bold"
-                    >
-                      {GRADE_OPTIONS.map((g) => (
-                        <option key={g} value={g}>
-                          {g}({GRADE_WEIGHTS[g] || 6}점)
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddNewTourCustomPlayer}
-                      className="col-span-3 py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-[11px] cursor-pointer"
-                    >
-                      + 선수 등록
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. 코트 및 선수 배정 방식 선택 (자동 vs 수동) */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                  코트 및 선수 배정 방식 선택 <span className="text-amber-400">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewTourAssignMode('AUTO')}
-                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                      newTourAssignMode === 'AUTO'
-                        ? 'bg-emerald-950/70 border-emerald-400 text-white shadow-md'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <div className="font-black text-xs text-emerald-300">⚖️ 자동 배정 (실력균형)</div>
-                    <p className="text-[10px] text-slate-300 mt-0.5">
-                      두 팀의 경기 실력 차이가 0이 되도록 자동 매칭
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewTourAssignMode('MANUAL')}
-                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                      newTourAssignMode === 'MANUAL'
-                        ? 'bg-amber-950/70 border-amber-400 text-white shadow-md'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <div className="font-black text-xs text-amber-300">🖐️ 수동 배정 (직접배치)</div>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      관리자가 코트별 출전 선수를 직접 선택/수정
-                    </p>
-                  </button>
-                </div>
-              </div>
-
-              {/* 5. 초기 코트 수 설정 */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">
-                  초기 코트 수 설정 (관리자가 언제든 +, -로 조절 가능)
-                </label>
-                <div className="flex items-center gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setNewTourCourts((prev) => Math.max(1, prev - 1))}
-                    disabled={newTourCourts <= 1}
-                    className="w-7 h-7 rounded-lg bg-slate-850 hover:bg-slate-750 text-slate-200 font-black disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm border border-slate-700 cursor-pointer"
-                  >
-                    －
-                  </button>
-                  <input
-                    type="range"
-                    min={1}
-                    max={12}
-                    value={newTourCourts}
-                    onChange={(e) => setNewTourCourts(Number(e.target.value))}
-                    className="flex-1 accent-amber-400 cursor-pointer"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setNewTourCourts((prev) => Math.min(12, prev + 1))}
-                    disabled={newTourCourts >= 12}
-                    className="w-7 h-7 rounded-lg bg-slate-850 hover:bg-slate-750 text-slate-200 font-black disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm border border-slate-700 cursor-pointer"
-                  >
-                    ＋
-                  </button>
-                  <span className="text-xs font-black text-amber-300 w-16 text-center bg-slate-900 p-1.5 rounded-lg border border-slate-750">
-                    {newTourCourts}개 코트
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNewTourModal(false)}
-                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-amber-500/20"
-                >
-                  대회 개설 및 앱 자동 연동 ➔
-                </button>
-              </div>
-            </form>
+                  const mappedCourts: CourtMatch[] = (Array.isArray(config?.matches) ? config.matches : [])
+                    .filter((m) => m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1])
+                    .map((m, idx) => ({
+                      id: idx + 1,
+                      courtNumber: m.courtNumber,
+                      status: m.status || 'playing',
+                      teamA: [
+                        `${m.teamA[0].name} (${m.teamA[0].grade})`,
+                        `${m.teamA[1].name} (${m.teamA[1].grade})`,
+                      ],
+                      teamB: [
+                        `${m.teamB[0].name} (${m.teamB[0].grade})`,
+                        `${m.teamB[1].name} (${m.teamB[1].grade})`,
+                      ],
+                      scoreA: m.scoreA ?? 0,
+                      scoreB: m.scoreB ?? 0,
+                    }));
+                  if (mappedCourts.length > 0) {
+                    setCourts(mappedCourts);
+                  }
+                  setShowNewTourModal(false);
+                  setActiveTab('courts');
+                  alert(
+                    `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${mappedCourts.length}경기)와 대진표에 즉시 연동되었습니다!`
+                  );
+                }}
+                onAddCustomUserToClub={(newGuest: ParticipantPlayer) => {
+                  setRegisteredPlayers((prev) => [
+                    ...prev,
+                    {
+                      id: newGuest.id,
+                      name: newGuest.name,
+                      grade: newGuest.grade,
+                      gender: newGuest.gender === '여' ? 'F' : 'M',
+                      birthDate: newGuest.birthDate,
+                      age: resolvePlayerAge(newGuest, 46),
+                      experienceYears: newGuest.experienceYears,
+                      role: 'member',
+                      isGuest: true,
+                    },
+                  ]);
+                }}
+              />
+            </SafeBoundary>
           </div>
         </div>
       )}
+
 
       {/* ======================================================== */}
       {/* [모달 2]: 코트 선수 수동 배정 및 직접 수정 모달 */}

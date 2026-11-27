@@ -6,6 +6,7 @@ import {
   mapSupabaseUserRow,
   buildSafeUsersPayload,
   updateUserInPublicUsers,
+  approveUserInPublicUsers,
 } from '../lib/supabase';
 import BirthDateSelector from './BirthDateSelector';
 import {
@@ -46,6 +47,7 @@ interface AdminUserManagementProps {
   onAddMember?: (newMember: ManagedMember) => void;
   onApproveMember?: (approved: ManagedMember) => void;
   onRejectMember?: (userId: string, userName: string) => void;
+  onRefreshUsers?: () => Promise<void> | void;
 }
 
 export default function AdminUserManagement({
@@ -56,6 +58,7 @@ export default function AdminUserManagement({
   onAddMember,
   onApproveMember,
   onRejectMember,
+  onRefreshUsers,
 }: AdminUserManagementProps) {
   const [users, setUsers] = useState<ManagedMember[]>(externalUsers || []);
 
@@ -94,22 +97,28 @@ export default function AdminUserManagement({
   const [newGrade, setNewGrade] = useState<string>('테린이');
   const [newRole, setNewRole] = useState<'member' | 'admin'>('member');
 
-  const fetchUsersFromDb = async () => {
+  const fetchUsersFromDb = async (): Promise<ManagedMember[] | null> => {
     try {
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && Array.isArray(data)) {
+      if (error) {
+        console.warn('fetchUsersFromDb error:', error.message);
+        return null;
+      }
+      if (Array.isArray(data)) {
         const normalized = data
           .map((row) => mapSupabaseUserRow(row) as ManagedMember | null)
           .filter((u): u is ManagedMember => Boolean(u && u.id));
         setUsers(normalized);
+        return normalized;
       }
     } catch (err) {
       console.warn('fetchUsersFromDb notice:', err);
     }
+    return null;
   };
 
   useEffect(() => {
@@ -322,22 +331,24 @@ export default function AdminUserManagement({
     }
   };
 
-  // 회원가입 승인 핸들러 (대기 pending -> 정회원 approved 실시간 DB 반영)
+  // 회원가입 승인 핸들러 (public.users.status: 'pending' -> 'approved' 직접 UPDATE 후 즉시 전체 재조회)
   const handleApproveMember = async (member: ManagedMember) => {
-    let { data, error } = await updateUserInPublicUsers(member.id, {
-      status: 'approved',
-      approval_status: 'approved',
-    });
-    if (Array.isArray(data)) data = data[0];
+    // 1. supabase.from('users').update({ status: 'approved' }).eq('id', targetUserId)
+    const { data, error } = await approveUserInPublicUsers(member.id);
 
     if (error) {
-      alert(`회원가입 승인 처리 실패: ${error.message}`);
+      alert(`❌ 회원가입 승인 처리 실패\n\n회원: ${member.name}\n에러 내용: ${error.message}`);
       return;
     }
 
-    await fetchUsersFromDb();
+    // 2. UPDATE 성공 즉시 public.users 전체 목록을 다시 SELECT하여 최신 DB 기준으로 갱신
+    const refreshed = await fetchUsersFromDb();
+    if (onRefreshUsers) {
+      await onRefreshUsers();
+    }
 
     const approved: ManagedMember =
+      (refreshed && refreshed.find((u) => u.id === member.id)) ||
       (mapSupabaseUserRow(data) as ManagedMember) || {
         ...member,
         approvalStatus: 'approved',
@@ -345,7 +356,9 @@ export default function AdminUserManagement({
         status: 'approved',
       };
 
-    setUsers((prev) => prev.map((u) => (u.id === member.id ? approved : u)));
+    if (!refreshed) {
+      setUsers((prev) => prev.map((u) => (u.id === member.id ? approved : u)));
+    }
     if (onApproveMember) {
       onApproveMember(approved);
     } else if (onUpdateMember) {
