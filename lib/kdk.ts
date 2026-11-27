@@ -128,9 +128,10 @@ export function getPlayerExperienceYears(player: Pick<Player, 'grade' | 'experie
  * 선수의 생년월일(birthDate) 기준 만 나이를 최우선 산출하고, 미입력 시 age 또는 기본값 반환
  */
 export function resolvePlayerAge(
-  player: Pick<Player, 'birthDate' | 'age'>,
+  player?: Pick<Player, 'birthDate' | 'age'> | null,
   fallback: number = 46
 ): number {
+  if (!player) return fallback;
   const fromBirth = calculateKoreanManAge(player.birthDate);
   if (fromBirth !== null) return fromBirth;
   if (typeof player.age === 'number' && !isNaN(player.age) && player.age > 0) {
@@ -146,8 +147,9 @@ export function resolvePlayerAge(
  * - 만 나이 보정: 만 50세 기준, 젊을수록 체력 보정(+), 연장자 체력 보정(-) (-10 ~ +8점)
  */
 export function getCompositeSkillScore(
-  player: Pick<Player, 'grade' | 'age' | 'birthDate' | 'experienceYears'>
+  player?: Pick<Player, 'grade' | 'age' | 'birthDate' | 'experienceYears'> | null
 ): number {
+  if (!player) return 64;
   const gradeBase = GRADE_COMPOSITE_BASE[player.grade] ?? 64;
   const expYears = getPlayerExperienceYears(player);
   const expBonus = Math.min(20, expYears) * 1.5;
@@ -444,15 +446,17 @@ export function calculateKdkStandingsWithAgeTiebreak(
   players: Player[],
   games: CourtKdkGame[]
 ): KdkStandingRow[] {
+  const safePlayers = Array.isArray(players) ? players.filter((p): p is Player => Boolean(p && p.id)) : [];
+  const safeGames = Array.isArray(games) ? games.filter(Boolean) : [];
   const map: Record<string, KdkStandingRow> = {};
 
-  players.forEach((p) => {
+  safePlayers.forEach((p) => {
     const playerAge = resolvePlayerAge(p, 40);
     map[p.id] = {
       rank: 0,
       playerId: p.id,
-      name: p.name,
-      grade: p.grade,
+      name: p.name || '선수',
+      grade: p.grade || '동배',
       age: playerAge,
       ageSumWithPartners: 0,
       matches: 0,
@@ -468,14 +472,15 @@ export function calculateKdkStandingsWithAgeTiebreak(
   });
 
   // 경기 내 등장한 선수 중 players 배열에 누락된 선수가 있으면 자동 보완
-  const ensurePlayer = (p: Player) => {
+  const ensurePlayer = (p?: Player | null) => {
+    if (!p || !p.id) return;
     if (!map[p.id]) {
       const playerAge = resolvePlayerAge(p, 40);
       map[p.id] = {
         rank: 0,
         playerId: p.id,
-        name: p.name,
-        grade: p.grade,
+        name: p.name || '선수',
+        grade: p.grade || '동배',
         age: playerAge,
         ageSumWithPartners: 0,
         matches: 0,
@@ -491,7 +496,9 @@ export function calculateKdkStandingsWithAgeTiebreak(
     }
   };
 
-  games.forEach((g) => {
+  safeGames.forEach((g) => {
+    if (!g || !Array.isArray(g.teamA) || !Array.isArray(g.teamB)) return;
+    if (!g.teamA[0] || !g.teamA[1] || !g.teamB[0] || !g.teamB[1]) return;
     if (!g.completed && g.scoreA === 0 && g.scoreB === 0) return;
 
     [...g.teamA, ...g.teamB].forEach(ensurePlayer);
@@ -500,14 +507,15 @@ export function calculateKdkStandingsWithAgeTiebreak(
     const bWon = g.scoreB > g.scoreA;
     const isDraw = g.scoreA === g.scoreB;
 
-    const teamAAgeSum = (map[g.teamA[0].id].age || 40) + (map[g.teamA[1].id].age || 40);
-    const teamBAgeSum = (map[g.teamB[0].id].age || 40) + (map[g.teamB[1].id].age || 40);
+    const teamAAgeSum = (map[g.teamA[0].id]?.age || 40) + (map[g.teamA[1].id]?.age || 40);
+    const teamBAgeSum = (map[g.teamB[0].id]?.age || 40) + (map[g.teamB[1].id]?.age || 40);
 
     g.teamA.forEach((p) => {
+      if (!p || !map[p.id]) return;
       const row = map[p.id];
       row.matches += 1;
-      row.pointsFor += g.scoreA;
-      row.pointsAgainst += g.scoreB;
+      row.pointsFor += Number(g.scoreA || 0);
+      row.pointsAgainst += Number(g.scoreB || 0);
       row.pointDiff = row.pointsFor - row.pointsAgainst;
       row.ageSumWithPartners += teamAAgeSum;
       if (aWon) {
@@ -522,10 +530,11 @@ export function calculateKdkStandingsWithAgeTiebreak(
     });
 
     g.teamB.forEach((p) => {
+      if (!p || !map[p.id]) return;
       const row = map[p.id];
       row.matches += 1;
-      row.pointsFor += g.scoreB;
-      row.pointsAgainst += g.scoreA;
+      row.pointsFor += Number(g.scoreB || 0);
+      row.pointsAgainst += Number(g.scoreA || 0);
       row.pointDiff = row.pointsFor - row.pointsAgainst;
       row.ageSumWithPartners += teamBAgeSum;
       if (bWon) {

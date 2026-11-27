@@ -92,7 +92,8 @@ export default function AdminTournamentManager({
     if (activeTournament?.participants && activeTournament.participants.length > 0) {
       return activeTournament.participants;
     }
-    return registeredUsers.slice(0, 8).map((u) => ({
+    const safeUsers = (Array.isArray(registeredUsers) ? registeredUsers : []).filter(Boolean);
+    return safeUsers.slice(0, 8).map((u) => ({
       id: String(u.id),
       name: u.name,
       grade: u.grade || '은배',
@@ -154,9 +155,11 @@ export default function AdminTournamentManager({
     setExpandedMatchIds((prev) => ({ ...prev, [matchId]: !prev[matchId] }));
   };
 
+  const safeRegisteredUsers = (Array.isArray(registeredUsers) ? registeredUsers : []).filter(Boolean);
+
   // 전체 선택 가능한 선수 풀 (가입회원 + 미가입회원/임의선수 · 생년월일 만 나이 자동 반영)
   const allAvailablePlayers: ParticipantPlayer[] = [
-    ...registeredUsers.map((u) => ({
+    ...safeRegisteredUsers.map((u) => ({
       id: String(u.id),
       name: u.name,
       grade: u.grade || '은배',
@@ -167,12 +170,12 @@ export default function AdminTournamentManager({
       isGuest: Boolean(u.isGuest),
       isLoggedInUser: !u.isGuest,
     })),
-    ...guestPool.filter((g) => !registeredUsers.some((u) => String(u.id) === g.id)),
+    ...guestPool.filter((g) => !safeRegisteredUsers.some((u) => String(u.id) === g.id)),
   ];
 
   // 외부 회원정보(생년월일·만 나이·등급·이름) 수정 시 선택된 참가자 목록 실시간 동기화
   useEffect(() => {
-    const byId = new Map(registeredUsers.map((u) => [String(u.id), u]));
+    const byId = new Map(safeRegisteredUsers.map((u) => [String(u.id), u]));
     setSelectedParticipants((prev) => {
       let changed = false;
       const next = prev.map((p) => {

@@ -4902,11 +4902,13 @@
       if (!supabase) return;
       try {
         const adminEmail = `admin@${VIRTUAL_AUTH_DOMAIN}`;
-        const { data: existingAdmin } = await supabase
+        const { data: existingAdmins } = await supabase
           .from('users')
-          .select('*')
-          .or(`username.eq.admin,email.eq.${adminEmail}`)
-          .maybeSingle();
+          .select('id, name, gender, grade, role, push_subscription, created_at')
+          .eq('role', 'admin')
+          .limit(1);
+
+        const existingAdmin = (Array.isArray(existingAdmins) && existingAdmins.length > 0) ? existingAdmins[0] : null;
 
         let adminId = existingAdmin ? existingAdmin.id : null;
         try {
@@ -4932,21 +4934,25 @@
           }
         } catch (e) {}
 
-        if (!existingAdmin || existingAdmin.role !== 'admin' || existingAdmin.approval_status !== 'approved') {
+        if (!existingAdmin || existingAdmin.role !== 'admin') {
+          const prevMeta = (existingAdmin && existingAdmin.push_subscription && typeof existingAdmin.push_subscription === 'object') ? existingAdmin.push_subscription : {};
           const payload = {
             ...(adminId ? { id: adminId } : {}),
-            username: 'admin',
-            email: adminEmail,
             name: existingAdmin && existingAdmin.name ? existingAdmin.name : '공유 관리자',
             gender: 'M',
             grade: '금배',
             role: 'admin',
-            approval_status: 'approved',
-            status: 'approved',
-            is_guest: false,
-            requested_at: new Date().toISOString()
+            push_subscription: {
+              ...prevMeta,
+              username: 'admin',
+              email: adminEmail,
+              status: 'approved',
+              approval_status: 'approved',
+              is_guest: false,
+              requested_at: new Date().toISOString()
+            }
           };
-          await supabase.from('users').upsert(payload, { onConflict: 'username' });
+          await supabase.from('users').upsert(payload);
         }
       } catch (err) {
         console.warn('ensureHtmlDefaultAdminAccount notice:', err);
@@ -4955,27 +4961,30 @@
 
     function mapHtmlSupabaseUserRow(row) {
       if (!row) return null;
-      const email = row.email || '';
-      const username = row.username || (email.includes('@') ? email.split('@')[0] : email) || row.name || '';
-      const birthDate = row.birth_date || row.birthDate || DEFAULT_HTML_BIRTHDATES[row.id] || '';
-      const age = calculateHtmlKoreanManAge(birthDate) ?? row.age ?? 45;
-      const approvalStatus = (row.approval_status === 'pending' || row.approvalStatus === 'pending') ? 'pending' : 'approved';
+      const meta = (row.push_subscription && typeof row.push_subscription === 'object') ? row.push_subscription : {};
+      const email = row.email || meta.email || '';
+      const username = row.username || meta.username || (email.includes('@') ? email.split('@')[0] : email) || row.name || meta.name || '';
+      const birthDate = row.birth_date || row.birthDate || meta.birth_date || meta.birthDate || DEFAULT_HTML_BIRTHDATES[row.id] || '';
+      const age = calculateHtmlKoreanManAge(birthDate) ?? row.age ?? meta.age ?? 45;
+      const rawStatus = row.status || row.approval_status || row.approvalStatus || meta.status || meta.approval_status || (row.role === 'admin' ? 'approved' : 'approved');
+      const isPending = (row.role !== 'admin') && (rawStatus === 'pending' || rawStatus === '미승인' || rawStatus === 'waiting');
+      const approvalStatus = isPending ? 'pending' : 'approved';
       return {
         id: String(row.id),
         username,
         email,
-        name: row.name || username || '클럽회원',
+        name: row.name || meta.name || username || '클럽회원',
         gender: row.gender === 'F' || row.gender === '여' ? 'F' : 'M',
         grade: row.grade || '테린이',
         role: row.role === 'admin' ? 'admin' : 'member',
-        phone: row.phone || '',
+        phone: row.phone || meta.phone || '',
         birthDate,
         age,
-        experienceYears: row.experience_years ?? row.experienceYears ?? 4,
-        isGuest: Boolean(row.is_guest ?? row.isGuest ?? false),
+        experienceYears: row.experience_years ?? row.experienceYears ?? meta.experience_years ?? 4,
+        isGuest: Boolean(row.is_guest ?? row.isGuest ?? meta.is_guest ?? false),
         approvalStatus,
         approval_status: approvalStatus,
-        requestedAt: row.requested_at || row.requestedAt || row.created_at || ''
+        requestedAt: row.requested_at || meta.requested_at || row.created_at || ''
       };
     }
 

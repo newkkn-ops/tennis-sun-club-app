@@ -6,7 +6,13 @@ import {
   mapSupabaseUserRow,
   ensureDefaultAdminAccount,
   saveUserToPublicUsers,
+  updateUserInPublicUsers,
+  PUBLIC_USERS_COLUMNS,
+  signInWithLoginId,
+  hasActiveSession,
+  MIN_AUTH_PASSWORD_LENGTH,
 } from './lib/supabase';
+import SafeBoundary from './components/SafeBoundary';
 import AdminTournamentManager, {
   TournamentConfig,
   ParticipantPlayer,
@@ -54,6 +60,7 @@ export interface RegisteredPlayer {
   id: string;
   username?: string; // 로그인 아이디 (이메일 형식 불필요)
   password?: string; // 로그인 비밀번호 (관리자 확인/수정 지원)
+  status?: string; // 승인 상태 원본 값 (pending / approved)
   name: string;
   email?: string;
   grade: string;
@@ -290,10 +297,21 @@ export default function TennisApp() {
   // ----------------------------------------------------
   const [registeredPlayers, setRegisteredPlayers] = useState<RegisteredPlayer[]>([]);
 
-  const pendingApprovalCount = registeredPlayers.filter(
-    (p) => p.approvalStatus === 'pending'
-  ).length;
-  const approvedPlayers = registeredPlayers.filter((p) => p.approvalStatus !== 'pending');
+  const safeRegisteredPlayers = useMemo<RegisteredPlayer[]>(
+    () =>
+      (Array.isArray(registeredPlayers) ? registeredPlayers : []).filter(
+        (p): p is RegisteredPlayer => Boolean(p && p.id)
+      ),
+    [registeredPlayers]
+  );
+  const pendingApprovalCount = useMemo(
+    () => safeRegisteredPlayers.filter((p) => p?.approvalStatus === 'pending').length,
+    [safeRegisteredPlayers]
+  );
+  const approvedPlayers = useMemo(
+    () => safeRegisteredPlayers.filter((p) => p?.approvalStatus !== 'pending'),
+    [safeRegisteredPlayers]
+  );
 
   // ----------------------------------------------------
   // 2. 대회명 생성 및 진행날짜 자동 생성 / 기록 관리 상태
@@ -1015,6 +1033,10 @@ export default function TennisApp() {
 
   // Supabase public.users 테이블에서 전체 회원(승인 대기 pending + 정회원 approved) 실시간 조회
   const fetchUsersFromSupabase = useCallback(async () => {
+    // 비로그인(세션 없음) 상태에서는 public.users 조회를 건너뛰어 401 에러 방지
+    const sessionActive = await hasActiveSession();
+    if (!sessionActive) return;
+
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -1051,13 +1073,14 @@ export default function TennisApp() {
 
     const hydrateAuthAndUsers = async () => {
       try {
-        await fetchUsersFromSupabase();
-
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
+        // 로그인 세션이 확인된 경우에만 public.users 데이터 조회 (비로그인 401 방지)
         if (session?.user && isMounted) {
+          await fetchUsersFromSupabase();
+
           const { data: userRow } = await supabase
             .from('users')
             .select('*')
@@ -1115,7 +1138,7 @@ export default function TennisApp() {
     };
 
     hydrateAuthAndUsers();
-    ensureDefaultAdminAccount().catch(() => {});
+    // 기본 관리자 계정 자동 생성은 관리자 로그인 시도 시에만 수행 (비로그인 상태 불필요한 요청/에러 방지)
 
     // Supabase Auth 세션 변경 실시간 구독
     const {
@@ -1127,6 +1150,9 @@ export default function TennisApp() {
           setRole('member');
         }
         return;
+      }
+      if (event === 'SIGNED_IN') {
+        fetchUsersFromSupabase().catch(() => {});
       }
       const { data: userRow } = await supabase
         .from('users')
@@ -1207,8 +1233,11 @@ export default function TennisApp() {
         setAuthMessage({ type: 'error', text: '이름(실명)을 입력해 주세요.' });
         return;
       }
-      if (password.length < 6) {
-        setAuthMessage({ type: 'error', text: '비밀번호는 최소 6자 이상 입력해 주세요.' });
+      if (password.length < MIN_AUTH_PASSWORD_LENGTH) {
+        setAuthMessage({
+          type: 'error',
+          text: `비밀번호는 최소 ${MIN_AUTH_PASSWORD_LENGTH}자 이상 입력해 주세요. (현재 ${password.length}자)`,
+        });
         return;
       }
       if (password !== confirmPassword) {
@@ -1246,11 +1275,17 @@ export default function TennisApp() {
         });
 
         if (signUpError) {
+          const rawMsg = signUpError.message || '';
+          const lowerMsg = rawMsg.toLowerCase();
           setAuthMessage({
             type: 'error',
-            text: signUpError.message.includes('already registered')
+            text: lowerMsg.includes('already registered') || lowerMsg.includes('already exists')
               ? `이미 사용 중이거나 가입 신청된 아이디(${trimmedId})입니다. 다른 아이디를 입력해 주세요.`
-              : `회원가입 실패: ${signUpError.message}`,
+              : lowerMsg.includes('password')
+              ? `비밀번호 조건을 확인해 주세요. (최소 ${MIN_AUTH_PASSWORD_LENGTH}자 이상) · ${rawMsg}`
+              : lowerMsg.includes('email')
+              ? `사용할 수 없는 아이디 형식입니다. 영문/숫자/한글 아이디로 다시 시도해 주세요. · ${rawMsg}`
+              : `회원가입 실패: ${rawMsg}`,
           });
           return;
         }
@@ -1266,6 +1301,12 @@ export default function TennisApp() {
             grade: signUpGrade,
             role: 'member',
             status: 'pending',
+            username: trimmedId,
+            email: authEmail,
+            birth_date: signUpBirthDate || null,
+            age: signUpManAge,
+            phone: (signUpPhone || '').trim(),
+            requested_at: new Date().toISOString(),
           };
           const { error: upsertError } = await saveUserToPublicUsers(userInsertPayload);
           if (upsertError) {
@@ -1309,22 +1350,16 @@ export default function TennisApp() {
       try {
         const authEmail = toAuthEmail(trimmedId);
 
-        // 1. Supabase Auth 로그인 검증 (supabase.auth.signInWithPassword)
+        // 1. Supabase Auth 로그인 검증 (@suntennis.com → 기존 @suntennis.local 계정 자동 호환)
         let { data: signInData, error: signInError } =
-          await supabase.auth.signInWithPassword({
-            email: authEmail,
-            password,
-          });
+          await signInWithLoginId(trimmedId, password);
 
         if (
           (signInError || !signInData?.user) &&
           (trimmedId.toLowerCase() === 'admin' || authEmail.startsWith('admin@'))
         ) {
           await ensureDefaultAdminAccount();
-          const retryResult = await supabase.auth.signInWithPassword({
-            email: authEmail,
-            password,
-          });
+          const retryResult = await signInWithLoginId(trimmedId, password);
           signInData = retryResult.data;
           signInError = retryResult.error;
         }
@@ -1368,7 +1403,7 @@ export default function TennisApp() {
           ...(profile as RegisteredPlayer),
           id: signInData.user.id,
           name: profile?.name || trimmedId,
-          gender: profile?.gender || 'M',
+          gender: profile?.gender === 'F' ? 'F' : 'M',
           grade: profile?.grade || '테린이',
           role: resolvedRole,
           status: 'approved',
@@ -1475,21 +1510,23 @@ export default function TennisApp() {
     const resolvedEmail = toAuthEmail(trimmedId);
 
     // 1. Supabase public.users 테이블 프로필 업데이트
-    const { data: updatedRow, error: updateError } = await supabase
-      .from('users')
-      .update({
+    // (public.users 실제 컬럼만 사용, 부가 정보는 push_subscription JSONB 메타데이터에 저장)
+    const { data: updatedRows, error: updateError } = await updateUserInPublicUsers(
+      currentUser.id,
+      {
         username: trimmedId,
         email: resolvedEmail,
         name: trimmedName,
         gender: editMyGender,
         grade: editMyGrade,
+        role: currentUser.role === 'admin' ? 'admin' : 'member',
+        status: 'approved',
         birth_date: editMyBirthDate || null,
         age: computedManAge !== null ? computedManAge : currentUser.age ?? null,
-        phone: editMyPhone.trim() || null,
-      })
-      .eq('id', currentUser.id)
-      .select()
-      .single();
+        phone: editMyPhone.trim() || '',
+      }
+    );
+    const updatedRow = Array.isArray(updatedRows) ? updatedRows[0] : updatedRows;
 
     if (updateError) {
       alert(`내 정보 저장 중 오류가 발생했습니다: ${updateError.message}`);
@@ -1550,10 +1587,7 @@ export default function TennisApp() {
     const resolvedAdminEmail = toAuthEmail(trimmedAdminId);
 
     let { data: signInData, error: signInError } =
-      await supabase.auth.signInWithPassword({
-        email: resolvedAdminEmail,
-        password: trimmedAdminPw,
-      });
+      await signInWithLoginId(trimmedAdminId, trimmedAdminPw);
 
     // 기본 admin 계정이 아직 Supabase에 등록되지 않은 경우 즉시 생성 후 1회 재시도
     if (
@@ -1561,10 +1595,7 @@ export default function TennisApp() {
       (trimmedAdminId === 'admin' || resolvedAdminEmail.startsWith('admin@'))
     ) {
       await ensureDefaultAdminAccount();
-      const retryResult = await supabase.auth.signInWithPassword({
-        email: resolvedAdminEmail,
-        password: trimmedAdminPw,
-      });
+      const retryResult = await signInWithLoginId(trimmedAdminId, trimmedAdminPw);
       signInData = retryResult.data;
       signInError = retryResult.error;
     }
@@ -1590,6 +1621,20 @@ export default function TennisApp() {
         ...signInData.user.user_metadata,
       }
     );
+
+    // Auth에는 admin이 있으나 public.users 레코드가 없는 경우 실제 컬럼만으로 자동 보완
+    if (!adminRow && adminProfile?.role === 'admin') {
+      saveUserToPublicUsers({
+        id: signInData.user.id,
+        name: adminProfile.name || '관리자',
+        gender: adminProfile.gender || 'M',
+        grade: adminProfile.grade || '금배',
+        role: 'admin',
+        status: 'approved',
+        username: trimmedAdminId,
+        email: resolvedAdminEmail,
+      }).catch(() => {});
+    }
 
     if (!adminProfile || adminProfile.role !== 'admin') {
       await supabase.auth.signOut();
@@ -3837,6 +3882,7 @@ export default function TennisApp() {
                 </div>
 
                 {/* 0-B. KDK 코트별 참가인원 · 1인 필수 게임수 · 시드/자동/수동 설정 관리 (운영자 관리 센터로 이관) */}
+                <SafeBoundary title="KDK 코트 운영 설정">
                 <KdkCourtOperations
                   tournamentName={`${currentTournament.name} (${currentTournament.date})`}
                   availablePlayers={approvedPlayers}
@@ -3866,8 +3912,10 @@ export default function TennisApp() {
                     });
                   }}
                 />
+                </SafeBoundary>
 
                 {/* 1. 회원가입 승인 · 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
+                <SafeBoundary title="회원 관리">
                 <AdminUserManagement
                   externalUsers={registeredPlayers}
                   currentUserId={currentUser?.id}
@@ -3967,8 +4015,10 @@ export default function TennisApp() {
                     }
                   }}
                 />
+                </SafeBoundary>
 
                 {/* 2. 관리자 대회 생성 & 코트/선수 배치 콘솔 */}
+                <SafeBoundary title="대회 관리">
                 <AdminTournamentManager
                   registeredUsers={approvedPlayers}
                   currentUser={currentUser}
@@ -3990,7 +4040,9 @@ export default function TennisApp() {
     });
                     setCurrentTournament(newTour);
 
-                    const mappedCourts: CourtMatch[] = config.matches.map((m, idx) => ({
+                    const mappedCourts: CourtMatch[] = (Array.isArray(config?.matches) ? config.matches : [])
+                      .filter((m) => m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1])
+                      .map((m, idx) => ({
                       id: idx + 1,
                       courtNumber: m.courtNumber,
                       status: m.status || 'playing',
@@ -4010,7 +4062,7 @@ export default function TennisApp() {
                     }
                     setActiveTab('courts');
                     alert(
-                      `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${config.matches.length}경기)와 대진표에 즉시 연동되었습니다!`
+                      `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${mappedCourts.length}경기)와 대진표에 즉시 연동되었습니다!`
                     );
                   }}
                   onAddCustomUserToClub={(newGuest: ParticipantPlayer) => {
@@ -4030,6 +4082,7 @@ export default function TennisApp() {
                     ]);
                   }}
                 />
+                </SafeBoundary>
               </div>
             )}
           </div>

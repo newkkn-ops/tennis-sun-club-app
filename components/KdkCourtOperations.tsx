@@ -150,6 +150,41 @@ const KDK_COURTS_STORAGE_KEY = 'sun_tennis_kdk_courts_v3';
 const KDK_POOL_STORAGE_KEY = 'sun_tennis_kdk_pool_v3';
 const KDK_SYNC_EVENT = 'sun-tennis-kdk-sync';
 
+function sanitizeCourtState(raw: any, index: number): KdkCourtState {
+  const courtNumber = typeof raw?.courtNumber === 'number' ? raw.courtNumber : index + 1;
+  const rawPlayers = Array.isArray(raw?.players) ? raw.players : [];
+  const players: Player[] = rawPlayers
+    .filter(Boolean)
+    .map((p: any, i: number) => normalizePlayer(p, i));
+  const minGamesPerPlayer = Math.max(2, Math.floor(raw?.minGamesPerPlayer || 2));
+  const rawGames = Array.isArray(raw?.games) ? raw.games : [];
+  const games: CourtKdkGame[] = rawGames.filter(
+    (g: any) =>
+      g &&
+      Array.isArray(g.teamA) &&
+      g.teamA[0] &&
+      g.teamA[1] &&
+      Array.isArray(g.teamB) &&
+      g.teamB[0] &&
+      g.teamB[1]
+  );
+  const seedPlayerIds = Array.isArray(raw?.seedPlayerIds) ? raw.seedPlayerIds : [];
+  const targetPlayerCount = Math.max(4, typeof raw?.targetPlayerCount === 'number' ? raw.targetPlayerCount : players.length);
+  const gameCount = typeof raw?.gameCount === 'number' ? raw.gameCount : Math.max(games.length, calculateRequiredCourtGames(players.length, minGamesPerPlayer));
+
+  return {
+    courtNumber,
+    targetPlayerCount,
+    minGamesPerPlayer,
+    gameCount,
+    assignMode: raw?.assignMode || 'AUTO',
+    seedPlayerIds,
+    players,
+    games,
+    isFinished: Boolean(raw?.isFinished),
+  };
+}
+
 export default function KdkCourtOperations({
   tournamentName,
   availablePlayers,
@@ -311,7 +346,7 @@ export default function KdkCourtOperations({
         if (savedRaw) {
           const parsed = JSON.parse(savedRaw);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
+            return parsed.map((c, i) => sanitizeCourtState(c, i));
           }
         }
       } catch {}
@@ -372,7 +407,7 @@ export default function KdkCourtOperations({
         if (rawCourts) {
           const parsed = JSON.parse(rawCourts);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setKdkCourts(parsed);
+            setKdkCourts(parsed.map((c, i) => sanitizeCourtState(c, i)));
           }
         }
         const rawPool = localStorage.getItem(KDK_POOL_STORAGE_KEY);

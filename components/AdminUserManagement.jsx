@@ -1,6 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { supabase, toAuthEmail, mapSupabaseUserRow } from '../lib/supabase';
+import {
+  supabase,
+  toAuthEmail,
+  mapSupabaseUserRow,
+  buildSafeUsersPayload,
+  updateUserInPublicUsers,
+} from '../lib/supabase';
 import BirthDateSelector from './BirthDateSelector';
 import {
   calculateKoreanManAge,
@@ -27,6 +33,7 @@ export interface ManagedMember {
   is_guest?: boolean;
   approvalStatus?: 'pending' | 'approved';
   approval_status?: 'pending' | 'approved';
+  status?: string;
   requestedAt?: string;
   requested_at?: string;
 }
@@ -88,34 +95,41 @@ export default function AdminUserManagement({
   const [newRole, setNewRole] = useState<'member' | 'admin'>('member');
 
   const fetchUsersFromDb = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (!error && Array.isArray(data)) {
-      const normalized = data
-        .map((row) => mapSupabaseUserRow(row) as ManagedMember)
-        .filter(Boolean);
-      setUsers(normalized);
+      if (!error && Array.isArray(data)) {
+        const normalized = data
+          .map((row) => mapSupabaseUserRow(row) as ManagedMember | null)
+          .filter((u): u is ManagedMember => Boolean(u && u.id));
+        setUsers(normalized);
+      }
+    } catch (err) {
+      console.warn('fetchUsersFromDb notice:', err);
     }
   };
 
   useEffect(() => {
-    if (externalUsers) {
+    if (Array.isArray(externalUsers)) {
       setUsers(
-        externalUsers.map((u) => ({
-          ...u,
-          birthDate: u.birthDate || u.birth_date,
-          approvalStatus:
-            u.approval_status === 'pending' || u.approvalStatus === 'pending'
-              ? 'pending'
-              : 'approved',
-          approval_status:
-            u.approval_status === 'pending' || u.approvalStatus === 'pending'
-              ? 'pending'
-              : 'approved',
-        }))
+        externalUsers
+          .filter((u) => Boolean(u && u.id))
+          .map((u) => {
+            const pending =
+              u?.approval_status === 'pending' || u?.approvalStatus === 'pending';
+            return {
+              ...u,
+              name: u?.name || '클럽회원',
+              grade: u?.grade || '테린이',
+              role: u?.role === 'admin' ? 'admin' : 'member',
+              birthDate: u?.birthDate || u?.birth_date,
+              approvalStatus: pending ? 'pending' : 'approved',
+              approval_status: pending ? 'pending' : 'approved',
+            } as ManagedMember;
+          })
       );
     }
   }, [externalUsers]);
@@ -184,8 +198,8 @@ export default function AdminUserManagement({
       }
     }
 
-    if (trimmedPw.length > 0 && trimmedPw.length < 4) {
-      alert('비밀번호는 최소 4자 이상 입력해 주세요.');
+    if (trimmedPw.length > 0 && trimmedPw.length < 6) {
+      alert('비밀번호는 최소 6자 이상 입력해 주세요. (Supabase 기준)');
       return;
     }
 
@@ -194,38 +208,19 @@ export default function AdminUserManagement({
       ? toAuthEmail(trimmedId)
       : editingMember.email || '';
 
-    let { data: updatedRow, error } = await supabase
-      .from('users')
-      .update({
-        name: editName.trim(),
-        username: trimmedId || editingMember.username || null,
-        email: resolvedEmail || null,
-        phone: editPhone.trim() || null,
-        birth_date: editBirthDate || null,
-        age: computedAge !== null ? computedAge : editingMember.age ?? null,
-        gender: editGender,
-        grade: editGrade,
-        role: editRole,
-      })
-      .eq('id', editingMember.id)
-      .select()
-      .maybeSingle();
-
-    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
-      const retry = await supabase
-        .from('users')
-        .update({
-          name: editName.trim(),
-          gender: editGender,
-          grade: editGrade,
-          role: editRole,
-        })
-        .eq('id', editingMember.id)
-        .select()
-        .maybeSingle();
-      updatedRow = retry.data;
-      error = retry.error;
-    }
+    let { data: updatedRows, error } = await updateUserInPublicUsers(editingMember.id, {
+      name: editName.trim(),
+      username: trimmedId || editingMember.username || '',
+      email: resolvedEmail || '',
+      phone: editPhone.trim() || '',
+      birth_date: editBirthDate || null,
+      age: computedAge !== null ? computedAge : editingMember.age ?? null,
+      gender: editGender,
+      grade: editGrade,
+      role: editRole,
+      status: editingMember.approvalStatus === 'pending' ? 'pending' : 'approved',
+    });
+    const updatedRow = Array.isArray(updatedRows) ? updatedRows[0] : updatedRows;
 
     if (error) {
       alert(`회원 정보 수정 중 오류가 발생했습니다: ${error.message}`);
@@ -329,40 +324,11 @@ export default function AdminUserManagement({
 
   // 회원가입 승인 핸들러 (대기 pending -> 정회원 approved 실시간 DB 반영)
   const handleApproveMember = async (member: ManagedMember) => {
-    let { data, error } = await supabase
-      .from('users')
-      .update({ approval_status: 'approved', status: 'approved' })
-      .eq('id', member.id)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      if (
-        error.message.includes('approval_status') ||
-        error.message.includes('schema cache')
-      ) {
-        const retry = await supabase
-          .from('users')
-          .update({ status: 'approved' })
-          .eq('id', member.id)
-          .select()
-          .maybeSingle();
-        data = retry.data;
-        error = retry.error;
-      } else if (
-        error.message.includes('status') ||
-        error.message.includes('schema cache')
-      ) {
-        const retry = await supabase
-          .from('users')
-          .update({ approval_status: 'approved' })
-          .eq('id', member.id)
-          .select()
-          .maybeSingle();
-        data = retry.data;
-        error = retry.error;
-      }
-    }
+    let { data, error } = await updateUserInPublicUsers(member.id, {
+      status: 'approved',
+      approval_status: 'approved',
+    });
+    if (Array.isArray(data)) data = data[0];
 
     if (error) {
       alert(`회원가입 승인 처리 실패: ${error.message}`);
@@ -477,31 +443,32 @@ export default function AdminUserManagement({
       username: rawLoginId,
       email: authEmail,
       name: newName.trim(),
-      phone: newPhone.trim() || null,
+      phone: newPhone.trim() || '',
       birth_date: newBirthDate || null,
       age: computedAge !== null ? computedAge : null,
       gender: newGender,
       grade: newGrade,
       role: newRole,
       is_guest: false,
+      status: 'approved',
       approval_status: 'approved',
       requested_at: new Date().toISOString(),
     };
 
+    // public.users 실제 컬럼(id, name, gender, grade, role, push_subscription)만 전송
     let { data: insertedRow, error: insertError } = await supabase
       .from('users')
-      .upsert(insertPayload)
+      .upsert(buildSafeUsersPayload(insertPayload))
       .select()
       .maybeSingle();
 
-    if (insertError && (insertError.message.includes('column') || insertError.message.includes('schema cache'))) {
+    if (insertError) {
       const minimal = {
         ...(newUserId ? { id: newUserId } : {}),
         name: newName.trim(),
         gender: newGender,
         grade: newGrade,
         role: newRole,
-        status: 'approved',
       };
       const retry = await supabase.from('users').upsert(minimal).select().maybeSingle();
       insertedRow = retry.data;
@@ -545,21 +512,24 @@ export default function AdminUserManagement({
     alert(`🎉 [${created.name} (${created.grade}${ageSuffix})] 회원이 Supabase DB에 정회원으로 등록되었습니다.`);
   };
 
-  const pendingUsers = users.filter(
-    (u) => (u.approval_status || u.approvalStatus) === 'pending'
+  const safeUsers: ManagedMember[] = (Array.isArray(users) ? users : []).filter(
+    (u): u is ManagedMember => Boolean(u && u.id)
   );
-  const approvedUsers = users.filter(
-    (u) => (u.approval_status || u.approvalStatus) !== 'pending'
+  const pendingUsers = safeUsers.filter(
+    (u) => (u?.approval_status || u?.approvalStatus) === 'pending'
+  );
+  const approvedUsers = safeUsers.filter(
+    (u) => (u?.approval_status || u?.approvalStatus) !== 'pending'
   );
 
   const filteredUsers = approvedUsers.filter((u) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
     return (
-      u.name?.toLowerCase().includes(q) ||
-      u.grade?.toLowerCase().includes(q) ||
-      u.username?.toLowerCase().includes(q) ||
-      u.email?.toLowerCase().includes(q)
+      String(u?.name || '').toLowerCase().includes(q) ||
+      String(u?.grade || '').toLowerCase().includes(q) ||
+      String(u?.username || '').toLowerCase().includes(q) ||
+      String(u?.email || '').toLowerCase().includes(q)
     );
   });
 
@@ -761,7 +731,7 @@ export default function AdminUserManagement({
             <div className="grid grid-cols-2 gap-2">
               <input
                 type="text"
-                placeholder="비밀번호 (선택 · 4자 이상)"
+                placeholder="비밀번호 (선택 · 6자 이상)"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
@@ -1041,7 +1011,7 @@ export default function AdminUserManagement({
                       type={showEditPassword ? 'text' : 'password'}
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
-                      placeholder="현재 비밀번호 확인 또는 새 비밀번호 (4자 이상)"
+                      placeholder="현재 비밀번호 확인 또는 새 비밀번호 (6자 이상)"
                       className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-emerald-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"
                     />
                     <button

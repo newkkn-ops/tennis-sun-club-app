@@ -44,9 +44,20 @@ export async function subscribeUserToPush(
 
     // Supabase의 users 테이블에 push_subscription 데이터 저장
     if (supabase && userId) {
+      // 기존 push_subscription JSONB 내부 회원 메타데이터(승인상태·생년월일 등)를 보존하며 구독 정보 병합
+      const { data: existingRow } = await supabase
+        .from('users')
+        .select('push_subscription')
+        .eq('id', userId)
+        .maybeSingle();
+      const prevMeta =
+        existingRow?.push_subscription && typeof existingRow.push_subscription === 'object'
+          ? existingRow.push_subscription
+          : {};
+      const subJson = typeof subscription?.toJSON === 'function' ? subscription.toJSON() : subscription;
       const { error } = await supabase
         .from('users')
-        .update({ push_subscription: subscription })
+        .update({ push_subscription: { ...prevMeta, ...subJson } })
         .eq('id', userId);
 
       if (error) throw error;
