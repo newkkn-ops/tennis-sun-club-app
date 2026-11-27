@@ -1129,6 +1129,39 @@ export default function KdkCourtOperations({
   const currentPlayingGame = uncompletedGames[0] || null;
   const nextQueuedGame = uncompletedGames[1] || null;
 
+  // [KDK_V2025 시트 스타일] 선수별 라운드(경기)별 득점/실점/결과 매핑
+  const playerRoundMap: Record<string, { round: number; scoreFor: number; scoreAgainst: number; isWin: boolean; isDraw: boolean; partnerName: string; oppNames: string; completed: boolean }[]> = {};
+  if (activeCourt) {
+    activeCourt.players.forEach((p) => {
+      playerRoundMap[p.id] = [];
+    });
+    activeCourt.games.forEach((g) => {
+      const isTeamA0 = g.teamA[0]?.id;
+      const isTeamA1 = g.teamA[1]?.id;
+      const isTeamB0 = g.teamB[0]?.id;
+      const isTeamB1 = g.teamB[1]?.id;
+
+      const recordPlayerGame = (pId: string, partnerName: string, oppNames: string, sf: number, sa: number) => {
+        if (!playerRoundMap[pId]) playerRoundMap[pId] = [];
+        playerRoundMap[pId].push({
+          round: g.gameNumber,
+          scoreFor: sf,
+          scoreAgainst: sa,
+          isWin: g.completed && sf > sa,
+          isDraw: g.completed && sf === sa,
+          partnerName,
+          oppNames,
+          completed: g.completed,
+        });
+      };
+
+      if (isTeamA0) recordPlayerGame(isTeamA0, g.teamA[1]?.name || '', `${g.teamB[0]?.name || ''}/${g.teamB[1]?.name || ''}`, g.scoreA, g.scoreB);
+      if (isTeamA1) recordPlayerGame(isTeamA1, g.teamA[0]?.name || '', `${g.teamB[0]?.name || ''}/${g.teamB[1]?.name || ''}`, g.scoreA, g.scoreB);
+      if (isTeamB0) recordPlayerGame(isTeamB0, g.teamB[1]?.name || '', `${g.teamA[0]?.name || ''}/${g.teamA[1]?.name || ''}`, g.scoreB, g.scoreA);
+      if (isTeamB1) recordPlayerGame(isTeamB1, g.teamB[0]?.name || '', `${g.teamA[0]?.name || ''}/${g.teamA[1]?.name || ''}`, g.scoreB, g.scoreA);
+    });
+  }
+
   // ============================================================================
   // [A] 운영자 관리 센터 전용 뷰 (viewMode === 'ADMIN_CONFIG')
   // - 코트별 참가인원 설정, 1인 필수 최소 게임 수, 자동/시드우선/수동 모드, 선수 배정·구력·나이·시드 관리
@@ -1748,6 +1781,129 @@ export default function KdkCourtOperations({
           )}
 
           {/* ========================================================== */}
+          {/* [KDK_V2025 시트 스타일] 상단 라운드/게임별 대진표 */}
+          {/* ========================================================== */}
+          <div className="bg-slate-900 border border-emerald-500/35 rounded-2xl p-4 shadow-xl space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                  <span>📅</span> KDK_V2025 라운드/게임별 대진표 ({activeCourt.courtNumber}번 코트)
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  (총 {activeCourt.games.length}경기 · 완료 {completedGamesCount}경기)
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px]">
+                <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 진행중
+                </span>
+                <span className="flex items-center gap-1 text-amber-300 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span> 대기(예정)
+                </span>
+                <span className="flex items-center gap-1 text-slate-400">
+                  <span className="w-2 h-2 rounded-full bg-slate-500"></span> 완료
+                </span>
+              </div>
+            </div>
+
+            {/* KDK_V2025 라운드별 경기 카드 / 테이블 그리드 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {activeCourt.games.map((g) => {
+                const isCurrentLive = !g.completed && currentPlayingGame && currentPlayingGame.id === g.id;
+                const isNextWaiting = !g.completed && nextQueuedGame && nextQueuedGame.id === g.id;
+                const statusLabel = g.completed ? '완료' : isCurrentLive ? '진행중' : '예정';
+                const statusBadgeClass = g.completed
+                  ? 'bg-slate-800 text-slate-400 border-slate-700'
+                  : isCurrentLive
+                  ? 'bg-emerald-500 text-slate-950 font-black animate-pulse'
+                  : isNextWaiting
+                  ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 font-bold'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800';
+
+                return (
+                  <div
+                    key={g.id}
+                    className={`rounded-xl border p-3 transition ${
+                      isCurrentLive
+                        ? 'bg-gradient-to-r from-emerald-950/60 via-slate-950 to-slate-950 border-emerald-400 shadow-lg ring-1 ring-emerald-400/40'
+                        : g.completed
+                        ? 'bg-slate-950/80 border-slate-800/80 opacity-90'
+                        : 'bg-slate-950 border-slate-800'
+                    }`}
+                  >
+                    {/* 상단: 게임 번호, 코트 번호, 상태 배지 */}
+                    <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-800/70 text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-black text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                          게임 {g.gameNumber}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {g.courtNumber}코트
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${statusBadgeClass}`}>
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {/* 중단: Team A vs Team B 매치업 및 점수 */}
+                    <div className="py-2 flex items-center justify-between gap-2 text-xs">
+                      {/* Team A */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-black text-slate-400 mb-0.5">TEAM A</div>
+                        <div className="font-black text-emerald-300 truncate">
+                          {activeCourt.assignMode === 'SEED_AUTO' && activeCourt.seedPlayerIds.includes(g.teamA[0].id) && '🌟'}
+                          {g.teamA[0].name}
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">({g.teamA[0].grade})</span>
+                        </div>
+                        <div className="font-black text-emerald-300 truncate">
+                          {activeCourt.assignMode === 'SEED_AUTO' && activeCourt.seedPlayerIds.includes(g.teamA[1].id) && '🌟'}
+                          {g.teamA[1].name}
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">({g.teamA[1].grade})</span>
+                        </div>
+                      </div>
+
+                      {/* 점수 디스플레이 */}
+                      <div className="shrink-0 flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-center">
+                        <span className={`text-base font-black ${g.completed && g.scoreA > g.scoreB ? 'text-amber-300' : 'text-white'}`}>
+                          {g.scoreA}
+                        </span>
+                        <span className="text-xs font-black text-slate-500">:</span>
+                        <span className={`text-base font-black ${g.completed && g.scoreB > g.scoreA ? 'text-amber-300' : 'text-white'}`}>
+                          {g.scoreB}
+                        </span>
+                      </div>
+
+                      {/* Team B */}
+                      <div className="flex-1 min-w-0 text-right">
+                        <div className="text-[10px] font-black text-slate-400 mb-0.5">TEAM B</div>
+                        <div className="font-black text-amber-300 truncate">
+                          {activeCourt.assignMode === 'SEED_AUTO' && activeCourt.seedPlayerIds.includes(g.teamB[0].id) && '🌟'}
+                          {g.teamB[0].name}
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">({g.teamB[0].grade})</span>
+                        </div>
+                        <div className="font-black text-amber-300 truncate">
+                          {activeCourt.assignMode === 'SEED_AUTO' && activeCourt.seedPlayerIds.includes(g.teamB[1].id) && '🌟'}
+                          {g.teamB[1].name}
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">({g.teamB[1].grade})</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 하단: 휴식/대기 인원 */}
+                    {g.resting && g.resting.length > 0 && (
+                      <div className="pt-1.5 border-t border-slate-800/60 text-[10px] text-slate-400 flex items-center gap-1.5 truncate">
+                        <span className="text-amber-300">☕ 휴식:</span>
+                        <span className="truncate">{g.resting.map((rp) => `${rp.name}(${rp.grade})`).join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ========================================================== */}
           {/* 1. 현재 진행 경기 & 다음 대기자 선수 자동 연동 현황 카드 */}
           {/* ========================================================== */}
           <div className="bg-slate-900 border border-emerald-500/35 rounded-2xl p-3.5 shadow-xl space-y-2.5">
@@ -2154,6 +2310,135 @@ export default function KdkCourtOperations({
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* ========================================================== */}
+            {/* [KDK_V2025 시트 하단 전용 양식] 개인별 라운드 기록표 */}
+            {/* 번호/시드 | 이름 | 1round ~ Nround | 승수 | 게임 득 | 게임 실 | 득실차 | 순위 */}
+            {/* ========================================================== */}
+            <div className="pt-3 border-t border-slate-800/80 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                  <span>📊</span> KDK_V2025 개인별 라운드 종합 기록표 (라운드별 실시간 득실 연동)
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  선택 게임 수({activeCourt.minGamesPerPlayer}G) 기준 동적 라운드 표시
+                </span>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/90">
+                <table className="w-full text-center text-xs whitespace-nowrap">
+                  <thead>
+                    <tr className="bg-slate-900/90 text-slate-300 border-b border-slate-800 text-[10px] font-black">
+                      <th className="py-2 px-2">번호/시드</th>
+                      <th className="py-2 px-2.5 text-left">이름</th>
+                      {Array.from({ length: Math.max(activeCourt.minGamesPerPlayer, 2) }).map((_, rIdx) => (
+                        <th key={rIdx} className="py-2 px-2 text-emerald-300">
+                          {rIdx + 1}round
+                        </th>
+                      ))}
+                      <th className="py-2 px-2 text-amber-300 bg-amber-400/5">승수</th>
+                      <th className="py-2 px-2 text-emerald-400">게임 득</th>
+                      <th className="py-2 px-2 text-rose-400">게임 실</th>
+                      <th className="py-2 px-2 text-cyan-300 font-extrabold bg-cyan-400/5">득실차</th>
+                      <th className="py-2 px-2.5 text-amber-400 font-black">순위</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70 text-[11px]">
+                    {activeCourtStandings.map((s, idx) => {
+                      const roundsCount = Math.max(activeCourt.minGamesPerPlayer, 2);
+                      const myRoundList = playerRoundMap[s.playerId] || [];
+                      const isSeed = activeCourt.seedPlayerIds.includes(s.playerId);
+                      const seedRank = activeCourt.seedPlayerIds.indexOf(s.playerId) + 1;
+
+                      return (
+                        <tr
+                          key={s.playerId}
+                          className={s.rank <= 3 ? 'bg-amber-400/5 font-semibold' : 'hover:bg-slate-900/40'}
+                        >
+                          {/* 번호 / 시드 */}
+                          <td className="py-2 px-2 font-mono text-slate-400">
+                            {isSeed ? (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-[9px]">
+                                {seedRank}시드
+                              </span>
+                            ) : (
+                              <span>{idx + 1}</span>
+                            )}
+                          </td>
+
+                          {/* 이름 및 등급 */}
+                          <td className="py-2 px-2.5 text-left font-black text-white">
+                            <span className="truncate">{s.name}</span>
+                            <span className="text-[10px] text-slate-400 font-normal ml-1">
+                              ({s.grade})
+                            </span>
+                          </td>
+
+                          {/* 1round ~ Nround 동적 표시 */}
+                          {Array.from({ length: roundsCount }).map((_, rIdx) => {
+                            const rData = myRoundList[rIdx];
+                            if (!rData) {
+                              return (
+                                <td key={rIdx} className="py-2 px-2 text-slate-600 font-mono text-[10px]">
+                                  -
+                                </td>
+                              );
+                            }
+                            if (!rData.completed) {
+                              return (
+                                <td key={rIdx} className="py-2 px-2 font-mono text-[10px] text-amber-400/70 bg-amber-400/5">
+                                  대기
+                                </td>
+                              );
+                            }
+                            return (
+                              <td
+                                key={rIdx}
+                                className={`py-2 px-2 font-mono font-bold text-[10px] ${
+                                  rData.isWin
+                                    ? 'text-emerald-300 bg-emerald-500/10'
+                                    : rData.isDraw
+                                    ? 'text-slate-300'
+                                    : 'text-rose-300 bg-rose-500/5'
+                                }`}
+                                title={`파트너: ${rData.partnerName} / 상대: ${rData.oppNames}`}
+                              >
+                                {rData.scoreFor}:{rData.scoreAgainst}
+                              </td>
+                            );
+                          })}
+
+                          {/* 승수 */}
+                          <td className="py-2 px-2 font-black text-amber-300 bg-amber-400/5">
+                            {s.wins}승
+                          </td>
+
+                          {/* 게임 득 */}
+                          <td className="py-2 px-2 font-bold text-emerald-400">
+                            {s.pointsFor}
+                          </td>
+
+                          {/* 게임 실 */}
+                          <td className="py-2 px-2 font-bold text-rose-400">
+                            {s.pointsAgainst}
+                          </td>
+
+                          {/* 득실차 */}
+                          <td className="py-2 px-2 font-black text-cyan-300 bg-cyan-400/5">
+                            {s.pointDiff >= 0 ? `+${s.pointDiff}` : s.pointDiff}
+                          </td>
+
+                          {/* 순위 */}
+                          <td className="py-2 px-2.5 font-black text-amber-400">
+                            {s.rank === 1 ? '🥇 1' : s.rank === 2 ? '🥈 2' : s.rank === 3 ? '🥉 3' : `${s.rank}`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 

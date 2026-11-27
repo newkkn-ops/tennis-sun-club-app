@@ -43,6 +43,7 @@ export interface TournamentConfig {
   assignmentType: 'AUTO' | 'MANUAL';
   courtsCount: number;
   selectedCourts: number[];
+  minGamesPerPlayer?: number;
   participants: ParticipantPlayer[];
   matches: AssignedMatch[];
   status: 'pending' | 'ongoing' | 'finished';
@@ -120,6 +121,8 @@ export default function AdminTournamentManager({
   const [selectedCourts, setSelectedCourts] = useState<number[]>(
     activeTournament?.selectedCourts || [1, 2, 3]
   );
+  // 인당 게임 수 (최소 2게임 ~ 최대 6게임, 기본 3게임)
+  const [minGamesPerPlayer, setMinGamesPerPlayer] = useState<number>(3);
   const [kdkRoundsCount, setKdkRoundsCount] = useState<number>(3);
   const [assignmentType, setAssignmentType] = useState<'AUTO' | 'MANUAL'>(
     activeTournament?.assignmentType || 'AUTO'
@@ -498,12 +501,12 @@ export default function AdminTournamentManager({
         isGuest: p.isGuest,
       }));
 
-      // 단일 코트 KDK 게임 생성 함수 호출 (시드 우선 모드 및 수동 시드 ID 목록 전달)
-      const games = generateCourtKDKGames(cNum, mappedPlayers, 2, {
-        minGamesPerPlayer: 2,
+      // 단일 코트 KDK 게임 생성 함수 호출 (선택된 인당 게임 수 minGamesPerPlayer 및 시드 우선 모드 전달)
+      const games = generateCourtKDKGames(cNum, mappedPlayers, minGamesPerPlayer, {
+        minGamesPerPlayer,
         assignMode: manualSeedIds.length > 0 ? 'SEED_AUTO' : 'AUTO',
         seedPlayerIds: manualSeedIds,
-        overrideTotalGames: Math.max(kdkRoundsCount, Math.ceil((mappedPlayers.length * 2) / 4)),
+        overrideTotalGames: Math.max(minGamesPerPlayer, Math.ceil((mappedPlayers.length * minGamesPerPlayer) / 4)),
       });
 
       // AssignedMatch 형식으로 변환하여 추가
@@ -556,7 +559,7 @@ export default function AdminTournamentManager({
         const kdkSchedule = generateKDKSchedule(
           selectedParticipants,
           courts.length,
-          kdkRoundsCount
+          minGamesPerPlayer
         );
 
         kdkSchedule.forEach((r) => {
@@ -750,6 +753,7 @@ export default function AdminTournamentManager({
       assignmentType,
       courtsCount: selectedCourts.length,
       selectedCourts,
+      minGamesPerPlayer,
       participants: selectedParticipants,
       matches: assignedMatches,
       status: 'ongoing',
@@ -964,6 +968,65 @@ export default function AdminTournamentManager({
               </p>
             </button>
           </div>
+
+          {/* KDK 방식 선택 시: 인당 게임 수 선택 (최소 2게임 ~ 최대 6게임) */}
+          {tournamentMode === 'KDK' && (
+            <div className="mt-3.5 bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                  <span>🎯</span> 참여선수 1인당 게임 수 선택 (최소 2게임 ~ 최대 6게임)
+                </span>
+                <span className="text-[10px] text-amber-300 font-bold bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
+                  선택: 인당 {minGamesPerPlayer}게임 (V2025 표준)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                각 선수의 출전 횟수가 <strong>{minGamesPerPlayer}게임</strong>으로 균등하게 배분되도록 대진표를 자동 생성합니다.
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {[2, 3, 4, 5, 6].map((gCount) => {
+                  const isSelected = minGamesPerPlayer === gCount;
+                  return (
+                    <button
+                      key={gCount}
+                      type="button"
+                      onClick={() => {
+                        setMinGamesPerPlayer(gCount);
+                        setKdkRoundsCount(gCount);
+                      }}
+                      className={`py-2 px-1 rounded-xl text-xs font-black border transition-all cursor-pointer text-center ${
+                        isSelected
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 border-emerald-400 shadow-md font-extrabold scale-[1.02]'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <div className="text-sm font-black">{gCount}게임</div>
+                      <div className="text-[9px] opacity-80 mt-0.5">
+                        {gCount === 3 || gCount === 4 ? '추천' : `${gCount}R`}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 홀수/잔여 매치 안내 배지 */}
+              {selectedParticipants.length > 0 && (
+                <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 flex-wrap gap-1">
+                  <span>
+                    총 {selectedParticipants.length}명 참여 시 총 경기 수: 약{' '}
+                    <strong className="text-emerald-300">
+                      {Math.ceil((selectedParticipants.length * minGamesPerPlayer) / 4)}경기
+                    </strong>
+                  </span>
+                  {(selectedParticipants.length * minGamesPerPlayer) % 4 !== 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
+                      ℹ️ 인원/경기수 조합에 따라 일부 선수가 1게임 추가 출전할 수 있습니다.
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         )}
       </div>
 

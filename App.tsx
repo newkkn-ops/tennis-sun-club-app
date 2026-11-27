@@ -41,6 +41,7 @@ export interface TournamentRecord {
   date: string; // 진행날짜 자동 생성 (YYYY-MM-DD)
   format: 'kdk' | 'tournament'; // 대회 진행 방식: KDK 순환 or 예선/본선 토너먼트
   courtCount: number;
+  minGamesPerPlayer?: number;
   status: 'in_progress' | 'completed';
 }
 
@@ -4295,73 +4296,6 @@ export default function TennisApp() {
                   }}
                 />
                 </SafeBoundary>
-
-                {/* 2. 관리자 대회 생성 & 코트/선수 배치 콘솔 */}
-                <SafeBoundary title="대회 관리">
-                <AdminTournamentManager
-                  registeredUsers={approvedPlayers}
-                  currentUser={currentUser}
-                  activeTournament={null}
-                  onApplyTournament={(config: TournamentConfig) => {
-                    const autoDate = new Date().toISOString().split('T')[0];
-                    const newTour: TournamentRecord = {
-                      id: config.id || `tour-${Date.now()}`,
-                      name: config.title,
-                      date: autoDate,
-                      format: config.mode === 'KDK' ? 'kdk' : 'tournament',
-                      courtCount: config.selectedCourts.length || 3,
-                      status: 'in_progress',
-                    };
-                    setTournamentHistory((prev) => {
-      const next = [newTour, ...prev];
-      persistTournamentHistory(next);
-      return next;
-    });
-                    setCurrentTournament(newTour);
-
-                    const mappedCourts: CourtMatch[] = (Array.isArray(config?.matches) ? config.matches : [])
-                      .filter((m) => m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1])
-                      .map((m, idx) => ({
-                      id: idx + 1,
-                      courtNumber: m.courtNumber,
-                      status: m.status || 'playing',
-                      teamA: [
-                        `${m.teamA[0].name} (${m.teamA[0].grade})`,
-                        `${m.teamA[1].name} (${m.teamA[1].grade})`,
-                      ],
-                      teamB: [
-                        `${m.teamB[0].name} (${m.teamB[0].grade})`,
-                        `${m.teamB[1].name} (${m.teamB[1].grade})`,
-                      ],
-                      scoreA: m.scoreA ?? 0,
-                      scoreB: m.scoreB ?? 0,
-                    }));
-                    if (mappedCourts.length > 0) {
-                      setCourts(mappedCourts);
-                    }
-                    setActiveTab('courts');
-                    alert(
-                      `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${mappedCourts.length}경기)와 대진표에 즉시 연동되었습니다!`
-                    );
-                  }}
-                  onAddCustomUserToClub={(newGuest: ParticipantPlayer) => {
-                    setRegisteredPlayers((prev) => [
-                      ...prev,
-                      {
-                        id: newGuest.id,
-                        name: newGuest.name,
-                        grade: newGuest.grade,
-                        gender: newGuest.gender === '여' ? 'F' : 'M',
-                        birthDate: newGuest.birthDate,
-                        age: resolvePlayerAge(newGuest, 46),
-                        experienceYears: newGuest.experienceYears,
-                        role: 'member',
-                        isGuest: true,
-                      },
-                    ]);
-                  }}
-                />
-                </SafeBoundary>
               </div>
             )}
           </div>
@@ -4484,6 +4418,7 @@ export default function TennisApp() {
                     date: autoDate,
                     format: config.mode === 'KDK' ? 'kdk' : 'tournament',
                     courtCount: config.selectedCourts.length || 3,
+                    minGamesPerPlayer: config.minGamesPerPlayer || 3,
                     status: 'in_progress',
                   };
                   setTournamentHistory((prev) => {
@@ -4492,6 +4427,50 @@ export default function TennisApp() {
                     return next;
                   });
                   setCurrentTournament(newTour);
+
+                  // KDK 대회일 경우 KdkCourtOperations 스토리지에 새 대회 매치와 참여자 자동 동기화
+                  if (config.mode === 'KDK' && Array.isArray(config.matches) && config.matches.length > 0) {
+                    try {
+                      const courtNums = config.selectedCourts && config.selectedCourts.length > 0 ? config.selectedCourts : [1, 2];
+                      const kdkCourtsPayload = courtNums.map((cNum) => {
+                        const courtMatches = config.matches.filter((m) => m.courtNumber === cNum);
+                        const courtPlayersMap: Record<string, any> = {};
+                        courtMatches.forEach((m) => {
+                          [...m.teamA, ...m.teamB].forEach((p) => {
+                            if (p && p.id) courtPlayersMap[p.id] = p;
+                          });
+                        });
+                        const cPlayers = Object.values(courtPlayersMap);
+                        const cGames = courtMatches.map((m, gIdx) => ({
+                          id: m.id || `c${cNum}_g${gIdx + 1}`,
+                          courtNumber: cNum,
+                          gameNumber: gIdx + 1,
+                          teamA: m.teamA,
+                          teamB: m.teamB,
+                          teamAWeight: m.teamAWeight || 0,
+                          teamBWeight: m.teamBWeight || 0,
+                          skillDiff: m.skillDiff || 0,
+                          scoreA: m.scoreA || 0,
+                          scoreB: m.scoreB || 0,
+                          completed: m.status === 'completed',
+                          resting: [],
+                        }));
+                        return {
+                          courtNumber: cNum,
+                          targetPlayerCount: cPlayers.length,
+                          minGamesPerPlayer: config.minGamesPerPlayer || 3,
+                          gameCount: cGames.length,
+                          assignMode: 'AUTO',
+                          seedPlayerIds: [],
+                          players: cPlayers,
+                          games: cGames,
+                          isFinished: false,
+                        };
+                      });
+                      localStorage.setItem('sun_tennis_kdk_courts_v3', JSON.stringify(kdkCourtsPayload));
+                      window.dispatchEvent(new Event('sun-tennis-kdk-sync'));
+                    } catch {}
+                  }
 
                   const mappedCourts: CourtMatch[] = (Array.isArray(config?.matches) ? config.matches : [])
                     .filter((m) => m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1])
