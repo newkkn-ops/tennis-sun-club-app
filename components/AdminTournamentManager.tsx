@@ -1300,7 +1300,7 @@ export default function AdminTournamentManager({
     setAssignedMatches((prev) => prev.filter((m) => m.id !== matchId));
   };
 
-  // 최종 대회 생성 & 실시간 코트/대진표 앱 자동 연동
+  // 최종 대회 생성 / 수정 내용 저장 & 실시간 코트/대진표 앱 자동 연동
   const handleLaunchTournament = () => {
     if (!tournamentTitle.trim()) {
       alert('대회명을 입력해 주세요.');
@@ -1309,6 +1309,14 @@ export default function AdminTournamentManager({
     if (assignedMatches.length === 0) {
       alert('배정된 경기가 없습니다. [자동 배정 실행] 또는 [수동 대진 추가]를 먼저 눌러주세요.');
       return;
+    }
+
+    if (isEditMode) {
+      const confirmMsg =
+        '이미 완료·진행 중인 경기는 유지되며, 대기 중인 대진표만 새 인원 기준으로 업데이트됩니다. 적용하시겠습니까?';
+      if (!window.confirm(confirmMsg)) {
+        return;
+      }
     }
 
     const config: TournamentConfig = {
@@ -1328,8 +1336,8 @@ export default function AdminTournamentManager({
         assignedCourts: groupCourtMap[g] || [],
       })),
       groupCourtMap,
-      status: 'ongoing',
-      createdAt: new Date().toISOString(),
+      status: activeTournament?.status || 'ongoing',
+      createdAt: activeTournament?.createdAt || new Date().toISOString(),
     };
 
     onApplyTournament(config);
@@ -1348,7 +1356,7 @@ export default function AdminTournamentManager({
       <div className="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-3.5 shadow-xl">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className={px-2 py-0.5 rounded-full text-[10px] font-black }>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${isEditMode ? 'bg-emerald-500 text-slate-950' : 'bg-red-500 text-white'}`}>
               {isEditMode ? 'EDIT TOURNAMENT' : 'NEW TOURNAMENT'}
             </span>
             <span className="text-xs font-extrabold text-amber-300">
@@ -2755,7 +2763,7 @@ export default function AdminTournamentManager({
         <button
           type="button"
           onClick={handleLaunchTournament}
-          className={w-full py-3.5 bg-gradient-to-r  text-slate-950 font-black rounded-2xl text-sm transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer}
+          className={`w-full py-3.5 bg-gradient-to-r ${isEditMode ? "from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:to-teal-600 shadow-emerald-500/25" : "from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:to-red-600 shadow-amber-500/25"} text-slate-950 font-black rounded-2xl text-sm transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer`}
         >
           <span>{isEditMode ? '💾' : '🚀'}</span>
           <span>
