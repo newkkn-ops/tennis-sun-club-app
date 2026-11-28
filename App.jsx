@@ -746,6 +746,45 @@ export default function TennisApp() {
     };
     window.addEventListener('sun-tennis-kdk-sync', handleKdkSync);
     window.addEventListener('storage', handleKdkSync);
+
+    // 초기 마운트 시 sun_tennis_kdk_courts_v3에 데이터가 있다면 첫 라이브 경기와 동기화
+    try {
+      const raw = localStorage.getItem('sun_tennis_kdk_courts_v3');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const syncedCourts: CourtMatch[] = parsed.map((kc: any, idx: number) => {
+            const firstActive = (kc.games || []).find((g: any) => !g.completed) || (kc.games || [])[0];
+            if (firstActive && firstActive.teamA?.[0] && firstActive.teamB?.[0]) {
+              return {
+                id: idx + 1,
+                courtNumber: kc.courtNumber || idx + 1,
+                status: (firstActive.completed ? 'completed' : 'playing') as any,
+                teamA: [
+                  `${firstActive.teamA[0]?.name} (${firstActive.teamA[0]?.grade || '은배'})`,
+                  `${firstActive.teamA[1]?.name} (${firstActive.teamA[1]?.grade || '은배'})`,
+                ],
+                teamB: [
+                  `${firstActive.teamB[0]?.name} (${firstActive.teamB[0]?.grade || '은배'})`,
+                  `${firstActive.teamB[1]?.name} (${firstActive.teamB[1]?.grade || '은배'})`,
+                ],
+                teamAWeight: firstActive.teamAWeight,
+                teamBWeight: firstActive.teamBWeight,
+                skillDiff: firstActive.skillDiff,
+                scoreA: firstActive.scoreA || 0,
+                scoreB: firstActive.scoreB || 0,
+              };
+            }
+            return null;
+          }).filter(Boolean) as CourtMatch[];
+
+          if (syncedCourts.length > 0) {
+            setCourts(syncedCourts);
+          }
+        }
+      }
+    } catch {}
+
     return () => {
       window.removeEventListener('sun-tennis-kdk-sync', handleKdkSync);
       window.removeEventListener('storage', handleKdkSync);
@@ -763,7 +802,7 @@ export default function TennisApp() {
       const parsedKdk = JSON.parse(rawKdk);
       if (!Array.isArray(parsedKdk)) return null;
 
-      // 현재 다른 코트들(또는 해당 코트)에서 현재 live 경기 중인 선수 이름 목록 수집
+      // 현재 모든 코트에서 LIVE(playing) 상태인 경기에서 뛰고 있는 선수 이름 수집
       const busyPlayerNames = new Set<string>();
       courts.forEach((c) => {
         if (c.status === 'playing') {
@@ -801,6 +840,7 @@ export default function TennisApp() {
         }
 
         // 후보 게임 중 동일 코트 내 양 팀 동일 선수 중복 배정 방지 확인
+        // 또한 다른 코트에서 진행 중인 선수와 겹치지 않는 경기 우선
         for (const g of candidateGames) {
           const a0 = g.teamA[0]?.name || '';
           const a1 = g.teamA[1]?.name || '';
@@ -810,16 +850,26 @@ export default function TennisApp() {
           const uniqueNames = new Set(names);
           // 동일 선수가 양 팀에 중복 배정된 게임 제외
           if (uniqueNames.size === 4) {
+            // 다른 코트에서 이미 뛰고 있는 선수가 포함되어 있다면 건너뛰기
+            const isPlayingOnOtherCourt = names.some((n) => {
+              const curCourtNames = new Set(
+                [...(curCourt?.teamA || []), ...(curCourt?.teamB || [])].map((s) => s.split('(')[0].trim())
+              );
+              // 현재 코트 선수가 아닌 다른 활성 코트에 있다면 충돌
+              return busyPlayerNames.has(n) && !curCourtNames.has(n);
+            });
+            if (isPlayingOnOtherCourt) continue;
+
             return {
               gameNumber: g.gameNumber,
               courtNumber: courtNum,
               teamA: [
-                `${g.teamA[0]?.name || ''} (${g.teamA[0]?.grade || ''})`,
-                `${g.teamA[1]?.name || ''} (${g.teamA[1]?.grade || ''})`,
+                `${g.teamA[0]?.name || ''} (${g.teamA[0]?.grade || '은배'})`,
+                `${g.teamA[1]?.name || ''} (${g.teamA[1]?.grade || '은배'})`,
               ],
               teamB: [
-                `${g.teamB[0]?.name || ''} (${g.teamB[0]?.grade || ''})`,
-                `${g.teamB[1]?.name || ''} (${g.teamB[1]?.grade || ''})`,
+                `${g.teamB[0]?.name || ''} (${g.teamB[0]?.grade || '은배'})`,
+                `${g.teamB[1]?.name || ''} (${g.teamB[1]?.grade || '은배'})`,
               ],
               teamAWeight: g.teamAWeight,
               teamBWeight: g.teamBWeight,
@@ -844,6 +894,11 @@ export default function TennisApp() {
       // 전체 게임번호 오름차순 정렬
       allUncompleted.sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
 
+      const curCourt = courts.find((c) => c.courtNumber === courtNum);
+      const curCourtNames = new Set(
+        [...(curCourt?.teamA || []), ...(curCourt?.teamB || [])].map((s) => s.split('(')[0].trim())
+      );
+
       for (const g of allUncompleted) {
         const a0 = g.teamA[0]?.name || '';
         const a1 = g.teamA[1]?.name || '';
@@ -852,16 +907,24 @@ export default function TennisApp() {
         const names = [a0, a1, b0, b1].filter(Boolean);
         const uniqueNames = new Set(names);
         if (uniqueNames.size === 4) {
+          // 현재 코트에서 진행 중인 매치 자체면 건너뜀
+          if (curCourt && curCourt.status === 'playing' && names.every((n) => curCourtNames.has(n))) {
+            continue;
+          }
+          // 다른 진행 중 코트와 충돌 여부 확인
+          const isPlayingOnOtherCourt = names.some((n) => busyPlayerNames.has(n) && !curCourtNames.has(n));
+          if (isPlayingOnOtherCourt) continue;
+
           return {
             gameNumber: g.gameNumber,
             courtNumber: g.parentCourtNumber || courtNum,
             teamA: [
-              `${g.teamA[0]?.name || ''} (${g.teamA[0]?.grade || ''})`,
-              `${g.teamA[1]?.name || ''} (${g.teamA[1]?.grade || ''})`,
+              `${g.teamA[0]?.name || ''} (${g.teamA[0]?.grade || '은배'})`,
+              `${g.teamA[1]?.name || ''} (${g.teamA[1]?.grade || '은배'})`,
             ],
             teamB: [
-              `${g.teamB[0]?.name || ''} (${g.teamB[0]?.grade || ''})`,
-              `${g.teamB[1]?.name || ''} (${g.teamB[1]?.grade || ''})`,
+              `${g.teamB[0]?.name || ''} (${g.teamB[0]?.grade || '은배'})`,
+              `${g.teamB[1]?.name || ''} (${g.teamB[1]?.grade || '은배'})`,
             ],
             teamAWeight: g.teamAWeight,
             teamBWeight: g.teamBWeight,
@@ -1249,6 +1312,7 @@ export default function TennisApp() {
           });
 
           let chosenGame: any = null;
+          let chosenCourtKdk: any = null;
 
           // 1순위 탐색: 해당 코트 전용 순서표
           if (targetCourtKdk && Array.isArray(targetCourtKdk.games)) {
@@ -1262,9 +1326,10 @@ export default function TennisApp() {
               const b0 = g.teamB[0]?.name || '';
               const b1 = g.teamB[1]?.name || '';
               const names = [a0, a1, b0, b1].filter(Boolean);
-              // 동일 코트 내 동일 선수 중복 차단
-              if (new Set(names).size === 4) {
+              // 동일 코트 내 동일 선수 중복 차단 및 다른 활성 코트 선수와 충돌 차단
+              if (new Set(names).size === 4 && !names.some((n) => otherBusyNames.has(n))) {
                 chosenGame = g;
+                chosenCourtKdk = targetCourtKdk;
                 break;
               }
             }
@@ -1277,21 +1342,23 @@ export default function TennisApp() {
               if (Array.isArray(kc.games)) {
                 kc.games.forEach((g: any) => {
                   if (!g.completed && Array.isArray(g.teamA) && Array.isArray(g.teamB)) {
-                    allRemaining.push(g);
+                    allRemaining.push({ game: g, courtKdk: kc });
                   }
                 });
               }
             });
-            allRemaining.sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+            allRemaining.sort((a, b) => (a.game.gameNumber || 0) - (b.game.gameNumber || 0));
 
-            for (const g of allRemaining) {
+            for (const item of allRemaining) {
+              const g = item.game;
               const a0 = g.teamA[0]?.name || '';
               const a1 = g.teamA[1]?.name || '';
               const b0 = g.teamB[0]?.name || '';
               const b1 = g.teamB[1]?.name || '';
               const names = [a0, a1, b0, b1].filter(Boolean);
-              if (new Set(names).size === 4) {
+              if (new Set(names).size === 4 && !names.some((n) => otherBusyNames.has(n))) {
                 chosenGame = g;
+                chosenCourtKdk = item.courtKdk;
                 break;
               }
             }
@@ -1312,6 +1379,9 @@ export default function TennisApp() {
               teamBWeight: chosenGame.teamBWeight,
               skillDiff: chosenGame.skillDiff,
             };
+            // 배정된 게임의 courtNumber를 현재 코트로 업데이트
+            chosenGame.courtNumber = courtNum;
+            updatedKdk = true;
           }
 
           if (updatedKdk) {
@@ -3251,37 +3321,46 @@ export default function TennisApp() {
                         </div>
                       </div>
 
-                      {/* 2. 경기종료 전 '다음 대기 선수(NEXT)' 미리보기 배너 (KDK_V2025 대진 순서표 실시간 연동) */}
+                      {/* 2. 경기종료 전 '다음 대기 선수(NEXT)' 미리보기 박스 (KDK_V2025 대진 순서표 실시간 연동) */}
                       {(() => {
                         // kdkStorageVersion을 키로 참조하여 실시간 동적 재렌더링
                         const _ver = kdkStorageVersion;
                         const nextMatch = getNextWaitingMatchForCourt(court.courtNumber);
                         return (
-                          <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl px-3 py-2 text-[11px] space-y-1">
-                            <div className="flex items-center justify-between text-[10px]">
-                              <span className="font-black text-amber-400 flex items-center gap-1">
-                                <span>⏳</span> NEXT [게임 {nextMatch ? nextMatch.gameNumber : '대기'}] KDK 순서표 다음 대기
+                          <div className="bg-slate-950/80 border border-slate-750/90 rounded-xl p-3 text-[11px] space-y-1.5 shadow-inner">
+                            <div className="flex items-center justify-between">
+                              <span className="font-black text-amber-400 text-xs flex items-center gap-1">
+                                <span>⏳</span> NEXT 대기 {nextMatch ? `[게임 ${nextMatch.gameNumber}]` : ''}
                               </span>
-                              <span className="text-[9px] text-slate-500">
-                                {nextMatch ? '경기종료 시 즉시 자동 투입' : '예정 매치 완료됨'}
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {nextMatch ? '경기종료 시 즉시 자동 투입' : '배정 완료'}
                               </span>
                             </div>
                             {nextMatch ? (
-                              <div className="flex items-center justify-between gap-2 text-slate-300 font-bold text-xs truncate">
-                                <div className="truncate text-emerald-300">
-                                  <span className="text-[10px] text-slate-500 mr-1">Team A:</span>
-                                  {nextMatch.teamA.join(' · ')}
+                              <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2 space-y-1">
+                                <div className="text-slate-200 font-bold text-xs flex items-center justify-between gap-2">
+                                  <div className="text-emerald-300 truncate">
+                                    <span className="text-[10px] text-slate-500 mr-1">Team A:</span>
+                                    {nextMatch.teamA.join(' · ')}
+                                  </div>
+                                  <span className="text-slate-600 font-black text-[10px] shrink-0">VS</span>
+                                  <div className="text-amber-300 text-right truncate">
+                                    <span className="text-[10px] text-slate-500 mr-1">Team B:</span>
+                                    {nextMatch.teamB.join(' · ')}
+                                  </div>
                                 </div>
-                                <span className="text-slate-600 font-black text-[10px]">VS</span>
-                                <div className="truncate text-amber-300 text-right">
-                                  <span className="text-[10px] text-slate-500 mr-1">Team B:</span>
-                                  {nextMatch.teamB.join(' · ')}
-                                </div>
+                                {(nextMatch.teamAWeight !== undefined || nextMatch.skillDiff !== undefined) && (
+                                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-slate-800/60 font-mono">
+                                    <span>밸런스 점수: {nextMatch.teamAWeight ?? 0} vs {nextMatch.teamBWeight ?? 0}</span>
+                                    <span className="text-emerald-400 font-bold">실력차 {nextMatch.skillDiff ?? 0}점</span>
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              <p className="text-[10px] text-slate-500 italic">
-                                KDK 순서표의 모든 게임이 배정/완료되었습니다.
-                              </p>
+                              <div className="text-[11px] text-slate-400 py-1 font-bold flex items-center gap-1.5 text-emerald-400">
+                                <span>✅</span>
+                                <span>남은 KDK 대기 경기가 모두 배정되었습니다.</span>
+                              </div>
                             )}
                           </div>
                         );
@@ -4739,30 +4818,63 @@ export default function TennisApp() {
                     } catch {}
                   }
 
-                  const mappedCourts: CourtMatch[] = (Array.isArray(config?.matches) ? config.matches : [])
-                    .filter((m) => m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1])
-                    .map((m, idx) => ({
-                      id: idx + 1,
-                      courtNumber: m.courtNumber,
-                      status: m.status || 'playing',
-                      teamA: [
-                        `${m.teamA[0].name} (${m.teamA[0].grade})`,
-                        `${m.teamA[1].name} (${m.teamA[1].grade})`,
-                      ],
-                      teamB: [
-                        `${m.teamB[0].name} (${m.teamB[0].grade})`,
-                        `${m.teamB[1].name} (${m.teamB[1].grade})`,
-                      ],
-                      scoreA: m.scoreA ?? 0,
-                      scoreB: m.scoreB ?? 0,
-                    }));
-                  if (mappedCourts.length > 0) {
-                    setCourts(mappedCourts);
+                  // 각 선택된 코트별로 '현재 진행할 라이브 경기(1경기)'만 추출하여 courts 상태에 배정
+                  // (동일한 4명 선수가 코트 1, 코트 2에 중복 노출되는 문제 완벽 방지)
+                  const courtNums = config.selectedCourts && config.selectedCourts.length > 0 ? config.selectedCourts : [1, 2];
+                  const liveCourts: CourtMatch[] = [];
+                  const usedMatchIds = new Set<string>();
+
+                  courtNums.forEach((cNum, cIdx) => {
+                    const courtMatches = (Array.isArray(config?.matches) ? config.matches : [])
+                      .filter((m) => m.courtNumber === cNum && m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1]);
+                    
+                    // 해당 코트의 미완료 1번째 경기 또는 전체 매치 중 미배정된 순번 경기
+                    let selectedMatch = courtMatches.find((m) => !usedMatchIds.has(m.id));
+                    if (!selectedMatch) {
+                      selectedMatch = (Array.isArray(config?.matches) ? config.matches : [])
+                        .find((m) => !usedMatchIds.has(m.id) && m && m.teamA?.[0] && m.teamA?.[1] && m.teamB?.[0] && m.teamB?.[1]);
+                    }
+
+                    if (selectedMatch) {
+                      usedMatchIds.add(selectedMatch.id);
+                      liveCourts.push({
+                        id: cIdx + 1,
+                        courtNumber: cNum,
+                        status: 'playing',
+                        teamA: [
+                          `${selectedMatch.teamA[0].name} (${selectedMatch.teamA[0].grade})`,
+                          `${selectedMatch.teamA[1].name} (${selectedMatch.teamA[1].grade})`,
+                        ],
+                        teamB: [
+                          `${selectedMatch.teamB[0].name} (${selectedMatch.teamB[0].grade})`,
+                          `${selectedMatch.teamB[1].name} (${selectedMatch.teamB[1].grade})`,
+                        ],
+                        teamAWeight: selectedMatch.teamAWeight,
+                        teamBWeight: selectedMatch.teamBWeight,
+                        skillDiff: selectedMatch.skillDiff,
+                        scoreA: 0,
+                        scoreB: 0,
+                      });
+                    } else {
+                      liveCourts.push({
+                        id: cIdx + 1,
+                        courtNumber: cNum,
+                        status: 'waiting',
+                        teamA: ['선수 배정 필요', '선수 배정 필요'],
+                        teamB: ['선수 배정 필요', '선수 배정 필요'],
+                        scoreA: 0,
+                        scoreB: 0,
+                      });
+                    }
+                  });
+
+                  if (liveCourts.length > 0) {
+                    setCourts(liveCourts);
                   }
                   setShowNewTourModal(false);
                   setActiveTab('courts');
                   alert(
-                    `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${mappedCourts.length}경기)와 대진표에 즉시 연동되었습니다!`
+                    `🚀 [${config.title}] (${config.mode === 'KDK' ? 'KDK 방식' : '토너먼트 방식'}) 대회가 개설되어 실시간 코트(${liveCourts.length}개 코트)와 KDK 대진 순서표에 즉시 연동되었습니다!`
                   );
                 }}
                 onAddCustomUserToClub={(newGuest: ParticipantPlayer) => {
