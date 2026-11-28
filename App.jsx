@@ -520,7 +520,6 @@ export default function TennisApp() {
     ) {
       return;
     }
-
     const nextList = tournamentHistory.filter((t) => t.status !== 'completed');
     setTournamentHistory(nextList);
     persistTournamentHistory(nextList);
@@ -529,6 +528,30 @@ export default function TennisApp() {
       setCurrentTournament(nextList[0] || EMPTY_TOURNAMENT);
     }
     alert(`🗑️ 종료된 대회 ${completedList.length}건이 일괄 삭제되었습니다.`);
+  };
+
+  // ----------------------------------------------------
+  // 그룹별 사용 코트 매핑 상태 (A그룹 -> [1, 2], B그룹 -> [3] 등)
+  // ----------------------------------------------------
+  const [groupCourtMapping, setGroupCourtMapping] = useState<Record<string, number[]>>(() => {
+    try {
+      const raw = localStorage.getItem('sun_tennis_group_courts');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return {
+      'A그룹': [1],
+      'B그룹': [2],
+      'C그룹': [3],
+      'D그룹': [],
+    };
+  });
+
+  const saveGroupCourtMapping = (mapping: Record<string, number[]>) => {
+    setGroupCourtMapping(mapping);
+    try {
+      localStorage.setItem('sun_tennis_group_courts', JSON.stringify(mapping));
+      window.dispatchEvent(new CustomEvent('sun-tennis-kdk-sync'));
+    } catch {}
   };
 
   // 새 대회 개설 모달 상태 (가입회원/미가입회원 선택 + 임의선수 등록 + 실력균형 자동/수동 배정)
@@ -808,13 +831,22 @@ export default function TennisApp() {
   // KDK_V2025 순서표 기준 다음 게임 탐색 헬퍼:
   // 1) status !== 'completed' (미완료 게임)
   // 2) 현재 어떤 코트에서도 LIVE 진행 중(status === 'playing')으로 사용 중인 선수들이 아닌 경기
-  // 3) 해당 코트 전용 KDK 순서표에서 가장 빠른 순번(gameNumber 오름차순), 없으면 전체 코트 순환 큐에서 가장 빠른 순번
+  // 3) 관리자가 지정한 그룹별 사용 코트 매핑(groupCourtMapping) 확인:
+  //    - 해당 코트(courtNum)가 속한 그룹의 미완료 경기를 우선 매칭
+  //    - 비어 있는 코트(waiting 또는 방금 종료된 코트) 위주로 우선 투입 (낮은 코트 번호 우선 1 -> 2 -> 3)
   const getNextWaitingMatchForCourt = (courtNum: number) => {
     try {
       const rawKdk = localStorage.getItem('sun_tennis_kdk_courts_v3');
       if (!rawKdk) return null;
       const parsedKdk = JSON.parse(rawKdk);
       if (!Array.isArray(parsedKdk)) return null;
+
+      // 그룹 매핑 조회
+      let activeGroupCourtMap: Record<string, number[]> = groupCourtMapping;
+      try {
+        const rawGroupMap = localStorage.getItem('sun_tennis_group_courts');
+        if (rawGroupMap) activeGroupCourtMap = JSON.parse(rawGroupMap);
+      } catch {}
 
       // 현재 모든 코트에서 LIVE(playing) 상태인 경기에서 뛰고 있는 선수 이름 수집
       const busyPlayerNames = new Set<string>();
@@ -839,9 +871,6 @@ export default function TennisApp() {
           .filter((g: any) => !g.completed && Array.isArray(g.teamA) && Array.isArray(g.teamB))
           .sort((a: any, b: any) => (a.gameNumber || 0) - (b.gameNumber || 0));
 
-        // 코트가 이미 playing 중인 경우:
-        // 현재 이 코트에서 진행 중인 매치가 uncompleted[0]과 동일할 수 있으므로,
-        // 현재 코트의 매치가 uncompleted[0]과 같다면 그 다음 순번부터 탐색
         const curCourt = courts.find((c) => c.courtNumber === courtNum);
         let candidateGames = uncompleted;
         if (curCourt && curCourt.status === 'playing' && uncompleted.length > 0) {
@@ -854,7 +883,6 @@ export default function TennisApp() {
         }
 
         // 후보 게임 중 동일 코트 내 양 팀 동일 선수 중복 배정 방지 확인
-        // 또한 다른 코트에서 진행 중인 선수와 겹치지 않는 경기 우선
         for (const g of candidateGames) {
           const a0 = g.teamA[0]?.name || '';
           const a1 = g.teamA[1]?.name || '';
@@ -862,14 +890,11 @@ export default function TennisApp() {
           const b1 = g.teamB[1]?.name || '';
           const names = [a0, a1, b0, b1].filter(Boolean);
           const uniqueNames = new Set(names);
-          // 동일 선수가 양 팀에 중복 배정된 게임 제외
           if (uniqueNames.size === 4) {
-            // 다른 코트에서 이미 뛰고 있는 선수가 포함되어 있다면 건너뛰기
             const isPlayingOnOtherCourt = names.some((n) => {
               const curCourtNames = new Set(
                 [...(curCourt?.teamA || []), ...(curCourt?.teamB || [])].map((s) => s.split('(')[0].trim())
               );
-              // 현재 코트 선수가 아닌 다른 활성 코트에 있다면 충돌
               return busyPlayerNames.has(n) && !curCourtNames.has(n);
             });
             if (isPlayingOnOtherCourt) continue;
@@ -893,7 +918,13 @@ export default function TennisApp() {
         }
       }
 
-      // 2순위: 전체 코트 통합 큐에서 미진행 게임 중 가장 빠른 순번 탐색
+      // 2순위: 그룹별 사용 코트 매핑 우선 매칭
+      // courtNum이 허용된 코트로 등록된 그룹들의 경기 먼저 탐색
+      const matchingGroups = Object.entries(activeGroupCourtMap)
+        .filter(([_, courtList]) => Array.isArray(courtList) && courtList.includes(courtNum))
+        .map(([gName]) => gName);
+
+      // 전체 코트 통합 큐 수집
       const allUncompleted: any[] = [];
       parsedKdk.forEach((kc: any) => {
         if (Array.isArray(kc.games)) {
@@ -905,8 +936,16 @@ export default function TennisApp() {
         }
       });
 
-      // 전체 게임번호 오름차순 정렬
-      allUncompleted.sort((a, b) => (a.gameNumber || 0) - (b.gameNumber || 0));
+      // 그룹 매칭 경기를 우선순위 1순위로 앞으로 배치하고, 그 안에서 gameNumber 오름차순 정렬
+      allUncompleted.sort((a, b) => {
+        const aRoundName = a.roundName || a.id || '';
+        const bRoundName = b.roundName || b.id || '';
+        const aMatchesGroup = matchingGroups.some((g) => aRoundName.includes(g));
+        const bMatchesGroup = matchingGroups.some((g) => bRoundName.includes(g));
+        if (aMatchesGroup && !bMatchesGroup) return -1;
+        if (!aMatchesGroup && bMatchesGroup) return 1;
+        return (a.gameNumber || 0) - (b.gameNumber || 0);
+      });
 
       const curCourt = courts.find((c) => c.courtNumber === courtNum);
       const curCourtNames = new Set(
@@ -1385,7 +1424,18 @@ export default function TennisApp() {
             }
           }
 
-          // 2순위 탐색: 전체 코트 통합 미진행 게임 중 가장 빠른 순번
+          // 2순위 탐색: 그룹별 사용 코트 매핑 우선 매칭
+          // courtNum을 사용할 수 있는 그룹의 미완료 게임 우선 검색
+          let activeGroupCourtMap: Record<string, number[]> = groupCourtMapping;
+          try {
+            const rawGM = localStorage.getItem('sun_tennis_group_courts');
+            if (rawGM) activeGroupCourtMap = JSON.parse(rawGM);
+          } catch {}
+
+          const matchingGroups = Object.entries(activeGroupCourtMap)
+            .filter(([_, courtList]) => Array.isArray(courtList) && courtList.includes(courtNum))
+            .map(([gName]) => gName);
+
           if (!chosenGame) {
             const allRemaining: any[] = [];
             parsedKdk.forEach((kc: any) => {
@@ -1397,7 +1447,17 @@ export default function TennisApp() {
                 });
               }
             });
-            allRemaining.sort((a, b) => (a.game.gameNumber || 0) - (b.game.gameNumber || 0));
+
+            // 그룹 매칭 경기를 우선순위로 앞으로 정렬
+            allRemaining.sort((a, b) => {
+              const aName = a.game.roundName || a.game.id || '';
+              const bName = b.game.roundName || b.game.id || '';
+              const aMatchesGroup = matchingGroups.some((g) => aName.includes(g));
+              const bMatchesGroup = matchingGroups.some((g) => bName.includes(g));
+              if (aMatchesGroup && !bMatchesGroup) return -1;
+              if (!aMatchesGroup && bMatchesGroup) return 1;
+              return (a.game.gameNumber || 0) - (b.game.gameNumber || 0);
+            });
 
             for (const item of allRemaining) {
               const g = item.game;
@@ -3134,6 +3194,60 @@ export default function TennisApp() {
                       </div>
                     </div>
 
+                    {/* 관리자 실시간 그룹별 사용 코트 지정 콘솔 */}
+                    <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-amber-300 flex items-center gap-1">
+                          <span>🏷️</span> 그룹별 사용 코트 지정 (빈 코트 우선 배정 연동)
+                        </span>
+                        <span className="text-[9px] text-slate-400">
+                          실시간 변경 가능
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {['A그룹', 'B그룹', 'C그룹', 'D그룹'].map((gName) => {
+                          const assigned = groupCourtMapping[gName] || [];
+                          return (
+                            <div key={gName} className="bg-slate-900 p-1.5 rounded-lg border border-slate-800 space-y-1 text-[10px]">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-emerald-400">{gName}</span>
+                                <span className="text-[9px] text-slate-400">
+                                  {assigned.length > 0 ? `${assigned.join(', ')}코트` : '코트 미지정'}
+                                </span>
+                              </div>
+                              <div className="flex gap-1 flex-wrap">
+                                {courts.map((c) => {
+                                  const isChecked = assigned.includes(c.courtNumber);
+                                  return (
+                                    <button
+                                      key={c.courtNumber}
+                                      type="button"
+                                      onClick={() => {
+                                        const nextCourts = isChecked
+                                          ? assigned.filter((cn) => cn !== c.courtNumber)
+                                          : [...assigned, c.courtNumber].sort((a, b) => a - b);
+                                        saveGroupCourtMapping({
+                                          ...groupCourtMapping,
+                                          [gName]: nextCourts,
+                                        });
+                                      }}
+                                      className={`px-1.5 py-0.5 rounded text-[9px] font-black border transition cursor-pointer ${
+                                        isChecked
+                                          ? 'bg-amber-400 text-slate-950 border-amber-300'
+                                          : 'bg-slate-950 text-slate-500 border-slate-800 hover:border-slate-700'
+                                      }`}
+                                    >
+                                      {c.courtNumber}코트
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2 pt-0.5">
                       {/* 코트 넘버를 코트 수에 맞게 계속 생성하는 버튼 */}
                       <button
@@ -4620,40 +4734,6 @@ export default function TennisApp() {
                   )}
                 </div>
 
-                {/* 0-B. KDK 코트별 참가인원 · 1인 필수 게임수 · 시드/자동/수동 설정 관리 (운영자 관리 센터로 이관) */}
-                <SafeBoundary title="KDK 코트 운영 설정">
-                <KdkCourtOperations
-                  tournamentName={`${currentTournament.name} (${currentTournament.date})`}
-                  availablePlayers={approvedPlayers}
-                  isAdmin={isAdmin}
-                  isLocked={isTournamentLocked}
-                  viewMode="ADMIN_CONFIG"
-                  onNavigateToTab={setActiveTab}
-                  onSyncCourtsToApp={(syncedCourts) => {
-                    setCourts(syncedCourts);
-                  }}
-                  onAddNewPlayerToClub={(newPlayer) => {
-                    setRegisteredPlayers((prev) => {
-                      if (prev.some((p) => p.id === newPlayer.id)) return prev;
-                      return [
-                        ...prev,
-                        {
-                          id: newPlayer.id,
-                          name: newPlayer.name,
-                          grade: newPlayer.grade,
-                          gender: newPlayer.gender === 'F' || newPlayer.gender === '여' ? 'F' : 'M',
-                          birthDate: newPlayer.birthDate,
-                          age: resolvePlayerAge(newPlayer, 45),
-                          experienceYears: newPlayer.experienceYears,
-                          role: 'member',
-                          isGuest: true,
-                        },
-                      ];
-                    });
-                  }}
-                />
-                </SafeBoundary>
-
                 {/* 1. 회원가입 승인 · 정보 수정 & 회원가입 취소(탈퇴) 관리 컴포넌트 */}
                 <SafeBoundary title="회원 관리">
                 <AdminUserManagement
@@ -4890,6 +4970,11 @@ export default function TennisApp() {
                     return next;
                   });
                   setCurrentTournament(newTour);
+
+                  // 새 대회 개설 시 전달된 그룹별 코트 매핑(groupCourtMap) 저장
+                  if (config.groupCourtMap && Object.keys(config.groupCourtMap).length > 0) {
+                    saveGroupCourtMapping(config.groupCourtMap);
+                  }
 
                   // KDK 대회일 경우 KdkCourtOperations 스토리지에 새 대회 매치와 참여자 자동 동기화
                   if (config.mode === 'KDK' && Array.isArray(config.matches) && config.matches.length > 0) {
