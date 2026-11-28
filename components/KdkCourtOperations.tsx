@@ -1129,12 +1129,196 @@ export default function KdkCourtOperations({
     });
   }
 
-  // 현재 코트에서 진행 중인 게임 & 그 다음 대기 중인 게임 (다음 대기자 선수 자동 연동용)
+  // ============================================================================
+  // [1] 선수별 휴식중 토글 & 대타 기용 / 기권 처리 모달 상태 및 핸들러
+  // ============================================================================
+  const [substituteModalState, setSubstituteModalState] = useState<{
+    isOpen: boolean;
+    courtNum: number;
+    originalPlayer: Player | null;
+  }>({
+    isOpen: false,
+    courtNum: 1,
+    originalPlayer: null,
+  });
+  const [selectedSubPlayerId, setSelectedSubPlayerId] = useState<string>('');
+  const [subActionType, setSubActionType] = useState<'SUBSTITUTE' | 'WITHDRAW_ONLY'>('SUBSTITUTE');
+
+  // 선수별 휴식중 토글
+  const handleTogglePlayerResting = (courtNum: number, playerId: string) => {
+    if (!isAdmin || isLocked) return;
+    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
+    if (!targetCourt) return;
+    const player = targetCourt.players.find((p) => p.id === playerId);
+    if (!player) return;
+
+    const nextResting = !player.isResting;
+
+    updateCourt(courtNum, (court) => {
+      const updatedPlayers = court.players.map((p) =>
+        p.id === playerId ? { ...p, isResting: nextResting } : p
+      );
+      const updatedGames = court.games.map((g) => {
+        const syncP = (p: Player) => (p.id === playerId ? { ...p, isResting: nextResting } : p);
+        return {
+          ...g,
+          teamA: [syncP(g.teamA[0]), syncP(g.teamA[1])] as [Player, Player],
+          teamB: [syncP(g.teamB[0]), syncP(g.teamB[1])] as [Player, Player],
+        };
+      });
+
+      return {
+        ...court,
+        players: updatedPlayers,
+        games: updatedGames,
+      };
+    });
+
+    setAutoRotationNotice(
+      nextResting
+        ? `☕ [${player.name}] 선수가 [휴식중]으로 설정되었습니다. 해당 선수 포함 대기 경기는 후순위로 자동 이동됩니다.`
+        : `▶️ [${player.name}] 선수가 [복귀]했습니다. 대기 경기가 정상 순번으로 재배치됩니다.`
+    );
+  };
+
+  // 대타 기용 또는 순수 기권 처리
+  const handleApplySubstituteOrWithdraw = () => {
+    if (!isAdmin || isLocked) return;
+    const { courtNum, originalPlayer } = substituteModalState;
+    if (!originalPlayer) return;
+
+    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
+    if (!targetCourt) return;
+
+    if (subActionType === 'SUBSTITUTE') {
+      if (!selectedSubPlayerId) {
+        alert('대타로 투입할 선수를 선택해 주세요.');
+        return;
+      }
+      const subCandidate = playerPool.find((p) => p.id === selectedSubPlayerId);
+      if (!subCandidate) {
+        alert('선택한 대타 선수를 찾을 수 없습니다.');
+        return;
+      }
+
+      const subPlayer: Player = {
+        ...subCandidate,
+        isSubstitute: true,
+        originalPlayerName: originalPlayer.name,
+      };
+
+      updateCourt(courtNum, (court) => {
+        const updatedPlayers = court.players.map((p) =>
+          p.id === originalPlayer.id ? { ...p, isWithdrawn: true } : p
+        );
+        if (!updatedPlayers.some((p) => p.id === subPlayer.id)) {
+          updatedPlayers.push(subPlayer);
+        }
+
+        const updatedGames = court.games.map((g) => {
+          if (g.completed) return g;
+          const replacePlayer = (p: Player): Player =>
+            p.id === originalPlayer.id ? subPlayer : p;
+          const nextTeamA: [Player, Player] = [replacePlayer(g.teamA[0]), replacePlayer(g.teamA[1])];
+          const nextTeamB: [Player, Player] = [replacePlayer(g.teamB[0]), replacePlayer(g.teamB[1])];
+          const wA = getCompositeSkillScore(nextTeamA[0]) + getCompositeSkillScore(nextTeamA[1]);
+          const wB = getCompositeSkillScore(nextTeamB[0]) + getCompositeSkillScore(nextTeamB[1]);
+          return {
+            ...g,
+            teamA: nextTeamA,
+            teamB: nextTeamB,
+            teamAWeight: wA,
+            teamBWeight: wB,
+            skillDiff: Math.abs(wA - wB),
+          };
+        });
+
+        return {
+          ...court,
+          players: updatedPlayers,
+          games: updatedGames,
+        };
+      });
+
+      setAutoRotationNotice(
+        `🔄 [${courtNum}번 코트] [${originalPlayer.name}] 선수의 남은 경기에 [${subPlayer.name}(대타)] 선수가 기용되었습니다! 이전 완료 경기 기록은 그대로 보존됩니다.`
+      );
+    } else {
+      updateCourt(courtNum, (court) => {
+        const updatedPlayers = court.players.map((p) =>
+          p.id === originalPlayer.id ? { ...p, isWithdrawn: true } : p
+        );
+
+        const firstUncompletedIdx = court.games.findIndex((g) => !g.completed);
+        const updatedGames = court.games.map((g, idx) => {
+          if (g.completed) return g;
+          if (idx === firstUncompletedIdx) return g;
+          const hasWithdrawn = [...g.teamA, ...g.teamB].some((p) => p.id === originalPlayer.id);
+          if (hasWithdrawn) {
+            return {
+              ...g,
+              isDeferred: true,
+              deferredReason: `[${originalPlayer.name} 기권 제외]`,
+            };
+          }
+          return g;
+        });
+
+        return {
+          ...court,
+          players: updatedPlayers,
+          games: updatedGames,
+        };
+      });
+
+      setAutoRotationNotice(
+        `⚠️ [${courtNum}번 코트] [${originalPlayer.name}] 선수가 기권 처리되었습니다. 완료된 경기 기록은 보존되며 남은 대기 경기에서 제외됩니다.`
+      );
+    }
+
+    setSubstituteModalState({ isOpen: false, courtNum: 1, originalPlayer: null });
+    setSelectedSubPlayerId('');
+  };
+
+  // 현재 코트에서 미완료된 게임들
   const uncompletedGames = activeCourt
     ? activeCourt.games.filter((g) => !g.completed)
     : [];
-  const currentPlayingGame = uncompletedGames[0] || null;
-  const nextQueuedGame = uncompletedGames[1] || null;
+
+  // 현재 라이브 진행 중인 게임: 첫 번째 미완료 게임 (보류되지 않은 경기 우선)
+  const currentPlayingGame = uncompletedGames.find((g) => !g.isDeferred) || uncompletedGames[0] || null;
+
+  // 🌟 [핵심 로직]: 대기 게임 중 '휴식중(isResting)'인 선수가 1명이라도 포함된 경기는 뒤쪽으로 밀고,
+  // 휴식중이지 않은 대기 선수들로만 구성된 매치를 대기 큐 앞쪽으로 올려서 빈 코트에 먼저 투입
+  const sortedWaitingGames = (() => {
+    if (!activeCourt) return [];
+    const restingPlayerIdSet = new Set(
+      activeCourt.players.filter((p) => p.isResting).map((p) => p.id)
+    );
+
+    const waitingCandidates = uncompletedGames.filter((g) => g.id !== currentPlayingGame?.id);
+
+    return [...waitingCandidates].sort((a, b) => {
+      const aHasResting = [...a.teamA, ...a.teamB].some((p) => restingPlayerIdSet.has(p.id) || p.isResting);
+      const bHasResting = [...b.teamA, ...b.teamB].some((p) => restingPlayerIdSet.has(p.id) || p.isResting);
+      const aIsDeferred = Boolean(a.isDeferred);
+      const bIsDeferred = Boolean(b.isDeferred);
+
+      // 1순위: 보류(deferred) 경기는 맨 뒤로
+      if (aIsDeferred && !bIsDeferred) return 1;
+      if (!aIsDeferred && bIsDeferred) return -1;
+
+      // 2순위: 휴식중인 선수가 포함된 경기는 뒤로 밀어냄
+      if (aHasResting && !bHasResting) return 1;
+      if (!aHasResting && bHasResting) return -1;
+
+      // 3순위: 기존 순번(gameNumber) 유지
+      return (a.gameNumber || 0) - (b.gameNumber || 0);
+    });
+  })();
+
+  // 다음 대기 예정 게임: 휴식중이지 않은 선수들로 구성된 가장 빠른 대기 경기
+  const nextQueuedGame = sortedWaitingGames[0] || null;
 
   // [KDK_V2025 시트 스타일] 선수별 라운드(경기)별 득점/실점/결과 매핑
   const playerRoundMap: Record<string, { round: number; scoreFor: number; scoreAgainst: number; isWin: boolean; isDraw: boolean; partnerName: string; oppNames: string; completed: boolean }[]> = {};
@@ -1786,6 +1970,106 @@ export default function KdkCourtOperations({
               </button>
             </div>
           )}
+
+          {/* ========================================================== */}
+          {/* 🌟 [선수별 상태 관리 패널]: [⏸️ 휴식중] 토글 & [🔄 대타 기용 / 기권 처리] */}
+          {/* ========================================================== */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-black text-amber-300 flex items-center gap-1">
+                  <span>👥</span> {activeCourt.courtNumber}번 코트 출전 선수 상태 관리
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  (휴식 토글 시 해당 선수 포함 경기만 후순위 자동 이동)
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                총 {activeCourt.players.length}명
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {activeCourt.players.map((p) => {
+                const isResting = Boolean(p.isResting);
+                const isWithdrawn = Boolean(p.isWithdrawn);
+                const isSub = Boolean(p.isSubstitute);
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-2 rounded-xl border flex items-center justify-between gap-1.5 text-xs transition ${
+                      isWithdrawn
+                        ? 'bg-rose-950/30 border-rose-900/60 text-slate-400 opacity-60'
+                        : isResting
+                        ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+                        : isSub
+                        ? 'bg-sky-950/50 border-sky-500/40 text-sky-200'
+                        : 'bg-slate-950 border-slate-800 text-slate-200'
+                    }`}
+                  >
+                    <div className="min-w-0 flex items-center gap-1">
+                      <span className="font-bold truncate">{p.name}</span>
+                      <span className="text-[9px] px-1 rounded bg-slate-800 text-amber-300">
+                        {p.grade}
+                      </span>
+                      {isSub && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold shrink-0">
+                          대타
+                        </span>
+                      )}
+                      {isWithdrawn && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500 text-white font-black shrink-0">
+                          기권
+                        </span>
+                      )}
+                      {isResting && !isWithdrawn && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-black shrink-0">
+                          휴식중
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 관리자 컨트롤: 휴식 토글 & 대타/기권 처리 버튼 */}
+                    {isAdmin && !isLocked && !isWithdrawn && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* 1. 휴식중 토글 버튼 */}
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePlayerResting(activeCourt.courtNumber, p.id)}
+                          className={`px-2 py-0.8 rounded-lg text-[10px] font-black border transition cursor-pointer ${
+                            isResting
+                              ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                              : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
+                          }`}
+                          title={isResting ? '휴식 해제 및 복귀' : '선수 휴식 설정 (해당 선수 대기경기만 후순위로 이동)'}
+                        >
+                          {isResting ? '▶ 복귀' : '⏸️ 휴식중'}
+                        </button>
+
+                        {/* 2. 대타/기권 모달 오픈 버튼 */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubstituteModalState({
+                              isOpen: true,
+                              courtNum: activeCourt.courtNumber,
+                              originalPlayer: p,
+                            });
+                            setSelectedSubPlayerId('');
+                            setSubActionType('SUBSTITUTE');
+                          }}
+                          className="px-1.5 py-0.8 rounded-lg text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/30 cursor-pointer"
+                          title="부상/이탈 시 대타 기용 또는 기권 처리"
+                        >
+                          대타/기권
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           {/* ========================================================== */}
           {/* [KDK_V2025 시트 스타일] 상단 라운드/게임별 대진표 */}
@@ -2479,7 +2763,7 @@ export default function KdkCourtOperations({
           {/* 4. 전체 코트 통합 최종 종합 순위 (1등 · 2등 · 3등) */}
           {/* ========================================================== */}
           {kdkCourts.length > 1 && overallStandings.length >= 3 && (
-            <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3.5 shadow-xl space-y-2">
+            <div className="bg-slate-900 border border-slate-755 rounded-2xl p-3.5 shadow-xl space-y-2">
               <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
                 <span className="text-xs font-black text-emerald-300">
                   🌐 전체 코트 통합 종합 순위 TOP 3 (동점 시 나이합산)
@@ -2509,6 +2793,128 @@ export default function KdkCourtOperations({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========================================================== */}
+      {/* [대타 기용 / 기권 처리 전용 모달] */}
+      {/* ========================================================== */}
+      {substituteModalState.isOpen && substituteModalState.originalPlayer && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-rose-500/40 w-full max-w-md rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🔄</span>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-white">
+                    대타 선수 기용 / 중도 기권 처리
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    {substituteModalState.courtNum}번 코트 · 대상 선수: <strong className="text-amber-300">{substituteModalState.originalPlayer.name}</strong> ({substituteModalState.originalPlayer.grade})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubstituteModalState({ isOpen: false, courtNum: 1, originalPlayer: null })}
+                className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 처리 방식 선택: 대타 선수 기용 vs 순수 기권(제외) */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSubActionType('SUBSTITUTE')}
+                className={`py-2 px-3 rounded-xl text-xs font-black border transition flex flex-col items-center gap-0.5 cursor-pointer ${
+                  subActionType === 'SUBSTITUTE'
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md'
+                    : 'bg-slate-950 text-slate-400 border-slate-800'
+                }`}
+              >
+                <span>👤 대타 선수 기용</span>
+                <span className="text-[9px] font-normal opacity-80">남은 경기에 대타 투입</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubActionType('WITHDRAW_ONLY')}
+                className={`py-2 px-3 rounded-xl text-xs font-black border transition flex flex-col items-center gap-0.5 cursor-pointer ${
+                  subActionType === 'WITHDRAW_ONLY'
+                    ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                    : 'bg-slate-950 text-slate-400 border-slate-800'
+                }`}
+              >
+                <span>🚫 순수 기권 처리</span>
+                <span className="text-[9px] font-normal opacity-80">대타 없이 대기경기 제외</span>
+              </button>
+            </div>
+
+            {/* 1. 대타 기용 상세 옵션 */}
+            {subActionType === 'SUBSTITUTE' && (
+              <div className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+                <label className="block text-[11px] font-bold text-emerald-300">
+                  대타로 투입할 선수 선택 (전체 회원/임의선수 풀):
+                </label>
+                <select
+                  value={selectedSubPlayerId}
+                  onChange={(e) => setSelectedSubPlayerId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-bold"
+                >
+                  <option value="">대타 선수를 선택하세요</option>
+                  {playerPool
+                    .filter(
+                      (p) =>
+                        p.id !== substituteModalState.originalPlayer?.id &&
+                        !activeCourt?.players.some((cp) => cp.id === p.id && !cp.isWithdrawn)
+                    )
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.grade}·만 {resolvePlayerAge(p, 45)}세) {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
+                      </option>
+                    ))}
+                </select>
+
+                <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80 text-[10px] text-slate-300 space-y-1 leading-relaxed">
+                  <div>✅ <strong>완료 경기 완벽 보존</strong>: {substituteModalState.originalPlayer.name} 선수가 이미 완료한 경기의 점수와 승률 기록은 그대로 유지됩니다.</div>
+                  <div>✅ <strong>대타 기록 분리</strong>: 새로 이어받은 대타 선수의 득실과 승패는 대타 선수 본인에게 누적 집계됩니다. ([대타] 배지 표기)</div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. 순수 기권 상세 안내 */}
+            {subActionType === 'WITHDRAW_ONLY' && (
+              <div className="space-y-1.5 bg-slate-950 p-3 rounded-xl border border-rose-900/50 text-[11px] text-slate-300 leading-relaxed">
+                <div className="text-rose-400 font-bold flex items-center gap-1">
+                  <span>⚠️</span> {substituteModalState.originalPlayer.name} 선수 중도 기권 안내
+                </div>
+                <div>• 이미 완료된 경기는 점수·승패가 그대로 보존됩니다.</div>
+                <div>• 아직 시작하지 않은 대기 경기에서만 해당 선수가 제외(보류)됩니다.</div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSubstituteModalState({ isOpen: false, courtNum: 1, originalPlayer: null })}
+                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleApplySubstituteOrWithdraw}
+                className={`flex-1 py-2 font-black rounded-xl text-xs transition shadow-md cursor-pointer ${
+                  subActionType === 'SUBSTITUTE'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white'
+                }`}
+              >
+                {subActionType === 'SUBSTITUTE' ? '대타 선수 기용 적용' : '기권 처리 확정'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -17,6 +17,7 @@ import SafeBoundary from './components/SafeBoundary';
 import AdminTournamentManager, {
   TournamentConfig,
   ParticipantPlayer,
+  AssignedMatch,
 } from './components/AdminTournamentManager';
 import AdminUserManagement, { ManagedMember } from './components/AdminUserManagement';
 import KdkCourtOperations from './components/KdkCourtOperations';
