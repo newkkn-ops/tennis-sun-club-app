@@ -765,6 +765,11 @@ export default function AdminTournamentManager({
 
   const allStepsOpen = openSteps.step1 && openSteps.step2 && openSteps.step3 && openSteps.step4;
 
+  // [+ 새 대회 개설] 모달(isModal === true) 내부가 아닌 일반 화면에 인라인으로 호출되었을 경우 중복 렌더링 방지
+  if (!isModal) {
+    return null;
+  }
+
   return (
     <div className="space-y-3">
       {/* 상단 안내 배너 & 전체 펼치기/접기 */}
