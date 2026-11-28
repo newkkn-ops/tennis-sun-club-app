@@ -17,6 +17,10 @@ export interface Player {
   isSeed?: boolean; // 코트별 실력자 우선 시드 여부
   gender?: string;
   isGuest?: boolean;
+  isWithdrawn?: boolean; // 중도 기권 여부
+  isResting?: boolean; // 일시적 휴식 여부
+  isSubstitute?: boolean; // 대타 선수 여부
+  originalPlayerName?: string; // 대타인 경우 원래 선수명
 }
 
 export interface MatchPair {
@@ -49,6 +53,8 @@ export interface CourtKdkGame {
   scoreA: number;
   scoreB: number;
   completed: boolean;
+  isDeferred?: boolean; // 휴식 보류/후순위 넘김 여부
+  deferredReason?: string;
 }
 
 export interface KdkStandingRow {
@@ -68,6 +74,8 @@ export interface KdkStandingRow {
   winPoints: number; // 승점 (승 3, 무 1, 패 0)
   tieBreakApplied?: boolean;
   tieBreakReason?: string;
+  isSubstitute?: boolean; // 대타 선수 배지용
+  isWithdrawn?: boolean; // 기권 선수 표시용
 }
 
 export interface DbMatchInsert {
@@ -503,6 +511,8 @@ export function calculateKdkStandingsWithAgeTiebreak(
       pointDiff: 0,
       winPoints: 0,
       tieBreakApplied: false,
+      isSubstitute: Boolean(p.isSubstitute),
+      isWithdrawn: Boolean(p.isWithdrawn),
     };
   });
 
@@ -527,7 +537,12 @@ export function calculateKdkStandingsWithAgeTiebreak(
         pointDiff: 0,
         winPoints: 0,
         tieBreakApplied: false,
+        isSubstitute: Boolean(p.isSubstitute),
+        isWithdrawn: Boolean(p.isWithdrawn),
       };
+    } else {
+      if (p.isSubstitute) map[p.id].isSubstitute = true;
+      if (p.isWithdrawn) map[p.id].isWithdrawn = true;
     }
   };
 

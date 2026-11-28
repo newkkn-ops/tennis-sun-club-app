@@ -67,6 +67,7 @@ interface AdminTournamentManagerProps {
   onAddCustomUserToClub?: (newUser: ParticipantPlayer) => void;
   onClose?: () => void;
   isModal?: boolean;
+  isEditMode?: boolean;
 }
 
 const GRADE_OPTIONS = ['금배', '은배', '국화', '동배', '개나리', '고령자부', '테린이'];
@@ -79,8 +80,9 @@ export default function AdminTournamentManager({
   onAddCustomUserToClub,
   onClose,
   isModal = false,
+  isEditMode = false,
 }: AdminTournamentManagerProps) {
-  // 1단계: 새 대회 개설 - 대회명 설정
+  // 1단계: 새 대회 개설 / 진행중 대회 수정 - 대회명 설정
   const [tournamentTitle, setTournamentTitle] = useState<string>(
     activeTournament?.title || '2026 썬 테니스 클럽 정기 대회'
   );
@@ -128,10 +130,14 @@ export default function AdminTournamentManager({
 
   // 4단계: 코트 배정 및 자동(실력차 제로 밸런싱)/수동 방식
   const [selectedCourts, setSelectedCourts] = useState<number[]>(
-    activeTournament?.selectedCourts || [1, 2, 3]
+    activeTournament?.selectedCourts && activeTournament.selectedCourts.length > 0
+      ? activeTournament.selectedCourts
+      : [1, 2, 3]
   );
-  // 인당 게임 수 (최소 2게임 ~ 최대 6게임, 기본 3게임)
-  const [minGamesPerPlayer, setMinGamesPerPlayer] = useState<number>(4);
+  // 인당 게임 수 (최소 2게임 ~ 최대 6게임, 기본 3~4게임)
+  const [minGamesPerPlayer, setMinGamesPerPlayer] = useState<number>(
+    activeTournament?.minGamesPerPlayer || 4
+  );
   const [kdkRoundsCount, setKdkRoundsCount] = useState<number>(4);
   const [assignmentType, setAssignmentType] = useState<'AUTO' | 'MANUAL'>(
     activeTournament?.assignmentType || 'AUTO'
@@ -139,22 +145,52 @@ export default function AdminTournamentManager({
   const [autoBalanceOption, setAutoBalanceOption] = useState<'BALANCE' | 'RANDOM'>('BALANCE');
 
   // [그룹별 참여선수 등록 (A그룹 ~ D그룹) & 코트 매핑 상태]
-  // 기본 그룹: A그룹, B그룹, C그룹, D그룹 (그룹 추가/삭제 가능)
-  const [groups, setGroups] = useState<string[]>(['A그룹', 'B그룹', 'C그룹', 'D그룹']);
-  const [activeGroupTab, setActiveGroupTab] = useState<string>('A그룹');
+  const [groups, setGroups] = useState<string[]>(() => {
+    if (activeTournament?.groups && activeTournament.groups.length > 0) {
+      return activeTournament.groups.map((g) => g.groupName);
+    }
+    return ['A그룹', 'B그룹', 'C그룹', 'D그룹'];
+  });
+  const [activeGroupTab, setActiveGroupTab] = useState<string>(() => {
+    if (activeTournament?.groups && activeTournament.groups.length > 0) {
+      return activeTournament.groups[0].groupName;
+    }
+    return 'A그룹';
+  });
   // 그룹별 배정 선수 ID 목록: Record<groupName, playerId[]>
-  const [groupPlayerMap, setGroupPlayerMap] = useState<Record<string, string[]>>({
-    'A그룹': [],
-    'B그룹': [],
-    'C그룹': [],
-    'D그룹': [],
+  const [groupPlayerMap, setGroupPlayerMap] = useState<Record<string, string[]>>(() => {
+    if (activeTournament?.groups && activeTournament.groups.length > 0) {
+      const map: Record<string, string[]> = {};
+      activeTournament.groups.forEach((g) => {
+        map[g.groupName] = g.playerIds || [];
+      });
+      return map;
+    }
+    return {
+      'A그룹': [],
+      'B그룹': [],
+      'C그룹': [],
+      'D그룹': [],
+    };
   });
   // 그룹별 지정 코트 목록: Record<groupName, number[]> (예: A그룹 -> [1, 2], B그룹 -> [3])
-  const [groupCourtMap, setGroupCourtMap] = useState<Record<string, number[]>>({
-    'A그룹': [1],
-    'B그룹': [2],
-    'C그룹': [3],
-    'D그룹': [],
+  const [groupCourtMap, setGroupCourtMap] = useState<Record<string, number[]>>(() => {
+    if (activeTournament?.groupCourtMap && Object.keys(activeTournament.groupCourtMap).length > 0) {
+      return activeTournament.groupCourtMap;
+    }
+    if (activeTournament?.groups && activeTournament.groups.length > 0) {
+      const map: Record<string, number[]> = {};
+      activeTournament.groups.forEach((g) => {
+        map[g.groupName] = g.assignedCourts || [];
+      });
+      return map;
+    }
+    return {
+      'A그룹': [1],
+      'B그룹': [2],
+      'C그룹': [3],
+      'D그룹': [],
+    };
   });
   // 그룹별 수동 시드 지정 상태: Record<groupName, Record<playerId, string>> ('none' | 'seed1' ~ 'seed10')
   const [groupSeedMap, setGroupSeedMap] = useState<Record<string, Record<string, string>>>({
@@ -1312,11 +1348,13 @@ export default function AdminTournamentManager({
       <div className="bg-gradient-to-r from-red-950/90 via-slate-900 to-amber-950/80 border border-amber-500/30 rounded-2xl p-3.5 shadow-xl">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
-              NEW TOURNAMENT
+            <span className={px-2 py-0.5 rounded-full text-[10px] font-black }>
+              {isEditMode ? 'EDIT TOURNAMENT' : 'NEW TOURNAMENT'}
             </span>
             <span className="text-xs font-extrabold text-amber-300">
-              새 대회 개설 · 코트/선수 배정 콘솔
+              {isEditMode
+                ? '진행중 대회 수정 · 선수 추가 · 그룹/코트 조정 콘솔'
+                : '새 대회 개설 · 코트/선수 배정 콘솔'}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1340,7 +1378,9 @@ export default function AdminTournamentManager({
           </div>
         </div>
         <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-          대회명 → 방식 → 참여선수 → 코트·선수 배정 4단계가 모두 펼쳐져 있습니다. 순서대로 설정 후 맨 아래 버튼을 누르면 새 대회가 즉시 개설됩니다.
+          {isEditMode
+            ? '중도 합류 선수를 추가하고 그룹 및 코트를 재조정할 수 있습니다. 이미 완료·진행 중인 경기는 안전하게 보존되며 대기 중인 대진표만 갱신됩니다.'
+            : '대회명 → 방식 → 참여선수 → 코트·선수 배정 4단계가 모두 펼쳐져 있습니다. 순서대로 설정 후 맨 아래 버튼을 누르면 새 대회가 즉시 개설됩니다.'}
         </p>
       </div>
 
@@ -2711,14 +2751,18 @@ export default function AdminTournamentManager({
           </div>
         )}
 
-        {/* 최종 앱 자동 연동 및 경기 시작 버튼 */}
+        {/* 최종 앱 자동 연동 및 경기 시작 / 수정 내용 저장 버튼 */}
         <button
           type="button"
           onClick={handleLaunchTournament}
-          className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:to-red-600 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer"
+          className={w-full py-3.5 bg-gradient-to-r  text-slate-950 font-black rounded-2xl text-sm transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer}
         >
-          <span>🚀</span>
-          <span>새 대회 개설 확정 및 실시간 코트·대진표 자동 연동 시작!</span>
+          <span>{isEditMode ? '💾' : '🚀'}</span>
+          <span>
+            {isEditMode
+              ? '진행중 대회 수정 내용 저장 및 대진표 반영'
+              : '새 대회 개설 확정 및 실시간 코트·대진표 자동 연동 시작!'}
+          </span>
         </button>
       </div>
     </div>

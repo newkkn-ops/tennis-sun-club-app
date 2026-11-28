@@ -118,6 +118,10 @@ function normalizePlayer(raw: any, idx: number): Player {
     isSeed: Boolean(raw.isSeed),
     gender: raw.gender || 'M',
     isGuest: Boolean(raw.isGuest),
+    isWithdrawn: Boolean(raw.isWithdrawn),
+    isResting: Boolean(raw.isResting),
+    isSubstitute: Boolean(raw.isSubstitute),
+    originalPlayerName: raw.originalPlayerName || undefined,
   };
 }
 
