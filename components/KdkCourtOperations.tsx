@@ -1157,88 +1157,118 @@ export default function KdkCourtOperations({
   // 선수별 휴식중 토글
   const handleTogglePlayerResting = (courtNum: number, playerId: string) => {
     if (!isAdmin || isLocked) return;
-    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
-    if (!targetCourt) return;
-    const player = targetCourt.players.find((p) => p.id === playerId);
-    if (!player) return;
 
-    const nextResting = !player.isResting;
+    // 전체 코트 중에서 해당 playerId를 찾거나 playerPool에서 탐색
+    let playerName = '';
+    for (const c of kdkCourts) {
+      const found = c.players.find((p) => p.id === playerId);
+      if (found) {
+        playerName = found.name;
+        break;
+      }
+    }
+    if (!playerName) {
+      const pFound = playerPool.find((p) => p.id === playerId);
+      if (pFound) playerName = pFound.name;
+    }
 
-    updateCourt(courtNum, (court) => {
-      const updatedPlayers = court.players.map((p) =>
-        p.id === playerId ? { ...p, isResting: nextResting } : p
-      );
-      const updatedGames = court.games.map((g) => {
+    // 1. 해당 선수의 현재 휴식 상태 확인 후 반전
+    let nextResting = true;
+    for (const c of kdkCourts) {
+      const found = c.players.find((p) => p.id === playerId);
+      if (found) {
+        nextResting = !found.isResting;
+        break;
+      }
+    }
+
+    // 2. 모든 코트(kdkCourts)를 순회하며 해당 선수 및 해당 선수가 포함된 매치의 isResting을 일괄 동기화
+    setKdkCourts((prev) => {
+      const nextCourts = prev.map((c) => {
         const syncP = (p: Player) => (p.id === playerId ? { ...p, isResting: nextResting } : p);
-        return {
+
+        const updatedPlayers = c.players.map((p) =>
+          p.id === playerId ? { ...p, isResting: nextResting } : p
+        );
+
+        const updatedGames = c.games.map((g) => ({
           ...g,
           teamA: [syncP(g.teamA[0]), syncP(g.teamA[1])] as [Player, Player],
           teamB: [syncP(g.teamB[0]), syncP(g.teamB[1])] as [Player, Player],
+        }));
+
+        return {
+          ...c,
+          players: updatedPlayers,
+          games: updatedGames,
         };
       });
 
-      return {
-        ...court,
-        players: updatedPlayers,
-        games: updatedGames,
-      };
+      syncToMainApp(nextCourts);
+      return nextCourts;
     });
 
     setAutoRotationNotice(
       nextResting
-        ? `☕ [${player.name}] 선수가 [휴식중]으로 설정되었습니다. 해당 선수 포함 대기 경기는 후순위로 자동 이동됩니다.`
-        : `▶️ [${player.name}] 선수가 [복귀]했습니다. 대기 경기가 정상 순번으로 재배치됩니다.`
+        ? `☕ [${playerName || '선수'}] 님이 [휴식중]으로 설정되었습니다. 해당 선수 포함 대기 경기는 후순위로 자동 이동됩니다.`
+        : `▶️ [${playerName || '선수'}] 님이 [복귀]했습니다. 대기 경기가 정상 순번으로 재배치됩니다.`
     );
   };
 
-  // 선수 기권 해제 및 복귀 처리
+  // 선수 기권 해제 및 복귀 처리 (그룹 및 전체 코트 일괄 동기화)
   const handleRestoreWithdrawnPlayer = (courtNum: number, playerId: string) => {
     if (!isAdmin || isLocked) return;
-    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
-    if (!targetCourt) return;
-    const player = targetCourt.players.find((p) => p.id === playerId);
-    if (!player) return;
 
-    updateCourt(courtNum, (court) => {
-      const updatedPlayers = court.players.map((p) =>
-        p.id === playerId ? { ...p, isWithdrawn: false, isResting: false } : p
-      );
+    let playerName = '';
+    for (const c of kdkCourts) {
+      const found = c.players.find((p) => p.id === playerId);
+      if (found) {
+        playerName = found.name;
+        break;
+      }
+    }
 
-      // 해당 선수 기권 사유로 보류(isDeferred)되었던 미완료 경기 복원
-      const updatedGames = court.games.map((g) => {
-        if (g.completed) return g;
+    setKdkCourts((prev) => {
+      const nextCourts = prev.map((c) => {
         const syncP = (p: Player) => (p.id === playerId ? { ...p, isWithdrawn: false, isResting: false } : p);
-        const hasPlayer = [...g.teamA, ...g.teamB].some((p) => p.id === playerId);
-        const isWithdrawnDeferred = g.isDeferred && g.deferredReason?.includes(player.name);
+
+        const updatedPlayers = c.players.map((p) =>
+          p.id === playerId ? { ...p, isWithdrawn: false, isResting: false } : p
+        );
+
+        const updatedGames = c.games.map((g) => {
+          if (g.completed) return g;
+          const isWithdrawnDeferred = g.isDeferred && g.deferredReason?.includes(playerName || playerId);
+          return {
+            ...g,
+            teamA: [syncP(g.teamA[0]), syncP(g.teamA[1])] as [Player, Player],
+            teamB: [syncP(g.teamB[0]), syncP(g.teamB[1])] as [Player, Player],
+            isDeferred: isWithdrawnDeferred ? false : g.isDeferred,
+            deferredReason: isWithdrawnDeferred ? undefined : g.deferredReason,
+          };
+        });
+
         return {
-          ...g,
-          teamA: [syncP(g.teamA[0]), syncP(g.teamA[1])] as [Player, Player],
-          teamB: [syncP(g.teamB[0]), syncP(g.teamB[1])] as [Player, Player],
-          isDeferred: isWithdrawnDeferred ? false : g.isDeferred,
-          deferredReason: isWithdrawnDeferred ? undefined : g.deferredReason,
+          ...c,
+          players: updatedPlayers,
+          games: updatedGames,
         };
       });
 
-      return {
-        ...court,
-        players: updatedPlayers,
-        games: updatedGames,
-      };
+      syncToMainApp(nextCourts);
+      return nextCourts;
     });
 
     setAutoRotationNotice(
-      `▶️ [${player.name}] 선수의 기권이 해제되고 정상 복귀되었습니다. 대기 경기에 다시 배정됩니다.`
+      `▶️ [${playerName || '선수'}] 님의 기권이 해제되고 정상 복귀되었습니다. 대기 경기에 다시 배정됩니다.`
     );
   };
 
-  // 대타 기용 또는 순수 기권 처리
+  // 대타 기용 또는 순수 기권 처리 (전체 코트 및 해당 그룹 매치 일괄 적용)
   const handleApplySubstituteOrWithdraw = () => {
     if (!isAdmin || isLocked) return;
     const { courtNum, originalPlayer } = substituteModalState;
     if (!originalPlayer) return;
-
-    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
-    if (!targetCourt) return;
 
     if (subActionType === 'SUBSTITUTE') {
       if (!selectedSubPlayerId) {
@@ -1257,68 +1287,88 @@ export default function KdkCourtOperations({
         originalPlayerName: originalPlayer.name,
       };
 
-      updateCourt(courtNum, (court) => {
-        const updatedPlayers = court.players.map((p) =>
-          p.id === originalPlayer.id ? { ...p, isWithdrawn: true } : p
-        );
-        if (!updatedPlayers.some((p) => p.id === subPlayer.id)) {
-          updatedPlayers.push(subPlayer);
-        }
+      setKdkCourts((prev) => {
+        const nextCourts = prev.map((c) => {
+          const hasOriginal = c.players.some((p) => p.id === originalPlayer.id);
+          const hasInGames = c.games.some((g) =>
+            [...g.teamA, ...g.teamB].some((p) => p.id === originalPlayer.id)
+          );
 
-        const updatedGames = court.games.map((g) => {
-          if (g.completed) return g;
-          const replacePlayer = (p: Player): Player =>
-            p.id === originalPlayer.id ? subPlayer : p;
-          const nextTeamA: [Player, Player] = [replacePlayer(g.teamA[0]), replacePlayer(g.teamA[1])];
-          const nextTeamB: [Player, Player] = [replacePlayer(g.teamB[0]), replacePlayer(g.teamB[1])];
-          const wA = getCompositeSkillScore(nextTeamA[0]) + getCompositeSkillScore(nextTeamA[1]);
-          const wB = getCompositeSkillScore(nextTeamB[0]) + getCompositeSkillScore(nextTeamB[1]);
+          if (!hasOriginal && !hasInGames && c.courtNumber !== courtNum) {
+            return c;
+          }
+
+          const updatedPlayers = c.players.map((p) =>
+            p.id === originalPlayer.id ? { ...p, isWithdrawn: true } : p
+          );
+          if (c.courtNumber === courtNum && !updatedPlayers.some((p) => p.id === subPlayer.id)) {
+            updatedPlayers.push(subPlayer);
+          }
+
+          const updatedGames = c.games.map((g) => {
+            if (g.completed) return g;
+            const replacePlayer = (p: Player): Player =>
+              p.id === originalPlayer.id ? subPlayer : p;
+            const nextTeamA: [Player, Player] = [replacePlayer(g.teamA[0]), replacePlayer(g.teamA[1])];
+            const nextTeamB: [Player, Player] = [replacePlayer(g.teamB[0]), replacePlayer(g.teamB[1])];
+            const wA = getCompositeSkillScore(nextTeamA[0]) + getCompositeSkillScore(nextTeamA[1]);
+            const wB = getCompositeSkillScore(nextTeamB[0]) + getCompositeSkillScore(nextTeamB[1]);
+            return {
+              ...g,
+              teamA: nextTeamA,
+              teamB: nextTeamB,
+              teamAWeight: wA,
+              teamBWeight: wB,
+              skillDiff: Math.abs(wA - wB),
+            };
+          });
+
           return {
-            ...g,
-            teamA: nextTeamA,
-            teamB: nextTeamB,
-            teamAWeight: wA,
-            teamBWeight: wB,
-            skillDiff: Math.abs(wA - wB),
+            ...c,
+            players: updatedPlayers,
+            games: updatedGames,
           };
         });
 
-        return {
-          ...court,
-          players: updatedPlayers,
-          games: updatedGames,
-        };
+        syncToMainApp(nextCourts);
+        return nextCourts;
       });
 
       setAutoRotationNotice(
         `🔄 [${courtNum}번 코트] [${originalPlayer.name}] 선수의 남은 경기에 [${subPlayer.name}(대타)] 선수가 기용되었습니다! 이전 완료 경기 기록은 그대로 보존됩니다.`
       );
     } else {
-      updateCourt(courtNum, (court) => {
-        const updatedPlayers = court.players.map((p) =>
-          p.id === originalPlayer.id ? { ...p, isWithdrawn: true } : p
-        );
+      // 순수 기권 처리
+      setKdkCourts((prev) => {
+        const nextCourts = prev.map((c) => {
+          const updatedPlayers = c.players.map((p) =>
+            p.id === originalPlayer.id ? { ...p, isWithdrawn: true } : p
+          );
 
-        const firstUncompletedIdx = court.games.findIndex((g) => !g.completed);
-        const updatedGames = court.games.map((g, idx) => {
-          if (g.completed) return g;
-          if (idx === firstUncompletedIdx) return g;
-          const hasWithdrawn = [...g.teamA, ...g.teamB].some((p) => p.id === originalPlayer.id);
-          if (hasWithdrawn) {
-            return {
-              ...g,
-              isDeferred: true,
-              deferredReason: `[${originalPlayer.name} 기권 제외]`,
-            };
-          }
-          return g;
+          const firstUncompletedIdx = c.games.findIndex((g) => !g.completed);
+          const updatedGames = c.games.map((g, idx) => {
+            if (g.completed) return g;
+            if (idx === firstUncompletedIdx) return g;
+            const hasWithdrawn = [...g.teamA, ...g.teamB].some((p) => p.id === originalPlayer.id);
+            if (hasWithdrawn) {
+              return {
+                ...g,
+                isDeferred: true,
+                deferredReason: `[${originalPlayer.name} 기권 제외]`,
+              };
+            }
+            return g;
+          });
+
+          return {
+            ...c,
+            players: updatedPlayers,
+            games: updatedGames,
+          };
         });
 
-        return {
-          ...court,
-          players: updatedPlayers,
-          games: updatedGames,
-        };
+        syncToMainApp(nextCourts);
+        return nextCourts;
       });
 
       setAutoRotationNotice(
@@ -2025,24 +2075,109 @@ export default function KdkCourtOperations({
           )}
 
           {/* ========================================================== */}
-          {/* 🌟 [코트별 출전 선수 상태 관리 아코디언]: 개별 접기/펼치기 & 모바일 행 리스트 */}
+          {/* 🌟 [코트별 출전 선수 상태 관리 아코디언]: 개별 접기/펼치기 & 해당 코트 연결 그룹 전체 선수 표시 */}
           {/* ========================================================== */}
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
-                <span>👥</span> 코트별 출전 선수 상태 관리 (휴식 · 대타 · 기권)
+                <span>👥</span> 코트별 출전 선수 상태 관리 (배정 그룹 전체 선수 · 휴식 · 대타 · 기권)
               </span>
               <span className="text-[10px] text-slate-400">
-                코트 헤더 클릭 시 개별 접기/펼치기
+                코트 클릭 시 펼침 / 해당 코트 연결 그룹 소속 선수 전체 노출
               </span>
             </div>
 
             {kdkCourts.map((courtItem) => {
               const cNum = courtItem.courtNumber;
               const isExpanded = Boolean(courtStatusAccordion[cNum]);
-              const restingCount = courtItem.players.filter((p) => p.isResting && !p.isWithdrawn).length;
-              const withdrawnCount = courtItem.players.filter((p) => p.isWithdrawn).length;
-              const subCount = courtItem.players.filter((p) => p.isSubstitute).length;
+
+              // 1. 해당 코트에 연결된 그룹 매핑 조회 (localStorage 및 실시간 매핑)
+              let activeGroupCourtMap: Record<string, number[]> = {};
+              try {
+                const rawGroupMap = localStorage.getItem('sun_tennis_group_courts');
+                if (rawGroupMap) activeGroupCourtMap = JSON.parse(rawGroupMap);
+              } catch {}
+
+              const linkedGroupNames = Object.entries(activeGroupCourtMap)
+                .filter(([_, courtList]) => Array.isArray(courtList) && courtList.includes(cNum))
+                .map(([gName]) => gName);
+
+              // 2. 연결된 그룹의 전체 선수 ID 수집
+              let linkedGroupPlayerIds = new Set<string>();
+              try {
+                const rawHistory = localStorage.getItem('sun_tennis_tournament_history');
+                if (rawHistory) {
+                  const hist = JSON.parse(rawHistory);
+                  if (Array.isArray(hist) && hist.length > 0) {
+                    const curT = hist[0];
+                    if (Array.isArray(curT?.groups)) {
+                      curT.groups.forEach((g: any) => {
+                        if (linkedGroupNames.includes(g.groupName) && Array.isArray(g.playerIds)) {
+                          g.playerIds.forEach((pid: string) => linkedGroupPlayerIds.add(pid));
+                        }
+                      });
+                    }
+                  }
+                }
+              } catch {}
+
+              // 3. 해당 코트 연결 그룹 선수 전체 목록 추출
+              const groupPlayersMap = new Map<string, Player>();
+
+              // 1) 기본: 코트에 직접 배정된 선수들
+              courtItem.players.forEach((p) => {
+                groupPlayersMap.set(p.id, p);
+              });
+
+              // 2) 연결된 그룹이 있으면 해당 그룹 선수 추가 (다른 코트 선수 또는 풀에서 탐색)
+              if (linkedGroupPlayerIds.size > 0) {
+                linkedGroupPlayerIds.forEach((pid) => {
+                  if (!groupPlayersMap.has(pid)) {
+                    // 전체 코트에서 먼저 검색
+                    for (const oc of kdkCourts) {
+                      const found = oc.players.find((p) => p.id === pid);
+                      if (found) {
+                        groupPlayersMap.set(pid, found);
+                        break;
+                      }
+                    }
+                    // 코트에 없으면 전체 playerPool에서 검색
+                    if (!groupPlayersMap.has(pid)) {
+                      const poolFound = playerPool.find((p) => p.id === pid);
+                      if (poolFound) {
+                        groupPlayersMap.set(pid, poolFound);
+                      }
+                    }
+                  }
+                });
+              } else if (linkedGroupNames.length > 0) {
+                // 그룹 이름은 연결되었으나 그룹 내 선수 ID가 저장 안 된 경우:
+                // 해당 그룹 경기에 참여한 모든 선수를 찾아 추가
+                kdkCourts.forEach((oc) => {
+                  (oc.games || []).forEach((g: any) => {
+                    const rName = g.roundName || g.id || '';
+                    if (linkedGroupNames.some((gn) => rName.includes(gn))) {
+                      [...g.teamA, ...g.teamB].forEach((p: Player) => {
+                        if (p && p.id && !groupPlayersMap.has(p.id)) {
+                          groupPlayersMap.set(p.id, p);
+                        }
+                      });
+                    }
+                  });
+                });
+              }
+
+              const displayPlayers = Array.from(groupPlayersMap.values());
+
+              // 통계 카운트 (연결 그룹 전체 선수 기준)
+              const restingCount = displayPlayers.filter((p) => p.isResting && !p.isWithdrawn).length;
+              const withdrawnCount = displayPlayers.filter((p) => p.isWithdrawn).length;
+              const subCount = displayPlayers.filter((p) => p.isSubstitute).length;
+
+              // 실시간 경기/대기 상태 판별을 위한 매치 정보 수집
+              const currentCourtPlaying = !courtItem.games.find((g) => g.completed === false)?.completed
+                ? courtItem.games.find((g) => !g.completed && !g.isDeferred)
+                : null;
 
               return (
                 <div
@@ -2060,8 +2195,20 @@ export default function KdkCourtOperations({
                         <span className="w-2 h-2 rounded-full bg-amber-400"></span>
                         {cNum}번 코트
                       </span>
+
+                      {/* 연결된 그룹 태그 */}
+                      {linkedGroupNames.length > 0 ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 font-black border border-emerald-500/30 shrink-0">
+                          {linkedGroupNames.join(', ')}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-bold shrink-0">
+                          전체 배정
+                        </span>
+                      )}
+
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold shrink-0">
-                        배정 {courtItem.players.length}명
+                        그룹 소속 {displayPlayers.length}명
                       </span>
 
                       {/* 상태 요약 배지 */}
@@ -2092,55 +2239,81 @@ export default function KdkCourtOperations({
                     </div>
                   </button>
 
-                  {/* 아코디언 내부: 모바일 최적화 행(Row) 리스트 */}
+                  {/* 아코디언 내부: 모바일 최적화 100% 폭 행(Row) 리스트 */}
                   {isExpanded && (
                     <div className="p-3 border-t border-slate-800 bg-slate-950/80 space-y-2">
-                      <div className="text-[10px] text-slate-400 flex items-center justify-between pb-1">
-                        <span>선수 정보 (부수 / 상태)</span>
+                      <div className="text-[10px] text-slate-400 flex items-center justify-between pb-1 flex-wrap gap-1">
+                        <span>
+                          {linkedGroupNames.length > 0 ? `[${linkedGroupNames.join(', ')}] 소속 전체 선수` : '코트 참여 선수'} (부수 / 현재 상태)
+                        </span>
                         <span>휴식 토글 · 대타/기권 관리</span>
                       </div>
 
                       <div className="space-y-1.5">
-                        {courtItem.players.map((p) => {
+                        {displayPlayers.map((p) => {
                           const isResting = Boolean(p.isResting);
                           const isWithdrawn = Boolean(p.isWithdrawn);
                           const isSub = Boolean(p.isSubstitute);
 
+                          // 실시간 코트 경기중 여부 판별 (현재 코트 또는 다른 코트에서 플레이 중인지)
+                          let isCurrentlyPlaying = false;
+                          let playingCourtNum = 0;
+                          for (const oc of kdkCourts) {
+                            const liveMatch = (oc.games || []).find((g) => !g.completed && !g.isDeferred);
+                            if (liveMatch && [...liveMatch.teamA, ...liveMatch.teamB].some((mp) => mp.id === p.id)) {
+                              isCurrentlyPlaying = true;
+                              playingCourtNum = oc.courtNumber;
+                              break;
+                            }
+                          }
+
                           return (
                             <div
                               key={p.id}
-                              className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition ${
+                              className={`w-full p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition ${
                                 isWithdrawn
                                   ? 'bg-rose-950/20 border-rose-900/50 text-slate-400 opacity-75'
                                   : isResting
                                   ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                                  : isCurrentlyPlaying
+                                  ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
                                   : isSub
                                   ? 'bg-sky-950/40 border-sky-500/40 text-sky-200'
                                   : 'bg-slate-900/90 border-slate-800 text-slate-200'
                               }`}
                             >
-                              {/* 좌측 선수 정보: 부수 / 이름 / 상태 배지 (절대 줄바꿈/세로깨짐 없음) */}
+                              {/* 좌측 선수 정보: 부수 / 이름 / 상태 배지 (줄바꿈/세로깨짐 방지: whitespace-nowrap shrink-0) */}
                               <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-bold whitespace-nowrap shrink-0">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-bold whitespace-nowrap shrink-0 border border-slate-700/60">
                                   {p.grade}
                                 </span>
                                 <span className="font-bold text-xs text-white truncate min-w-0 flex-1">
                                   {p.name}
                                 </span>
 
+                                {/* 현재 상태 배지: 경기중 / 대기중 / 휴식중 / 기권 / 대타 */}
+                                {isWithdrawn ? (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-600 text-white font-black whitespace-nowrap shrink-0 shadow-sm">
+                                    기권
+                                  </span>
+                                ) : isResting ? (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black whitespace-nowrap shrink-0 shadow-sm animate-pulse">
+                                    휴식중
+                                  </span>
+                                ) : isCurrentlyPlaying ? (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-black whitespace-nowrap shrink-0 shadow-sm flex items-center gap-0.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping"></span>
+                                    {playingCourtNum === cNum ? '경기중' : `${playingCourtNum}코트 경기중`}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold whitespace-nowrap shrink-0 border border-slate-700">
+                                    대기중
+                                  </span>
+                                )}
+
                                 {isSub && (
                                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold whitespace-nowrap shrink-0">
-                                    [대타]
-                                  </span>
-                                )}
-                                {isWithdrawn && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-black whitespace-nowrap shrink-0">
-                                    [기권]
-                                  </span>
-                                )}
-                                {isResting && !isWithdrawn && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black whitespace-nowrap shrink-0">
-                                    [휴식중]
+                                    대타
                                   </span>
                                 )}
                               </div>
@@ -2185,9 +2358,9 @@ export default function KdkCourtOperations({
                                       <button
                                         type="button"
                                         onClick={() => handleTogglePlayerResting(cNum, p.id)}
-                                        className={`h-9 px-3 flex-1 sm:flex-none rounded-xl text-xs font-black border transition flex items-center justify-center gap-1 cursor-pointer ${
+                                        className={`h-9 px-3 flex-1 sm:flex-none rounded-xl text-xs font-black border transition flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
                                           isResting
-                                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm hover:bg-emerald-400'
+                                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm hover:bg-emerald-400 ring-2 ring-emerald-400/40'
                                             : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
                                         }`}
                                         title={
@@ -2212,7 +2385,7 @@ export default function KdkCourtOperations({
                                           setSelectedSubPlayerId('');
                                           setSubActionType('SUBSTITUTE');
                                         }}
-                                        className="h-9 px-3 flex-1 sm:flex-none rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/35 transition flex items-center justify-center gap-1 cursor-pointer"
+                                        className="h-9 px-3 flex-1 sm:flex-none rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/35 transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
                                         title="부상/이탈 시 대타 기용 또는 기권 처리"
                                       >
                                         <span>🔄</span>
