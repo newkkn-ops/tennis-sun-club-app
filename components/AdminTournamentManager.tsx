@@ -1334,7 +1334,6 @@ export default function AdminTournamentManager({
             })}
           </div>
         </div>
-        {/* KDK 리그 방식 전용: 참여 인원별 최소 게임 수 선택 (2게임 ~ 6게임 항상 노출) */}
         {tournamentMode === 'KDK' && (
           <div className="bg-slate-950/95 border-2 border-amber-500/50 rounded-2xl p-3.5 space-y-2.5 shadow-lg shadow-amber-500/10">
             <div className="flex flex-wrap items-center justify-between gap-2">

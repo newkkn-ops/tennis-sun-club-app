@@ -20,6 +20,7 @@ import AdminTournamentManager, {
 } from './components/AdminTournamentManager';
 import AdminUserManagement, { ManagedMember } from './components/AdminUserManagement';
 import KdkCourtOperations from './components/KdkCourtOperations';
+import KdkOverallScheduleBoard from './components/KdkOverallScheduleBoard';
 import AppBackExitOverlay from './components/AppBackExitOverlay';
 import BirthDateSelector from './components/BirthDateSelector';
 import { useAppBackHandler } from './hooks/useAppBackHandler';
@@ -532,6 +533,8 @@ export default function TennisApp() {
 
   // 새 대회 개설 모달 상태 (가입회원/미가입회원 선택 + 임의선수 등록 + 실력균형 자동/수동 배정)
   const [showNewTourModal, setShowNewTourModal] = useState<boolean>(false);
+  // 전체 게임현황 및 KDK_V2025 기록표 전용 공용 모달 상태 (회원/관리자 공용)
+  const [showKdkOverallBoard, setShowKdkOverallBoard] = useState<boolean>(false);
   const [newTourName, setNewTourName] = useState<string>('');
   const [newTourDate, setNewTourDate] = useState<string>(() => {
     const today = new Date();
@@ -2276,6 +2279,10 @@ export default function TennisApp() {
       setShowNewTourModal(false);
       return true;
     }
+    if (showKdkOverallBoard) {
+      setShowKdkOverallBoard(false);
+      return true;
+    }
 
     // 2) 로그인 전 화면: 회원가입 탭이면 로그인 탭으로 전단계 이동
     if (!currentUser) {
@@ -2321,6 +2328,7 @@ export default function TennisApp() {
     selectedCourt,
     courtEditTarget,
     showNewTourModal,
+    showKdkOverallBoard,
     currentUser,
     isSignUp,
     isAdmin,
@@ -3179,25 +3187,47 @@ export default function TennisApp() {
                 )}
 
                 {/* 현재 선택된 대회 방식(KDK 또는 토너먼트)에 연계된 빠른 이동 버튼만 단독 노출 */}
-                <div>
+                <div className="space-y-2">
                   {currentTournament.format === 'kdk' ? (
-                    <button
-                      onClick={() => setActiveTab('kdk')}
-                      className="w-full p-3 bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-2xl text-left transition group shadow-md cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-black text-white group-hover:text-emerald-300 flex items-center gap-1.5">
-                          <span>🔄</span>
-                          <span>KDK 파트너 순환 대진표 & 순위 보기</span>
-                        </span>
-                        <span className="text-[10px] font-black bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-md">
-                          KDK 바로가기 ➔
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-400">
-                        현재 대회({currentTournament.name})는 KDK 방식으로 진행됩니다.
-                      </p>
-                    </button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setActiveTab('kdk')}
+                        className="w-full p-3 bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-2xl text-left transition group shadow-md cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-black text-white group-hover:text-emerald-300 flex items-center gap-1.5">
+                            <span>🔄</span>
+                            <span>KDK 파트너 순환 대진표 & 순위 보기</span>
+                          </span>
+                          <span className="text-[10px] font-black bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-md">
+                            KDK 바로가기 ➔
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          현재 대회({currentTournament.name})는 KDK 방식으로 진행됩니다.
+                        </p>
+                      </button>
+
+                      {/* 관리자·회원 누구나 열 수 있는 전체 게임현황 & KDK 기록표 전용 버튼 */}
+                      <button
+                        type="button"
+                        onClick={() => setShowKdkOverallBoard(true)}
+                        className="w-full p-3 bg-gradient-to-br from-amber-950/50 via-slate-900 to-slate-900 border border-amber-500/40 hover:border-amber-400 rounded-2xl text-left transition group shadow-md cursor-pointer flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-black text-amber-300 group-hover:text-amber-200 flex items-center gap-1.5">
+                            <span>📊</span>
+                            <span>전체 게임현황 · KDK 기록표 보기</span>
+                          </span>
+                          <span className="text-[10px] font-black bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md shadow-xs">
+                            공용 조회 열기 🔍
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          KDK 순서표 전체 매치와 5단계 순위 공식 기록표를 한눈에 파악합니다.
+                        </p>
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={() => setActiveTab('tournament')}
@@ -3476,6 +3506,29 @@ export default function TennisApp() {
             {/* ---------------------------------------------------- */}
             {activeTab === 'kdk' && currentTournament.format === 'kdk' && (
               <div className="space-y-4">
+                {/* 상단 공용 [전체 게임현황 · KDK 기록표] 팝업 열기 배너 */}
+                <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-amber-950/60 p-3 rounded-2xl border border-emerald-500/40 shadow-md flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📊</span>
+                    <div>
+                      <h4 className="text-xs font-black text-emerald-300">
+                        전체 게임현황 & KDK 5단계 순위 종합 기록표
+                      </h4>
+                      <p className="text-[10px] text-slate-400">
+                        모든 코트의 게임 순번과 개인별 라운드 기록·순위를 한눈에 확인합니다.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowKdkOverallBoard(true)}
+                    className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-xs shadow-md transition flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <span>🔍</span>
+                    <span>전체 현황표 열기</span>
+                  </button>
+                </div>
+
                 <KdkCourtOperations
                   tournamentName={`${currentTournament.name} (${currentTournament.date})`}
                   availablePlayers={approvedPlayers}
@@ -5284,6 +5337,28 @@ export default function TennisApp() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* [모달 4]: 관리자·회원 공용 전체 게임현황 & KDK_V2025 기록표 모달 */}
+      {/* ======================================================== */}
+      {showKdkOverallBoard && (
+        <div className="fixed inset-0 z-[110] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-emerald-500/40 w-full max-w-4xl rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 my-auto max-h-[94vh] overflow-y-auto">
+            <SafeBoundary title="전체 게임현황 및 KDK 기록표">
+              <KdkOverallScheduleBoard
+                tournamentName={`${currentTournament.name} (${currentTournament.date})`}
+                currentUserName={currentUser?.name}
+                isAdmin={isAdmin}
+                onNavigateToTab={(tab) => {
+                  setActiveTab(tab as any);
+                  setShowKdkOverallBoard(false);
+                }}
+                onClose={() => setShowKdkOverallBoard(false)}
+              />
+            </SafeBoundary>
           </div>
         </div>
       )}

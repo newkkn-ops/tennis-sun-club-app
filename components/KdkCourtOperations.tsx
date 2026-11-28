@@ -16,6 +16,7 @@ import {
 } from '../lib/kdk';
 import { calculateKoreanManAge } from '../lib/age';
 import { recordMatchResultToSupabase } from '../lib/supabase';
+
 export interface KdkCourtState {
   courtNumber: number;
   targetPlayerCount: number; // 코트별 선수 인원 수 (최소 4명 ~ 최대 20명, 관리자 지정)
@@ -27,8 +28,10 @@ export interface KdkCourtState {
   games: CourtKdkGame[];
   isFinished: boolean;
 }
+
 const MIN_COURT_PLAYERS = 4;
 const MAX_COURT_PLAYERS = 20;
+
 interface KdkCourtOperationsProps {
   tournamentName: string;
   availablePlayers: any[];
@@ -53,7 +56,9 @@ interface KdkCourtOperationsProps {
   ) => void;
   onAddNewPlayerToClub?: (newPlayer: Player) => void;
 }
+
 const GRADE_OPTIONS = ['금배', '은배', '국화', '동배', '개나리', '고령자부', '테린이'];
+
 // 샘플 선수별 기본 나이 매핑 (나이가 없는 기존 회원 데이터 보완용)
 const DEFAULT_AGES: Record<string, number> = {
   '김철수': 54,
@@ -71,6 +76,7 @@ const DEFAULT_AGES: Record<string, number> = {
   '전지현': 44,
   '현빈': 43,
 };
+
 // 샘플 선수별 기본 구력(년) 매핑
 const DEFAULT_EXPERIENCES: Record<string, number> = {
   '김철수': 12,
@@ -88,6 +94,7 @@ const DEFAULT_EXPERIENCES: Record<string, number> = {
   '전지현': 7,
   '현빈': 5,
 };
+
 function normalizePlayer(raw: any, idx: number): Player {
   const fromBirth = calculateKoreanManAge(raw.birthDate);
   const ageVal =
@@ -113,12 +120,14 @@ function normalizePlayer(raw: any, idx: number): Player {
     isGuest: Boolean(raw.isGuest),
   };
 }
+
 function getDefaultTopSeeds(players: Player[]): string[] {
   const sorted = [...players].sort(
     (a, b) => getCompositeSkillScore(b) - getCompositeSkillScore(a)
   );
   return sorted.slice(0, Math.min(2, sorted.length)).map((p) => p.id);
 }
+
 function rebuildGamesForCourt(
   courtNumber: number,
   players: Player[],
@@ -138,9 +147,11 @@ function rebuildGamesForCourt(
   });
   return { gameCount: games.length, games };
 }
+
 const KDK_COURTS_STORAGE_KEY = 'sun_tennis_kdk_courts_v3';
 const KDK_POOL_STORAGE_KEY = 'sun_tennis_kdk_pool_v3';
 const KDK_SYNC_EVENT = 'sun-tennis-kdk-sync';
+
 function sanitizeCourtState(raw: any, index: number): KdkCourtState {
   const courtNumber = typeof raw?.courtNumber === 'number' ? raw.courtNumber : index + 1;
   const rawPlayers = Array.isArray(raw?.players) ? raw.players : [];
@@ -162,6 +173,7 @@ function sanitizeCourtState(raw: any, index: number): KdkCourtState {
   const seedPlayerIds = Array.isArray(raw?.seedPlayerIds) ? raw.seedPlayerIds : [];
   const targetPlayerCount = Math.max(4, typeof raw?.targetPlayerCount === 'number' ? raw.targetPlayerCount : players.length);
   const gameCount = typeof raw?.gameCount === 'number' ? raw.gameCount : Math.max(games.length, calculateRequiredCourtGames(players.length, minGamesPerPlayer));
+
   return {
     courtNumber,
     targetPlayerCount,
@@ -174,6 +186,7 @@ function sanitizeCourtState(raw: any, index: number): KdkCourtState {
     isFinished: Boolean(raw?.isFinished),
   };
 }
+
 export default function KdkCourtOperations({
   tournamentName,
   availablePlayers,
@@ -188,6 +201,7 @@ export default function KdkCourtOperations({
   const [isAdminConfigOpen, setIsAdminConfigOpen] = useState<boolean>(false);
   // 게임 종료 시 다음 대기자 자동 연동 알림 메시지
   const [autoRotationNotice, setAutoRotationNotice] = useState<string>('');
+
   // 전체 선수 풀 (나이·구력 정보 포함, 로컬스토리지 연동)
   const [playerPool, setPlayerPool] = useState<Player[]>(() => {
     if (typeof window !== 'undefined') {
@@ -203,6 +217,7 @@ export default function KdkCourtOperations({
     }
     return availablePlayers.map((p, i) => normalizePlayer(p, i));
   });
+
   // 외부 availablePlayers 추가 및 개인정보(생년월일·만 나이·등급·이름) 수정 시 실시간 동기화
   useEffect(() => {
     const incomingMap = new Map<string, Player>();
@@ -210,6 +225,7 @@ export default function KdkCourtOperations({
       const np = normalizePlayer(raw, i);
       incomingMap.set(np.id, np);
     });
+
     const mergeWithIncoming = (existing: Player): Player => {
       const inc = incomingMap.get(existing.id);
       if (!inc) return existing;
@@ -228,6 +244,7 @@ export default function KdkCourtOperations({
         age: nextAge,
       };
     };
+
     setPlayerPool((prev) => {
       let changed = false;
       const updated = prev.map((p) => {
@@ -252,6 +269,7 @@ export default function KdkCourtOperations({
       });
       return changed ? updated : prev;
     });
+
     setKdkCourts((prev) => {
       let courtsChanged = false;
       const nextCourts = prev.map((c) => {
@@ -268,6 +286,7 @@ export default function KdkCourtOperations({
           }
           return merged;
         });
+
         const nextGames = c.games.map((g) => {
           const tA0 = mergeWithIncoming(g.teamA[0]);
           const tA1 = mergeWithIncoming(g.teamA[1]);
@@ -306,6 +325,7 @@ export default function KdkCourtOperations({
           }
           return g;
         });
+
         if (courtChanged) {
           courtsChanged = true;
           return { ...c, players: nextPlayers, games: nextGames };
@@ -320,6 +340,7 @@ export default function KdkCourtOperations({
       return courtsChanged ? nextCourts : prev;
     });
   }, [availablePlayers]);
+
   // 코트별 KDK 상태 (운영관리 센터와 KDK 진행 화면 간 실시간 로컬스토리지 동기화)
   const [kdkCourts, setKdkCourts] = useState<KdkCourtState[]>(() => {
     if (typeof window !== 'undefined') {
@@ -368,6 +389,7 @@ export default function KdkCourtOperations({
     }
     return initialCourts;
   });
+
   // 운영관리 센터 <-> KDK 진행 화면 간 변경사항 동기화
   const persistAndBroadcastKdk = (nextCourts: KdkCourtState[], nextPool?: Player[]) => {
     if (typeof window === 'undefined') return;
@@ -379,6 +401,7 @@ export default function KdkCourtOperations({
       window.dispatchEvent(new CustomEvent(KDK_SYNC_EVENT));
     } catch {}
   };
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleSync = () => {
@@ -402,6 +425,7 @@ export default function KdkCourtOperations({
     window.addEventListener(KDK_SYNC_EVENT, handleSync);
     return () => window.removeEventListener(KDK_SYNC_EVENT, handleSync);
   }, []);
+
   // 현재 선택된 코트 탭 번호
   const [selectedCourtNum, setSelectedCourtNum] = useState<number>(1);
   // 코트별 임의 선수 추가 폼 상태 (이름 + 등급 + 구력 + 나이)
@@ -409,8 +433,10 @@ export default function KdkCourtOperations({
   const [guestGrade, setGuestGrade] = useState<string>('은배');
   const [guestExp, setGuestExp] = useState<string>('5');
   const [guestAge, setGuestAge] = useState<string>('48');
+
   const activeCourt =
     kdkCourts.find((c) => c.courtNumber === selectedCourtNum) || kdkCourts[0];
+
   // 앱의 실시간 코트 현황판과 자동 동기화 헬퍼 (진행 중인 게임이 종료되면 다음 대기자 게임으로 즉시 자동 연동)
   const syncToMainApp = (courtsList: KdkCourtState[], updatedPool?: Player[]) => {
     persistAndBroadcastKdk(courtsList, updatedPool);
@@ -455,6 +481,7 @@ export default function KdkCourtOperations({
     });
     onSyncCourtsToApp(mapped);
   };
+
   // 특정 코트 상태 업데이트 헬퍼
   const updateCourt = (
     courtNum: number,
@@ -466,9 +493,10 @@ export default function KdkCourtOperations({
       return next;
     });
   };
+
   // 코트 추가 생성 (관리자 전용)
   const handleAddKdkCourt = () => {
-    if (!isAdmin || isLocked) return;
+    if (!isAdmin) return;
     const nextNum =
       kdkCourts.length > 0
         ? Math.max(...kdkCourts.map((c) => c.courtNumber)) + 1
@@ -478,6 +506,7 @@ export default function KdkCourtOperations({
     const unused = playerPool.filter((p) => !usedIds.has(p.id));
     const initPlayers =
       unused.length >= 4 ? unused.slice(0, 4) : playerPool.slice(0, 4);
+
     const initSeeds = getDefaultTopSeeds(initPlayers);
     const initBuilt = rebuildGamesForCourt(nextNum, initPlayers, 2, 'AUTO', initSeeds);
     const newCourt: KdkCourtState = {
@@ -491,11 +520,13 @@ export default function KdkCourtOperations({
       games: initBuilt.games,
       isFinished: false,
     };
+
     const next = [...kdkCourts, newCourt];
     setKdkCourts(next);
     setSelectedCourtNum(nextNum);
     syncToMainApp(next);
   };
+
   // 전체 코트 실력자 우선 시드 배정 후 나머지 인원 자동 균등 배정 (관리자 전용)
   const handleDistributeAllCourtsSeedFirst = () => {
     if (!isAdmin) return;
@@ -505,6 +536,7 @@ export default function KdkCourtOperations({
     }
     const courtNumbers = kdkCourts.map((c) => c.courtNumber);
     const distributed = distributePlayersSeedFirstToCourts(playerPool, courtNumbers, 2);
+
     const nextCourts: KdkCourtState[] = kdkCourts.map((c) => {
       const bucket = distributed.find((b) => b.courtNumber === c.courtNumber);
       const nextPlayers = bucket && bucket.players.length >= 4 ? bucket.players : c.players;
@@ -530,12 +562,14 @@ export default function KdkCourtOperations({
         isFinished: false,
       };
     });
+
     setKdkCourts(nextCourts);
     syncToMainApp(nextCourts);
     alert(
       `🌟 전체 ${nextCourts.length}개 코트에 종합 실력(등급+구력+나이) 최상위 시드를 우선 배정하고 나머지 인원을 자동 균등 배치했습니다!`
     );
   };
+
   // 코트 삭제 (관리자 전용)
   const handleRemoveKdkCourt = (courtNum: number) => {
     if (!isAdmin) return;
@@ -550,6 +584,7 @@ export default function KdkCourtOperations({
     }
     syncToMainApp(next);
   };
+
   // 코트별 참여인원 지정 (관리자 전용 · 최소 4명 ~ 최대 20명)
   const handleChangeTargetPlayerCount = (courtNum: number, newCount: number) => {
     if (!isAdmin) return;
@@ -575,6 +610,7 @@ export default function KdkCourtOperations({
       } else if (nextPlayers.length > safeCount) {
         nextPlayers = nextPlayers.slice(0, safeCount);
       }
+
       const validSeeds = court.seedPlayerIds.filter((id) =>
         nextPlayers.some((p) => p.id === id)
       );
@@ -593,6 +629,7 @@ export default function KdkCourtOperations({
               nextSeeds
             )
           : { gameCount: Math.max(requiredGames, court.games.length), games: court.games };
+
       return {
         ...court,
         targetPlayerCount: safeCount,
@@ -604,6 +641,7 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 참여인원 1인당 필수 최소 게임 수 설정 (관리자 전용 · 최소 2게임 ~ 최대 10게임, 필요 코트 경기 수 자동 산출)
   const handleChangeMinGamesPerPlayer = (courtNum: number, newMinGames: number) => {
     if (!isAdmin) return;
@@ -645,6 +683,7 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 코트에 특정 선수 배정 / 해제 토글 (관리자 전용 · 코트당 최대 20명)
   const handleTogglePlayerInCourt = (courtNum: number, player: Player) => {
     if (!isAdmin) return;
@@ -657,6 +696,7 @@ export default function KdkCourtOperations({
       alert(`코트별 참여인원은 최대 ${MAX_COURT_PLAYERS}명까지 선택할 수 있습니다.`);
       return;
     }
+
     updateCourt(courtNum, (court) => {
       const exists = court.players.some((p) => p.id === player.id);
       if (!exists && court.players.length >= MAX_COURT_PLAYERS) {
@@ -665,6 +705,7 @@ export default function KdkCourtOperations({
       const nextPlayers = exists
         ? court.players.filter((p) => p.id !== player.id)
         : [...court.players, player];
+
       const nextTarget = Math.max(
         MIN_COURT_PLAYERS,
         Math.min(MAX_COURT_PLAYERS, nextPlayers.length)
@@ -686,6 +727,7 @@ export default function KdkCourtOperations({
               gameCount: calculateRequiredCourtGames(nextPlayers.length, court.minGamesPerPlayer),
               games: court.games,
             };
+
       return {
         ...court,
         targetPlayerCount: nextTarget,
@@ -697,6 +739,7 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 코트 내 실력자 시드 지정/해제 토글 (SEED_AUTO 모드용)
   const handleToggleSeedPlayer = (courtNum: number, playerId: string) => {
     if (!isAdmin) return;
@@ -723,6 +766,7 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 코트 내 선수 구력(년) 개별 수정 (관리자 전용 · 종합 실력 지수 반영)
   const handleUpdatePlayerExperience = (playerId: string, newExp: number) => {
     if (!isAdmin) return;
@@ -755,6 +799,7 @@ export default function KdkCourtOperations({
       return nextCourts;
     });
   };
+
   // 코트 내 선수 나이 개별 수정 (관리자 전용 · 종합 실력 지수 및 동점 시 만 나이합산 기준)
   const handleUpdatePlayerAge = (playerId: string, newAge: number) => {
     if (!isAdmin) return;
@@ -787,6 +832,7 @@ export default function KdkCourtOperations({
       return nextCourts;
     });
   };
+
   // 임의 선수(미가입 회원) 이름 + 급수 + 구력 + 나이 직접 추가 및 현재 코트 즉시 배치 (관리자 전용 · 최대 20명)
   const handleAddGuestToActiveCourt = () => {
     if (!isAdmin) return;
@@ -805,6 +851,7 @@ export default function KdkCourtOperations({
       .split(',')
       .map((n) => n.trim())
       .filter((n) => n.length > 0);
+
     const remainingSlots = activeCourt
       ? MAX_COURT_PLAYERS - activeCourt.players.length
       : MAX_COURT_PLAYERS;
@@ -812,6 +859,7 @@ export default function KdkCourtOperations({
     if (names.length > remainingSlots) {
       alert(`코트별 최대 ${MAX_COURT_PLAYERS}명 제한으로 ${allowedNames.length}명만 추가됩니다.`);
     }
+
     const newPlayers: Player[] = allowedNames.map((name, idx) => ({
       id: `kdk_guest_${Date.now()}_${idx}`,
       name,
@@ -821,10 +869,12 @@ export default function KdkCourtOperations({
       gender: 'M',
       isGuest: true,
     }));
+
     setPlayerPool((prev) => [...prev, ...newPlayers]);
     if (onAddNewPlayerToClub) {
       newPlayers.forEach((np) => onAddNewPlayerToClub(np));
     }
+
     if (activeCourt) {
       updateCourt(activeCourt.courtNumber, (court) => {
         const nextPlayers = [...court.players, ...newPlayers].slice(0, MAX_COURT_PLAYERS);
@@ -862,6 +912,7 @@ export default function KdkCourtOperations({
     }
     setGuestName('');
   };
+
   // 코트별 KDK 실력균등 자동 편성 실행 (구력+등급+나이 종합실력 반영)
   const handleRunCourtAutoBalance = (courtNum: number) => {
     if (!isAdmin) return;
@@ -886,6 +937,7 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 코트별 실력자 우선 시드배정 후 나머지 인원 자동 편성 실행
   const handleRunCourtSeedAuto = (courtNum: number) => {
     if (!isAdmin) return;
@@ -915,6 +967,7 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 수동모드: 특정 게임의 팀 선수 직접 변경 (관리자 전용)
   const handleManualChangeGamePlayer = (
     courtNum: number,
@@ -929,12 +982,14 @@ export default function KdkCourtOperations({
         court.players.find((p) => p.id === newPlayerId) ||
         playerPool.find((p) => p.id === newPlayerId);
       if (!chosen) return court;
+
       const nextGames = court.games.map((g) => {
         if (g.id !== gameId) return g;
         const nextTeamA: [Player, Player] = [g.teamA[0], g.teamA[1]];
         const nextTeamB: [Player, Player] = [g.teamB[0], g.teamB[1]];
         if (team === 'teamA') nextTeamA[slotIdx] = chosen;
         else nextTeamB[slotIdx] = chosen;
+
         const wA = getCompositeSkillScore(nextTeamA[0]) + getCompositeSkillScore(nextTeamA[1]);
         const wB = getCompositeSkillScore(nextTeamB[0]) + getCompositeSkillScore(nextTeamB[1]);
         const activeIds = new Set([
@@ -944,6 +999,7 @@ export default function KdkCourtOperations({
           nextTeamB[1].id,
         ]);
         const resting = court.players.filter((p) => !activeIds.has(p.id));
+
         return {
           ...g,
           teamA: nextTeamA,
@@ -954,9 +1010,11 @@ export default function KdkCourtOperations({
           resting,
         };
       });
+
       return { ...court, games: nextGames };
     });
   };
+
   // 게임 스코어 조절 (- / +, 관리자 전용)
   const handleUpdateGameScore = (
     courtNum: number,
@@ -964,7 +1022,7 @@ export default function KdkCourtOperations({
     deltaA: number,
     deltaB: number
   ) => {
-    if (!isAdmin || isLocked) return;
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       const nextGames = court.games.map((g) => {
         if (g.id !== gameId) return g;
@@ -977,9 +1035,10 @@ export default function KdkCourtOperations({
       return { ...court, games: nextGames };
     });
   };
+
   // 개별 게임 종료 및 다음 대기자 선수 자동 연동 토글 (관리자 전용)
   const handleToggleGameComplete = (courtNum: number, gameId: string) => {
-    if (!isAdmin || isLocked) return;
+    if (!isAdmin) return;
     let rotationMsg = '';
     updateCourt(courtNum, (court) => {
       const targetGame = court.games.find((g) => g.id === gameId);
@@ -988,6 +1047,7 @@ export default function KdkCourtOperations({
         g.id === gameId ? { ...g, completed: willComplete } : g
       );
       const allDone = nextGames.length >= 2 && nextGames.every((g) => g.completed);
+
       if (willComplete && targetGame) {
         // Supabase matches 테이블 및 player_stats 누적 집계에 경기 결과 실시간 저장
         recordMatchResultToSupabase({
@@ -999,6 +1059,7 @@ export default function KdkCourtOperations({
           scoreA: targetGame.scoreA,
           scoreB: targetGame.scoreB,
         }).catch(() => {});
+
         // 방금 종료된 게임 다음으로 대기 중인 미완료 게임 탐색
         const nextWaitingGame = nextGames.find((g) => !g.completed);
         if (nextWaitingGame) {
@@ -1007,6 +1068,7 @@ export default function KdkCourtOperations({
           rotationMsg = `🏆 [${court.courtNumber}번 코트] 전체 ${nextGames.length}게임이 모두 종료되어 1등·2등·3등 최종 순위(동점 시 나이합산)가 자동 집계되었습니다!`;
         }
       }
+
       return {
         ...court,
         games: nextGames,
@@ -1017,9 +1079,10 @@ export default function KdkCourtOperations({
       setAutoRotationNotice(rotationMsg);
     }
   };
+
   // 코트 전체 경기 종료 및 1·2·3등 즉시 자동 집계 버튼 (관리자 전용)
   const handleFinishCourtAndAggregate = (courtNum: number) => {
-    if (!isAdmin || isLocked) return;
+    if (!isAdmin) return;
     updateCourt(courtNum, (court) => {
       const completedGames = court.games.map((g) => ({ ...g, completed: true }));
       return {
@@ -1029,10 +1092,12 @@ export default function KdkCourtOperations({
       };
     });
   };
+
   // 현재 활성 코트 실시간 순위 (동점 시 나이합산 자동 적용)
   const activeCourtStandings: KdkStandingRow[] = activeCourt
     ? calculateKdkStandingsWithAgeTiebreak(activeCourt.players, activeCourt.games)
     : [];
+
   // 전체 코트 통합 종합 순위
   const allCourtsPlayers: Player[] = Array.from(
     new Map(kdkCourts.flatMap((c) => c.players).map((p) => [p.id, p])).values()
@@ -1042,9 +1107,11 @@ export default function KdkCourtOperations({
     allCourtsPlayers,
     allCourtsGames
   );
+
   const completedGamesCount = activeCourt
     ? activeCourt.games.filter((g) => g.completed).length
     : 0;
+
   // 현재 코트 선수별 배정 경기 수 집계 (1인 필수 최소 게임 수 달성 확인용)
   const scheduledCountByPlayer: Record<string, number> = {};
   if (activeCourt) {
@@ -1057,12 +1124,14 @@ export default function KdkCourtOperations({
       });
     });
   }
+
   // 현재 코트에서 진행 중인 게임 & 그 다음 대기 중인 게임 (다음 대기자 선수 자동 연동용)
   const uncompletedGames = activeCourt
     ? activeCourt.games.filter((g) => !g.completed)
     : [];
   const currentPlayingGame = uncompletedGames[0] || null;
   const nextQueuedGame = uncompletedGames[1] || null;
+
   // [KDK_V2025 시트 스타일] 선수별 라운드(경기)별 득점/실점/결과 매핑
   const playerRoundMap: Record<string, { round: number; scoreFor: number; scoreAgainst: number; isWin: boolean; isDraw: boolean; partnerName: string; oppNames: string; completed: boolean }[]> = {};
   if (activeCourt) {
@@ -1074,6 +1143,7 @@ export default function KdkCourtOperations({
       const isTeamA1 = g.teamA[1]?.id;
       const isTeamB0 = g.teamB[0]?.id;
       const isTeamB1 = g.teamB[1]?.id;
+
       const recordPlayerGame = (pId: string, partnerName: string, oppNames: string, sf: number, sa: number) => {
         if (!playerRoundMap[pId]) playerRoundMap[pId] = [];
         playerRoundMap[pId].push({
@@ -1087,12 +1157,14 @@ export default function KdkCourtOperations({
           completed: g.completed,
         });
       };
+
       if (isTeamA0) recordPlayerGame(isTeamA0, g.teamA[1]?.name || '', `${g.teamB[0]?.name || ''}/${g.teamB[1]?.name || ''}`, g.scoreA, g.scoreB);
       if (isTeamA1) recordPlayerGame(isTeamA1, g.teamA[0]?.name || '', `${g.teamB[0]?.name || ''}/${g.teamB[1]?.name || ''}`, g.scoreA, g.scoreB);
       if (isTeamB0) recordPlayerGame(isTeamB0, g.teamB[1]?.name || '', `${g.teamA[0]?.name || ''}/${g.teamA[1]?.name || ''}`, g.scoreB, g.scoreA);
       if (isTeamB1) recordPlayerGame(isTeamB1, g.teamB[0]?.name || '', `${g.teamA[0]?.name || ''}/${g.teamA[1]?.name || ''}`, g.scoreB, g.scoreA);
     });
   }
+
   // ============================================================================
   // [A] 운영자 관리 센터 전용 뷰 (viewMode === 'ADMIN_CONFIG')
   // - 코트별 참가인원 설정, 1인 필수 최소 게임 수, 자동/시드우선/수동 모드, 선수 배정·구력·나이·시드 관리
@@ -1121,14 +1193,8 @@ export default function KdkCourtOperations({
             {isAdminConfigOpen ? '접기 ▲' : '수정 ▼'}
           </span>
         </button>
-        {isAdminConfigOpen && (
-          isLocked ? (
-            <div className="pt-2.5 border-t border-slate-800">
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center text-xs text-slate-400">
-                🔒 <strong>종료된 대회입니다.</strong> 데이터 무결성을 위해 코트 설정 및 참가인원 구성을 수정할 수 없습니다.
-              </div>
-            </div>
-          ) : activeCourt && (
+
+        {isAdminConfigOpen && activeCourt && (
           <div className="space-y-3.5 pt-2.5 border-t border-slate-800">
             <div className="flex flex-wrap justify-between items-center gap-2">
               <div className="flex flex-wrap gap-1.5">
@@ -1158,6 +1224,7 @@ export default function KdkCourtOperations({
                   );
                 })}
               </div>
+
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
@@ -1177,6 +1244,7 @@ export default function KdkCourtOperations({
                 )}
               </div>
             </div>
+
             <button
               type="button"
               onClick={handleDistributeAllCourtsSeedFirst}
@@ -1185,6 +1253,7 @@ export default function KdkCourtOperations({
               <span>🌟</span>
               <span>전체 코트 실력자 우선 시드배정 + 나머지 인원 자동 균등배정</span>
             </button>
+
             {/* 코트별 참여인원 지정 + 1인 필수 최소 게임 수 설정 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
@@ -1263,6 +1332,7 @@ export default function KdkCourtOperations({
                   ))}
                 </div>
               </div>
+
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-[11px] font-bold text-slate-300">
@@ -1322,6 +1392,7 @@ export default function KdkCourtOperations({
                 </p>
               </div>
             </div>
+
             {/* 3가지 운영 모드 전환 버튼 */}
             <div className="space-y-1.5">
               <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
@@ -1374,6 +1445,7 @@ export default function KdkCourtOperations({
                 </button>
               </div>
             </div>
+
             {/* 코트별 선수 배정 목록 (구력·나이·시드 설정 + 임의 선수 추가) */}
             <div className="space-y-2.5 pt-1">
               <div className="flex justify-between items-center">
@@ -1384,6 +1456,7 @@ export default function KdkCourtOperations({
                   시드 {activeCourt.seedPlayerIds.filter((id) => activeCourt.players.some((p) => p.id === id)).length}명
                 </span>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto p-0.5">
                 {playerPool.map((p) => {
                   const isInCourt = activeCourt.players.some((cp) => cp.id === p.id);
@@ -1432,6 +1505,7 @@ export default function KdkCourtOperations({
                             )}
                           </div>
                         </button>
+
                         {isInCourt && (
                           <button
                             type="button"
@@ -1448,6 +1522,7 @@ export default function KdkCourtOperations({
                           </button>
                         )}
                       </div>
+
                       <div className="flex items-center justify-between gap-1.5 text-[10px]">
                         <span className="text-[9px] text-slate-400 truncate" title={p.birthDate ? `생년월일: ${p.birthDate}` : undefined}>
                           {p.isGuest ? '미가입/임의' : '가입회원'}
@@ -1491,6 +1566,7 @@ export default function KdkCourtOperations({
                   );
                 })}
               </div>
+
               {/* 임의 선수 추가 */}
               <div className="bg-slate-950 p-2.5 rounded-xl border border-amber-500/30 grid grid-cols-12 gap-1.5 items-center">
                 <input
@@ -1542,6 +1618,7 @@ export default function KdkCourtOperations({
                 </button>
               </div>
             </div>
+
             {/* 수동모드일 때 각 게임별 출전 선수 직접 변경 패널 */}
             {activeCourt.assignMode === 'MANUAL' && (
               <div className="bg-slate-950 p-3 rounded-xl border border-amber-500/30 space-y-2">
@@ -1611,6 +1688,7 @@ export default function KdkCourtOperations({
                 </div>
               </div>
             )}
+
             {onNavigateToTab && (
               <button
                 type="button"
@@ -1626,6 +1704,7 @@ export default function KdkCourtOperations({
       </div>
     );
   }
+
   // ============================================================================
   // [B] KDK 파트너 순환 진행 전용 뷰 (viewMode === 'PLAY')
   // - 코트별 참가인원/게임수 설정은 운영관리 센터로 이관됨
@@ -1654,6 +1733,7 @@ export default function KdkCourtOperations({
             </button>
           )}
         </div>
+
         {/* 코트 선택 탭 바 */}
         <div className="flex flex-wrap gap-1.5 pt-0.5">
           {kdkCourts.map((c) => {
@@ -1686,6 +1766,7 @@ export default function KdkCourtOperations({
           })}
         </div>
       </div>
+
       {activeCourt && (
         <div className="space-y-4">
           {/* 게임 종료 시 다음 대기자 자동 연동 실시간 알림 배너 */}
@@ -1701,6 +1782,7 @@ export default function KdkCourtOperations({
               </button>
             </div>
           )}
+
           {/* ========================================================== */}
           {/* [KDK_V2025 시트 스타일] 상단 라운드/게임별 대진표 */}
           {/* ========================================================== */}
@@ -1726,6 +1808,7 @@ export default function KdkCourtOperations({
                 </span>
               </div>
             </div>
+
             {/* KDK_V2025 라운드별 경기 카드 / 테이블 그리드 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               {activeCourt.games.map((g) => {
@@ -1739,6 +1822,7 @@ export default function KdkCourtOperations({
                   : isNextWaiting
                   ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 font-bold'
                   : 'bg-slate-900 text-slate-400 border border-slate-800';
+
                 return (
                   <div
                     key={g.id}
@@ -1764,6 +1848,7 @@ export default function KdkCourtOperations({
                         {statusLabel}
                       </span>
                     </div>
+
                     {/* 중단: Team A vs Team B 매치업 및 점수 */}
                     <div className="py-2 flex items-center justify-between gap-2 text-xs">
                       {/* Team A */}
@@ -1780,6 +1865,7 @@ export default function KdkCourtOperations({
                           <span className="text-[10px] text-slate-400 font-normal ml-1">({g.teamA[1].grade})</span>
                         </div>
                       </div>
+
                       {/* 점수 디스플레이 */}
                       <div className="shrink-0 flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-center">
                         <span className={`text-base font-black ${g.completed && g.scoreA > g.scoreB ? 'text-amber-300' : 'text-white'}`}>
@@ -1790,6 +1876,7 @@ export default function KdkCourtOperations({
                           {g.scoreB}
                         </span>
                       </div>
+
                       {/* Team B */}
                       <div className="flex-1 min-w-0 text-right">
                         <div className="text-[10px] font-black text-slate-400 mb-0.5">TEAM B</div>
@@ -1805,6 +1892,7 @@ export default function KdkCourtOperations({
                         </div>
                       </div>
                     </div>
+
                     {/* 하단: 휴식/대기 인원 */}
                     {g.resting && g.resting.length > 0 && (
                       <div className="pt-1.5 border-t border-slate-800/60 text-[10px] text-slate-400 flex items-center gap-1.5 truncate">
@@ -1817,6 +1905,7 @@ export default function KdkCourtOperations({
               })}
             </div>
           </div>
+
           {/* ========================================================== */}
           {/* 1. 현재 진행 경기 & 다음 대기자 선수 자동 연동 현황 카드 */}
           {/* ========================================================== */}
@@ -1829,6 +1918,7 @@ export default function KdkCourtOperations({
                 {activeCourt.players.length}명 참여 · 1인 필수 {activeCourt.minGamesPerPlayer}G (총 {activeCourt.games.length}경기)
               </span>
             </div>
+
             {currentPlayingGame ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                 <div className="bg-slate-950 p-3 rounded-xl border border-emerald-500/40 space-y-1.5">
@@ -1856,6 +1946,7 @@ export default function KdkCourtOperations({
                     </p>
                   )}
                 </div>
+
                 <div className="bg-slate-950 p-3 rounded-xl border border-amber-500/35 space-y-1.5">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
@@ -1895,6 +1986,7 @@ export default function KdkCourtOperations({
               </div>
             )}
           </div>
+
           {/* ========================================================== */}
           {/* 2. 코트별 게임 스코어 입력 & 게임 종료 (종료 시 다음 대기자 자동 연동) */}
           {/* ========================================================== */}
@@ -1910,7 +2002,7 @@ export default function KdkCourtOperations({
                     : '운영자가 입력하는 실시간 경기 진행 현황 및 스코어'}
                 </p>
               </div>
-              {isAdmin && !isLocked && (
+              {isAdmin && (
                 <button
                   type="button"
                   onClick={() => handleFinishCourtAndAggregate(activeCourt.courtNumber)}
@@ -1919,12 +2011,8 @@ export default function KdkCourtOperations({
                   🏁 코트 전체종료·자동집계
                 </button>
               )}
-              {isLocked && (
-                <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-rose-950/60 text-rose-300 border border-rose-500/40">
-                  🔒 종료된 대회 (수정 불가)
-                </span>
-              )}
             </div>
+
             <div className="space-y-2.5">
               {activeCourt.games.map((g) => {
                 const ageA0 = resolvePlayerAge(g.teamA[0], 40);
@@ -1937,6 +2025,7 @@ export default function KdkCourtOperations({
                   !g.completed && currentPlayingGame && currentPlayingGame.id === g.id;
                 const isNextWaiting =
                   !g.completed && nextQueuedGame && nextQueuedGame.id === g.id;
+
                 return (
                   <div
                     key={g.id}
@@ -1967,7 +2056,8 @@ export default function KdkCourtOperations({
                           ⚖️ 종합전력 {g.teamAWeight} vs {g.teamBWeight}
                         </span>
                       </div>
-                      {isAdmin && !isLocked ? (
+
+                      {isAdmin ? (
                         <button
                           type="button"
                           onClick={() => handleToggleGameComplete(activeCourt.courtNumber, g.id)}
@@ -1993,6 +2083,7 @@ export default function KdkCourtOperations({
                         </span>
                       )}
                     </div>
+
                     <div className="flex justify-between items-center text-xs">
                       <div className="flex-1 text-left">
                         <p className="font-bold text-emerald-300 truncate">
@@ -2005,8 +2096,9 @@ export default function KdkCourtOperations({
                           만 나이합 {ageSumA}세 ({ageA0}+{ageA1})
                         </span>
                       </div>
+
                       <div className="flex items-center gap-1.5 mx-2 bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-800">
-                        {isAdmin && !isLocked && (
+                        {isAdmin && (
                           <button
                             type="button"
                             onClick={() =>
@@ -2020,7 +2112,7 @@ export default function KdkCourtOperations({
                         <span className="text-base font-black text-white w-5 text-center">
                           {g.scoreA}
                         </span>
-                        {isAdmin && !isLocked && (
+                        {isAdmin && (
                           <button
                             type="button"
                             onClick={() =>
@@ -2032,7 +2124,7 @@ export default function KdkCourtOperations({
                           </button>
                         )}
                         <span className="text-[10px] font-black text-slate-500">:</span>
-                        {isAdmin && !isLocked && (
+                        {isAdmin && (
                           <button
                             type="button"
                             onClick={() =>
@@ -2046,7 +2138,7 @@ export default function KdkCourtOperations({
                         <span className="text-base font-black text-white w-5 text-center">
                           {g.scoreB}
                         </span>
-                        {isAdmin && !isLocked && (
+                        {isAdmin && (
                           <button
                             type="button"
                             onClick={() =>
@@ -2058,6 +2150,7 @@ export default function KdkCourtOperations({
                           </button>
                         )}
                       </div>
+
                       <div className="flex-1 text-right">
                         <p className="font-bold text-amber-300 truncate">
                           {activeCourt.assignMode === 'SEED_AUTO' && activeCourt.seedPlayerIds.includes(g.teamB[0].id) ? '🌟' : ''}
@@ -2070,6 +2163,7 @@ export default function KdkCourtOperations({
                         </span>
                       </div>
                     </div>
+
                     {g.resting && g.resting.length > 0 && (
                       <div className="text-[10px] text-slate-400 bg-slate-900/70 px-2.5 py-1 rounded-lg border border-slate-800/80">
                         ☕ 휴식 대기자 (다음 게임 우선 연동): {g.resting.map((rp) => `${rp.name}(${rp.grade})`).join(', ')}
@@ -2080,6 +2174,7 @@ export default function KdkCourtOperations({
               })}
             </div>
           </div>
+
           {/* ========================================================== */}
           {/* 3. 코트별 자동 집계 1등·2등·3등 시상대 & 상세 순위표 (5단계 동점자 우선순위) */}
           {/* ========================================================== */}
@@ -2103,6 +2198,7 @@ export default function KdkCourtOperations({
                 {activeCourt.isFinished ? '🏁 최종 집계 확정' : '실시간 자동집계'}
               </span>
             </div>
+
             {/* 1등 / 2등 / 3등 메달 포디움 카드 */}
             {activeCourtStandings.length >= 3 && (
               <div className="grid grid-cols-3 gap-2">
@@ -2123,6 +2219,7 @@ export default function KdkCourtOperations({
                     만 나이합 {activeCourtStandings[0].ageSumWithPartners}세 (만 {activeCourtStandings[0].age}세)
                   </p>
                 </div>
+
                 {/* 2등 */}
                 <div className="bg-gradient-to-b from-slate-400/20 to-slate-950 p-3 rounded-2xl border border-slate-400/50 text-center space-y-1 shadow-md">
                   <span className="text-xl block">🥈</span>
@@ -2140,6 +2237,7 @@ export default function KdkCourtOperations({
                     만 나이합 {activeCourtStandings[1].ageSumWithPartners}세 (만 {activeCourtStandings[1].age}세)
                   </p>
                 </div>
+
                 {/* 3등 */}
                 <div className="bg-gradient-to-b from-orange-600/20 to-slate-950 p-3 rounded-2xl border border-orange-500/50 text-center space-y-1 shadow-md">
                   <span className="text-xl block">🥉</span>
@@ -2159,6 +2257,7 @@ export default function KdkCourtOperations({
                 </div>
               </div>
             )}
+
             {/* 코트별 상세 순위 테이블 */}
             <div className="overflow-x-auto">
               <table className="w-full text-center text-xs">
@@ -2215,6 +2314,7 @@ export default function KdkCourtOperations({
                 </tbody>
               </table>
             </div>
+
             {/* ========================================================== */}
             {/* [KDK_V2025 시트 하단 전용 양식] 개인별 라운드 기록표 */}
             {/* 번호/시드 | 이름 | 1round ~ Nround | 승수 | 게임 득 | 게임 실 | 득실차 | 순위 */}
@@ -2228,6 +2328,7 @@ export default function KdkCourtOperations({
                   선택 게임 수({activeCourt.minGamesPerPlayer}G) 기준 동적 라운드 표시
                 </span>
               </div>
+
               {/* 순위 산정 기준 공식 안내 배너 */}
               <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 text-[10px] text-slate-300 flex items-center justify-between flex-wrap gap-1">
                 <span>
@@ -2237,6 +2338,7 @@ export default function KdkCourtOperations({
                   * 1~3순위 동률 시 연장자/하위부수 우대 배지 표기
                 </span>
               </div>
+
               <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/90">
                 <table className="w-full text-center text-xs whitespace-nowrap">
                   <thead>
@@ -2261,6 +2363,7 @@ export default function KdkCourtOperations({
                       const myRoundList = playerRoundMap[s.playerId] || [];
                       const isSeed = activeCourt.seedPlayerIds.includes(s.playerId);
                       const seedRank = activeCourt.seedPlayerIds.indexOf(s.playerId) + 1;
+
                       return (
                         <tr
                           key={s.playerId}
@@ -2276,6 +2379,7 @@ export default function KdkCourtOperations({
                               <span>{idx + 1}</span>
                             )}
                           </td>
+
                           {/* 이름 및 등급 */}
                           <td className="py-2 px-2.5 text-left font-black text-white">
                             <span className="truncate">{s.name}</span>
@@ -2283,6 +2387,7 @@ export default function KdkCourtOperations({
                               ({s.grade}·만{s.age}세)
                             </span>
                           </td>
+
                           {/* 1round ~ Nround 동적 표시 */}
                           {Array.from({ length: roundsCount }).map((_, rIdx) => {
                             const rData = myRoundList[rIdx];
@@ -2316,22 +2421,27 @@ export default function KdkCourtOperations({
                               </td>
                             );
                           })}
+
                           {/* 승수 */}
                           <td className="py-2 px-2 font-black text-amber-300 bg-amber-400/5">
                             {s.wins}승
                           </td>
+
                           {/* 게임 득 */}
                           <td className="py-2 px-2 font-bold text-emerald-400">
                             {s.pointsFor}
                           </td>
+
                           {/* 게임 실 */}
                           <td className="py-2 px-2 font-bold text-rose-400">
                             {s.pointsAgainst}
                           </td>
+
                           {/* 득실차 */}
                           <td className="py-2 px-2 font-black text-cyan-300 bg-cyan-400/5">
                             {s.pointDiff >= 0 ? `+${s.pointDiff}` : s.pointDiff}
                           </td>
+
                           {/* 결과 순위 + 동점 사유 배지 */}
                           <td className="py-2 px-2.5 font-black text-amber-400 text-center">
                             <div className="flex items-center justify-center gap-1 flex-wrap">
@@ -2360,6 +2470,7 @@ export default function KdkCourtOperations({
               </div>
             </div>
           </div>
+
           {/* ========================================================== */}
           {/* 4. 전체 코트 통합 최종 종합 순위 (1등 · 2등 · 3등) */}
           {/* ========================================================== */}
