@@ -1062,6 +1062,10 @@ export default function TennisApp() {
   const [manualPlayerB2, setManualPlayerB2] = useState<string>('');
 
   const openCourtPlayerEditModal = (court: CourtMatch) => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회의 경기 선수 명단은 수정할 수 없습니다.');
+      return;
+    }
     setCourtEditTarget(court);
     setManualPlayerA1(court.teamA[0] || '');
     setManualPlayerA2(court.teamA[1] || '');
@@ -1070,6 +1074,10 @@ export default function TennisApp() {
   };
 
   const saveCourtPlayerAssignment = () => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회의 경기 선수 명단은 수정할 수 없습니다.');
+      return;
+    }
     if (!courtEditTarget) return;
 
     const pA1 = manualPlayerA1.trim() || '선수 미지정';
@@ -1212,6 +1220,10 @@ export default function TennisApp() {
   const [inputStatus, setInputStatus] = useState<string>('playing');
 
   const openScoreModal = (court: CourtMatch) => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회의 경기 점수는 데이터 무결성을 위해 수정할 수 없습니다.');
+      return;
+    }
     setSelectedCourt(court);
     setInputScoreA(court.scoreA);
     setInputScoreB(court.scoreB);
@@ -1219,6 +1231,10 @@ export default function TennisApp() {
   };
 
   const saveCourtScore = () => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회의 경기 점수는 데이터 무결성을 위해 수정할 수 없습니다.');
+      return;
+    }
     if (!selectedCourt) return;
     setCourts((prev) =>
       prev.map((c) =>
@@ -1243,6 +1259,10 @@ export default function TennisApp() {
    */
   const handleFinishCourtMatch = async (court: CourtMatch) => {
     if (!isAdmin) return;
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회입니다. 경기 종료 및 다음 선수 배정을 진행할 수 없습니다.');
+      return;
+    }
 
     const courtNum = court.courtNumber;
     const finalScoreA = Number(court.scoreA) || 0;
@@ -1469,6 +1489,10 @@ export default function TennisApp() {
   /** 코트 카드에서 즉시 점수를 1점씩 가감하는 인라인 핸들러 */
   const handleQuickAdjustCourtScore = (courtId: number, team: 'A' | 'B', delta: number) => {
     if (!isAdmin) return;
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회의 경기 점수는 수정할 수 없습니다.');
+      return;
+    }
     setCourts((prev) =>
       prev.map((c) => {
         if (c.id === courtId) {
@@ -2974,6 +2998,25 @@ export default function TennisApp() {
 
           {/* 메인 탭 컨텐츠 영역 */}
           <div className="p-4 space-y-4 flex-1">
+            {/* 🔒 종료된 대회 잠금(Read-Only) 안내 배너 (모든 탭 공통 상단 표시) */}
+            {isTournamentLocked && (
+              <div className="bg-gradient-to-r from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/50 rounded-2xl p-3.5 shadow-xl flex items-center gap-3">
+                <span className="text-2xl shrink-0">🔒</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                      종료된 대회 (읽기 전용)
+                    </span>
+                    <span className="text-xs font-black text-rose-300">
+                      {currentTournament.name}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                    🔒 종료된 대회입니다. 데이터 무결성을 위해 관리자도 경기 결과, 점수 및 선수 배정을 수정할 수 없습니다.
+                  </p>
+                </div>
+              </div>
+            )}
             
             {/* 대회 정보 상단 배너 & 관리자 새 대회 개설 버튼 (운영관리 탭에서만 노출) */}
             {activeTab === 'admin' && (
@@ -3034,8 +3077,8 @@ export default function TennisApp() {
             {activeTab === 'courts' && (
               <div className="space-y-3.5">
                 
-                {/* 관리자 코트 추가 생성 및 선수 자동 배정 툴바 (관리자 전용) / 회원 모드 읽기전용 현황 */}
-                {isAdmin ? (
+                {/* 관리자 코트 추가 생성 및 선수 자동 배정 툴바 (관리자 전용 & 미종료 대회) / 회원 모드 읽기전용 현황 */}
+                {isAdmin && !isTournamentLocked ? (
                   <div className="bg-slate-900 border border-slate-750 rounded-2xl p-3 shadow-xl space-y-2.5">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-black text-white flex items-center gap-1.5">
@@ -3215,7 +3258,7 @@ export default function TennisApp() {
                           )}
                         </div>
 
-                        {isAdmin && (
+                        {isAdmin && !isTournamentLocked && (
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
@@ -3245,6 +3288,13 @@ export default function TennisApp() {
                             )}
                           </div>
                         )}
+                        {isAdmin && isTournamentLocked && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+                              🔒 경기결과 확정(수정 불가)
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* 팀 선수 정보 (관리자일 때만 클릭 수정 가능) */}
@@ -3252,16 +3302,16 @@ export default function TennisApp() {
                         {/* 팀 A */}
                         <div
                           onClick={() => {
-                            if (isAdmin) openCourtPlayerEditModal(court);
+                            if (isAdmin && !isTournamentLocked) openCourtPlayerEditModal(court);
                           }}
                           className={`bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1 transition group ${
-                            isAdmin ? 'cursor-pointer hover:border-amber-400/50' : ''
+                            isAdmin && !isTournamentLocked ? 'cursor-pointer hover:border-amber-400/50' : ''
                           }`}
                         >
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-amber-400">TEAM A</span>
                             <div className="flex items-center gap-1.5">
-                              {isAdmin && (
+                              {isAdmin && !isTournamentLocked && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3274,7 +3324,7 @@ export default function TennisApp() {
                                 </button>
                               )}
                               <span className="text-xl font-black text-white px-0.5">{court.scoreA}</span>
-                              {isAdmin && (
+                              {isAdmin && !isTournamentLocked && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3293,7 +3343,7 @@ export default function TennisApp() {
                               <p key={idx} className="truncate group-hover:text-amber-300">{m}</p>
                             ))}
                           </div>
-                          {isAdmin && (
+                          {isAdmin && !isTournamentLocked && (
                             <span className="text-[9px] text-slate-500 block text-right pt-0.5">선수 수정 ✎</span>
                           )}
                         </div>
@@ -3301,16 +3351,16 @@ export default function TennisApp() {
                         {/* 팀 B */}
                         <div
                           onClick={() => {
-                            if (isAdmin) openCourtPlayerEditModal(court);
+                            if (isAdmin && !isTournamentLocked) openCourtPlayerEditModal(court);
                           }}
                           className={`bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1 transition group ${
-                            isAdmin ? 'cursor-pointer hover:border-emerald-400/50' : ''
+                            isAdmin && !isTournamentLocked ? 'cursor-pointer hover:border-emerald-400/50' : ''
                           }`}
                         >
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-emerald-400">TEAM B</span>
                             <div className="flex items-center gap-1.5">
-                              {isAdmin && (
+                              {isAdmin && !isTournamentLocked && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3323,7 +3373,7 @@ export default function TennisApp() {
                                 </button>
                               )}
                               <span className="text-xl font-black text-white px-0.5">{court.scoreB}</span>
-                              {isAdmin && (
+                              {isAdmin && !isTournamentLocked && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3342,7 +3392,7 @@ export default function TennisApp() {
                               <p key={idx} className="truncate group-hover:text-emerald-300">{m}</p>
                             ))}
                           </div>
-                          {isAdmin && (
+                          {isAdmin && !isTournamentLocked && (
                             <span className="text-[9px] text-slate-500 block text-right pt-0.5">선수 수정 ✎</span>
                           )}
                         </div>
@@ -3393,8 +3443,8 @@ export default function TennisApp() {
                         );
                       })()}
 
-                      {/* 하단 경기종료 및 수동 배정/수정 액션 바 (관리자 전용) */}
-                      {isAdmin && (
+                      {/* 하단 경기종료 및 수동 배정/수정 액션 바 (관리자 전용 & 미종료 대회) */}
+                      {isAdmin && !isTournamentLocked && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                           <button
                             type="button"
@@ -3430,6 +3480,7 @@ export default function TennisApp() {
                   tournamentName={`${currentTournament.name} (${currentTournament.date})`}
                   availablePlayers={approvedPlayers}
                   isAdmin={isAdmin}
+                  isLocked={isTournamentLocked}
                   viewMode="PLAY"
                   onNavigateToTab={setActiveTab}
                   onSyncCourtsToApp={(syncedCourts) => {
@@ -4461,39 +4512,45 @@ export default function TennisApp() {
 
                                   {isExpanded && (
                                     <div className="space-y-2 pt-2 border-t border-slate-800/90">
-                                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
-                                        <input
-                                          type="text"
-                                          value={t.name}
-                                          onChange={(e) =>
-                                            handleUpdateTournamentField(t.id, 'name', e.target.value)
-                                          }
-                                          placeholder="대회명 수정"
-                                          className="sm:col-span-6 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-bold"
-                                        />
-                                        <input
-                                          type="date"
-                                          value={t.date}
-                                          onChange={(e) =>
-                                            handleUpdateTournamentField(t.id, 'date', e.target.value)
-                                          }
-                                          className="sm:col-span-3 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-amber-300 font-mono"
-                                        />
-                                        <select
-                                          value={t.format}
-                                          onChange={(e) =>
-                                            handleUpdateTournamentField(
-                                              t.id,
-                                              'format',
-                                              e.target.value as 'kdk' | 'tournament'
-                                            )
-                                          }
-                                          className="sm:col-span-3 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-emerald-300 font-bold"
-                                        >
-                                          <option value="kdk">KDK 순환</option>
-                                          <option value="tournament">토너먼트</option>
-                                        </select>
-                                      </div>
+                                      {isCompleted ? (
+                                        <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-400">
+                                          🔒 <strong>종료된 대회 (수정 불가)</strong>: {t.name} ({t.date} · {t.format === 'kdk' ? 'KDK 순환' : '토너먼트'})
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
+                                          <input
+                                            type="text"
+                                            value={t.name}
+                                            onChange={(e) =>
+                                              handleUpdateTournamentField(t.id, 'name', e.target.value)
+                                            }
+                                            placeholder="대회명 수정"
+                                            className="sm:col-span-6 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-bold"
+                                          />
+                                          <input
+                                            type="date"
+                                            value={t.date}
+                                            onChange={(e) =>
+                                              handleUpdateTournamentField(t.id, 'date', e.target.value)
+                                            }
+                                            className="sm:col-span-3 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-amber-300 font-mono"
+                                          />
+                                          <select
+                                            value={t.format}
+                                            onChange={(e) =>
+                                              handleUpdateTournamentField(
+                                                t.id,
+                                                'format',
+                                                e.target.value as 'kdk' | 'tournament'
+                                              )
+                                            }
+                                            className="sm:col-span-3 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-emerald-300 font-bold"
+                                          >
+                                            <option value="kdk">KDK 순환</option>
+                                            <option value="tournament">토너먼트</option>
+                                          </select>
+                                        </div>
+                                      )}
 
                                       <div className="flex gap-1.5">
                                         {!isCurrent && (
@@ -4537,6 +4594,7 @@ export default function TennisApp() {
                   tournamentName={`${currentTournament.name} (${currentTournament.date})`}
                   availablePlayers={approvedPlayers}
                   isAdmin={isAdmin}
+                  isLocked={isTournamentLocked}
                   viewMode="ADMIN_CONFIG"
                   onNavigateToTab={setActiveTab}
                   onSyncCourtsToApp={(syncedCourts) => {

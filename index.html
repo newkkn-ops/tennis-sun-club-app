@@ -2101,6 +2101,10 @@
     // 선수 수동 배정 및 수정 모달
     function openPlayerEditModal(courtId) {
       if (!isAdminUser()) return;
+      if (isTournamentLocked()) {
+        alert('🔒 종료된 대회입니다. 경기 선수 명단을 수정할 수 없습니다.');
+        return;
+      }
       currentEditingCourtId = courtId;
       const court = courtsData.find(c => c.id === courtId);
       if (!court) return;
@@ -2353,11 +2357,19 @@
       }
     }
 
+    function isTournamentLocked() {
+      return Boolean(
+        currentTournament &&
+        (currentTournament.status === 'completed' || currentTournament.status === 'ended' || currentTournament.is_ended === true)
+      );
+    }
+
     function switchTournament(tourId) {
       const found = tournamentHistory.find(t => t.id === tourId);
       if (found) {
         currentTournament = found;
         updateTournamentHeaderUI();
+        renderCourts();
       }
     }
 
@@ -2483,6 +2495,10 @@
       if (!isAdminUser()) return;
       const t = tournamentHistory.find(x => x.id === tourId);
       if (!t) return;
+      if (t.status === 'completed' || t.status === 'ended') {
+        alert('🔒 종료된 대회의 정보는 수정할 수 없습니다.');
+        return;
+      }
       t[field] = value;
       if (currentTournament && currentTournament.id === tourId) {
         currentTournament[field] = value;
@@ -2631,7 +2647,8 @@
       const btnAdd = document.getElementById('btnAddCourtBtn');
       if (btnAdd) btnAdd.innerHTML = `<span class="text-sm">+</span><span>코트 추가 생성 (${courtsData.length + 1}번)</span>`;
 
-      const adminMode = isAdminUser();
+      const adminMode = isAdminUser() && !isTournamentLocked();
+      const lockedNotice = isTournamentLocked() ? '<span class="text-[10px] font-bold text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">🔒 경기결과 확정(수정 불가)</span>' : '';
       const container = document.getElementById('courtsListContainer');
       container.innerHTML = courtsData.map(court => `
         <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3 relative overflow-hidden transition-all hover:border-slate-700">
@@ -2650,7 +2667,7 @@
                 <button onclick="openScoreModal(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-slate-800 text-amber-300 font-bold border border-slate-700 cursor-pointer">점수 수정 ✎</button>
                 ${courtsData.length > 1 ? `<button onclick="deleteCourt(${court.id})" class="text-[11px] px-2 py-1 rounded-lg bg-red-950/60 text-red-300 font-bold border border-red-500/30 cursor-pointer">✕</button>` : ''}
               </div>
-            ` : ''}
+            ` : lockedNotice}
           </div>
 
           <div class="grid grid-cols-2 gap-3 items-center">
@@ -5077,6 +5094,10 @@
     // 코트 경기종료 및 다음 선수 자동 배정 핸들러
     async function finishCourtMatch(courtId) {
       if (!isAdminUser()) return;
+      if (isTournamentLocked()) {
+        alert('🔒 종료된 대회입니다. 경기 결과를 수정할 수 없습니다.');
+        return;
+      }
       const court = courtsData.find(c => c.id === courtId);
       if (!court) return;
 
@@ -5143,6 +5164,10 @@
     // 스코어 모달
     function openScoreModal(courtId) {
       if (!isAdminUser()) return;
+      if (isTournamentLocked()) {
+        alert('🔒 종료된 대회입니다. 경기 점수를 수정할 수 없습니다.');
+        return;
+      }
       currentEditingCourt = courtsData.find(c => c.id === courtId);
       if (!currentEditingCourt) return;
       document.getElementById('modalCourtTitle').innerHTML = `<span>🎾</span> ${currentEditingCourt.courtNumber}번 코트 점수 실시간 조절`;

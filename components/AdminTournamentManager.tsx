@@ -122,8 +122,8 @@ export default function AdminTournamentManager({
     activeTournament?.selectedCourts || [1, 2, 3]
   );
   // 인당 게임 수 (최소 2게임 ~ 최대 6게임, 기본 3게임)
-  const [minGamesPerPlayer, setMinGamesPerPlayer] = useState<number>(3);
-  const [kdkRoundsCount, setKdkRoundsCount] = useState<number>(3);
+  const [minGamesPerPlayer, setMinGamesPerPlayer] = useState<number>(4);
+  const [kdkRoundsCount, setKdkRoundsCount] = useState<number>(4);
   const [assignmentType, setAssignmentType] = useState<'AUTO' | 'MANUAL'>(
     activeTournament?.assignmentType || 'AUTO'
   );
@@ -1334,6 +1334,68 @@ export default function AdminTournamentManager({
             })}
           </div>
         </div>
+        {/* KDK 리그 방식 전용: 참여 인원별 최소 게임 수 선택 (2게임 ~ 6게임 항상 노출) */}
+        {tournamentMode === 'KDK' && (
+          <div className="bg-slate-950/95 border-2 border-amber-500/50 rounded-2xl p-3.5 space-y-2.5 shadow-lg shadow-amber-500/10">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                <span>🎯</span> 인원별 최소 게임 수 설정 (2게임 ~ 6게임)
+              </span>
+              <span className="text-[10px] font-black text-slate-950 bg-gradient-to-r from-amber-400 to-orange-400 px-2.5 py-0.5 rounded-full shadow-sm">
+                현재 선택: 1인당 {minGamesPerPlayer}게임 보장 (KDK_V2025 표준)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              모든 참여선수가 <strong>최소 {minGamesPerPlayer}게임 이상</strong> 출전하도록 KDK 대진표 및 라운드를 자동 계산합니다.
+            </p>
+            <div className="grid grid-cols-5 gap-2">
+              {[2, 3, 4, 5, 6].map((gCount) => {
+                const isSelected = minGamesPerPlayer === gCount;
+                return (
+                  <button
+                    key={gCount}
+                    type="button"
+                    onClick={() => {
+                      setMinGamesPerPlayer(gCount);
+                      setKdkRoundsCount(gCount);
+                    }}
+                    className={`py-2.5 px-1 rounded-xl text-xs font-black border transition-all cursor-pointer text-center ${
+                      isSelected
+                        ? 'bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500 text-slate-950 border-amber-300 shadow-md font-extrabold scale-[1.03] ring-2 ring-amber-400/50'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-amber-400/50 hover:text-white'
+                    }`}
+                  >
+                    <div className="text-sm font-black">{gCount}게임</div>
+                    <div className="text-[9px] opacity-80 mt-0.5 font-bold">
+                      {gCount === 4 ? '추천(기본)' : gCount === 3 ? '추천' : `${gCount}R`}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 인원 및 경기 수 계산 & 추가 출전 안내 배지 */}
+            {selectedParticipants.length > 0 && (
+              <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 flex-wrap gap-1.5 border-t border-slate-850">
+                <span>
+                  총 {selectedParticipants.length}명 참여 시 총 경기 수: 약{' '}
+                  <strong className="text-amber-300 font-black">
+                    {Math.ceil((selectedParticipants.length * minGamesPerPlayer) / 4)}경기
+                  </strong>
+                </span>
+                {(selectedParticipants.length * minGamesPerPlayer) % 4 !== 0 ? (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                    ℹ️ 인원 조합상 일부 인원 +1게임 자동 배정
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                    ✓ 모든 선수 정확히 {minGamesPerPlayer}게임 균등 배정
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 자동 방식 vs 수동 방식 전환 탭 버튼 */}
         <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
