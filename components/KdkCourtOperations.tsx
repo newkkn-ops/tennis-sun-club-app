@@ -432,6 +432,16 @@ export default function KdkCourtOperations({
 
   // 현재 선택된 코트 탭 번호
   const [selectedCourtNum, setSelectedCourtNum] = useState<number>(1);
+  // 코트별 출전 선수 상태 관리 아코디언 펼침/접힘 상태: Record<courtNumber, boolean> (기본값: false, 개별 토글 가능)
+  const [courtStatusAccordion, setCourtStatusAccordion] = useState<Record<number, boolean>>({});
+
+  const toggleCourtStatusAccordion = (courtNum: number) => {
+    setCourtStatusAccordion((prev) => ({
+      ...prev,
+      [courtNum]: !prev[courtNum],
+    }));
+  };
+
   // 코트별 임의 선수 추가 폼 상태 (이름 + 등급 + 구력 + 나이)
   const [guestName, setGuestName] = useState<string>('');
   const [guestGrade, setGuestGrade] = useState<string>('은배');
@@ -1178,6 +1188,46 @@ export default function KdkCourtOperations({
       nextResting
         ? `☕ [${player.name}] 선수가 [휴식중]으로 설정되었습니다. 해당 선수 포함 대기 경기는 후순위로 자동 이동됩니다.`
         : `▶️ [${player.name}] 선수가 [복귀]했습니다. 대기 경기가 정상 순번으로 재배치됩니다.`
+    );
+  };
+
+  // 선수 기권 해제 및 복귀 처리
+  const handleRestoreWithdrawnPlayer = (courtNum: number, playerId: string) => {
+    if (!isAdmin || isLocked) return;
+    const targetCourt = kdkCourts.find((c) => c.courtNumber === courtNum);
+    if (!targetCourt) return;
+    const player = targetCourt.players.find((p) => p.id === playerId);
+    if (!player) return;
+
+    updateCourt(courtNum, (court) => {
+      const updatedPlayers = court.players.map((p) =>
+        p.id === playerId ? { ...p, isWithdrawn: false, isResting: false } : p
+      );
+
+      // 해당 선수 기권 사유로 보류(isDeferred)되었던 미완료 경기 복원
+      const updatedGames = court.games.map((g) => {
+        if (g.completed) return g;
+        const syncP = (p: Player) => (p.id === playerId ? { ...p, isWithdrawn: false, isResting: false } : p);
+        const hasPlayer = [...g.teamA, ...g.teamB].some((p) => p.id === playerId);
+        const isWithdrawnDeferred = g.isDeferred && g.deferredReason?.includes(player.name);
+        return {
+          ...g,
+          teamA: [syncP(g.teamA[0]), syncP(g.teamA[1])] as [Player, Player],
+          teamB: [syncP(g.teamB[0]), syncP(g.teamB[1])] as [Player, Player],
+          isDeferred: isWithdrawnDeferred ? false : g.isDeferred,
+          deferredReason: isWithdrawnDeferred ? undefined : g.deferredReason,
+        };
+      });
+
+      return {
+        ...court,
+        players: updatedPlayers,
+        games: updatedGames,
+      };
+    });
+
+    setAutoRotationNotice(
+      `▶️ [${player.name}] 선수의 기권이 해제되고 정상 복귀되었습니다. 대기 경기에 다시 배정됩니다.`
     );
   };
 
@@ -1957,14 +2007,17 @@ export default function KdkCourtOperations({
 
       {activeCourt && (
         <div className="space-y-4">
-          {/* 게임 종료 시 다음 대기자 자동 연동 실시간 알림 배너 */}
+          {/* 게임 종료 시 다음 대기자 자동 연동 실시간 알림 배너 (모바일 슬림 토스트) */}
           {autoRotationNotice && (
-            <div className="bg-emerald-950/80 border border-emerald-400/50 rounded-2xl p-3 text-xs font-extrabold text-emerald-200 flex items-center justify-between gap-2 shadow-lg">
-              <span>{autoRotationNotice}</span>
+            <div className="bg-emerald-950/90 border border-emerald-400/40 rounded-xl px-3 py-2 text-[11px] sm:text-xs font-bold text-emerald-200 flex items-center justify-between gap-2 shadow-md">
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <span className="shrink-0">📢</span>
+                <span className="truncate">{autoRotationNotice}</span>
+              </div>
               <button
                 type="button"
                 onClick={() => setAutoRotationNotice('')}
-                className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-slate-300 shrink-0 cursor-pointer"
+                className="text-[10px] px-2 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-slate-300 shrink-0 cursor-pointer border border-slate-700/60"
               >
                 닫기
               </button>
@@ -1972,97 +2025,139 @@ export default function KdkCourtOperations({
           )}
 
           {/* ========================================================== */}
-          {/* 🌟 [선수별 상태 관리 패널]: [⏸️ 휴식중] 토글 & [🔄 대타 기용 / 기권 처리] */}
+          {/* 🌟 [선수별 상태 관리 패널]: 모바일 최적화 1행 리스트 카드 */}
           {/* ========================================================== */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-lg">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-black text-amber-300 flex items-center gap-1">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs sm:text-sm font-black text-amber-300 flex items-center gap-1 shrink-0">
                   <span>👥</span> {activeCourt.courtNumber}번 코트 출전 선수 상태 관리
                 </span>
-                <span className="text-[10px] text-slate-400">
-                  (휴식 토글 시 해당 선수 포함 경기만 후순위 자동 이동)
+                <span className="hidden sm:inline text-[10px] text-slate-400 truncate">
+                  (휴식 시 해당 선수 대기경기 자동 후순위)
                 </span>
               </div>
-              <span className="text-[10px] text-slate-400">
+              <span className="text-[10px] text-slate-400 font-bold shrink-0 bg-slate-950 px-2 py-0.5 rounded-full border border-slate-800">
                 총 {activeCourt.players.length}명
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+            {/* 선수 목록: 모바일 1열 100% 카드형 리스트 (세로 글자 깨짐 방지 & 터치 친화 버튼) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {activeCourt.players.map((p) => {
                 const isResting = Boolean(p.isResting);
                 const isWithdrawn = Boolean(p.isWithdrawn);
                 const isSub = Boolean(p.isSubstitute);
+
                 return (
                   <div
                     key={p.id}
-                    className={`p-2 rounded-xl border flex items-center justify-between gap-1.5 text-xs transition ${
+                    className={`p-2.5 sm:p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs transition shadow-sm ${
                       isWithdrawn
-                        ? 'bg-rose-950/30 border-rose-900/60 text-slate-400 opacity-60'
+                        ? 'bg-rose-950/20 border-rose-900/50 text-slate-400'
                         : isResting
-                        ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+                        ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
                         : isSub
-                        ? 'bg-sky-950/50 border-sky-500/40 text-sky-200'
-                        : 'bg-slate-950 border-slate-800 text-slate-200'
+                        ? 'bg-sky-950/40 border-sky-500/30 text-sky-200'
+                        : 'bg-slate-950/80 border-slate-800/80 text-slate-200 hover:border-slate-700'
                     }`}
                   >
-                    <div className="min-w-0 flex items-center gap-1">
-                      <span className="font-bold truncate">{p.name}</span>
-                      <span className="text-[9px] px-1 rounded bg-slate-800 text-amber-300">
+                    {/* 선수 이름 및 상태 뱃지 (줄바꿈/세로깨짐 완벽 방지: whitespace-nowrap shrink-0) */}
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <span className="font-extrabold text-sm text-white truncate max-w-[120px] sm:max-w-none">
+                        {p.name}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-bold whitespace-nowrap shrink-0 border border-slate-700">
                         {p.grade}
                       </span>
                       {isSub && (
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-extrabold whitespace-nowrap shrink-0">
                           대타
                         </span>
                       )}
                       {isWithdrawn && (
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500 text-white font-black shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-600 text-white font-black whitespace-nowrap shrink-0 shadow-sm">
                           기권
                         </span>
                       )}
                       {isResting && !isWithdrawn && (
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-black shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black whitespace-nowrap shrink-0 shadow-sm animate-pulse">
                           휴식중
                         </span>
                       )}
                     </div>
 
-                    {/* 관리자 컨트롤: 휴식 토글 & 대타/기권 처리 버튼 */}
-                    {isAdmin && !isLocked && !isWithdrawn && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        {/* 1. 휴식중 토글 버튼 */}
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePlayerResting(activeCourt.courtNumber, p.id)}
-                          className={`px-2 py-0.8 rounded-lg text-[10px] font-black border transition cursor-pointer ${
-                            isResting
-                              ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
-                              : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
-                          }`}
-                          title={isResting ? '휴식 해제 및 복귀' : '선수 휴식 설정 (해당 선수 대기경기만 후순위로 이동)'}
-                        >
-                          {isResting ? '▶ 복귀' : '⏸️ 휴식중'}
-                        </button>
+                    {/* 관리자 컨트롤 버튼: 모바일 터치 친화적 최소 h-9 높이 및 충분한 터치 간격 */}
+                    {isAdmin && !isLocked && (
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto w-full sm:w-auto">
+                        {isWithdrawn ? (
+                          <>
+                            {/* 기권 선수 복귀 버튼 */}
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreWithdrawnPlayer(activeCourt.courtNumber, p.id)}
+                              className="flex-1 sm:flex-none h-9 px-3 rounded-lg text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400 shadow-sm flex items-center justify-center gap-1 cursor-pointer transition active:scale-95"
+                              title="기권 해제 후 경기 로테이션에 복귀"
+                            >
+                              <span>▶</span>
+                              <span className="whitespace-nowrap">복귀</span>
+                            </button>
+                            {/* 대타 기용 버튼 */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubstituteModalState({
+                                  isOpen: true,
+                                  courtNum: activeCourt.courtNumber,
+                                  originalPlayer: p,
+                                });
+                                setSelectedSubPlayerId('');
+                                setSubActionType('SUBSTITUTE');
+                              }}
+                              className="flex-1 sm:flex-none h-9 px-2.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-500/40 flex items-center justify-center gap-1 cursor-pointer transition active:scale-95"
+                              title="대타 선수 기용"
+                            >
+                              <span>🔄</span>
+                              <span className="whitespace-nowrap">대타</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {/* 1. 휴식 / 복귀 토글 버튼 */}
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlayerResting(activeCourt.courtNumber, p.id)}
+                              className={`flex-1 sm:flex-none h-9 px-3 rounded-lg text-xs font-black border transition shadow-sm flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                                isResting
+                                  ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 ring-2 ring-emerald-400/40'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
+                              }`}
+                              title={isResting ? '휴식 해제 및 복귀' : '선수 휴식 설정 (해당 선수 대기경기 후순위 이동)'}
+                            >
+                              <span>{isResting ? '▶' : '⏸️'}</span>
+                              <span className="whitespace-nowrap">{isResting ? '복귀' : '휴식'}</span>
+                            </button>
 
-                        {/* 2. 대타/기권 모달 오픈 버튼 */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSubstituteModalState({
-                              isOpen: true,
-                              courtNum: activeCourt.courtNumber,
-                              originalPlayer: p,
-                            });
-                            setSelectedSubPlayerId('');
-                            setSubActionType('SUBSTITUTE');
-                          }}
-                          className="px-1.5 py-0.8 rounded-lg text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/30 cursor-pointer"
-                          title="부상/이탈 시 대타 기용 또는 기권 처리"
-                        >
-                          대타/기권
-                        </button>
+                            {/* 2. 대타/기권 모달 오픈 버튼 */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubstituteModalState({
+                                  isOpen: true,
+                                  courtNum: activeCourt.courtNumber,
+                                  originalPlayer: p,
+                                });
+                                setSelectedSubPlayerId('');
+                                setSubActionType('SUBSTITUTE');
+                              }}
+                              className="flex-1 sm:flex-none h-9 px-2.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/40 flex items-center justify-center gap-1 cursor-pointer transition active:scale-95"
+                              title="부상/이탈 시 대타 기용 또는 기권 처리"
+                            >
+                              <span>🔄</span>
+                              <span className="whitespace-nowrap">대타/기권</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
