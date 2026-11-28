@@ -1055,6 +1055,16 @@
                 + 선수 등록
               </button>
             </div>
+
+            <!-- 현재 대회 참여 확정 선수 칩 목록 -->
+            <div id="modalConfirmedParticipantsWrapper" class="pt-2 border-t border-slate-800/80 hidden">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-[10px] font-bold text-slate-400" id="modalConfirmedParticipantsTitle">
+                  현재 대회 참여 확정 선수
+                </span>
+              </div>
+              <div id="modalConfirmedParticipantsChips" class="flex flex-wrap gap-1 max-h-24 overflow-y-auto"></div>
+            </div>
           </div>
         </div>
 
@@ -2162,6 +2172,21 @@
       }
     }
 
+    function getHtmlDisambiguatedName(player, list) {
+      if (!player) return '';
+      const rawName = (player.name || '').trim();
+      const duplicates = (list || []).filter(p => (p.name || '').trim() === rawName);
+      if (duplicates.length <= 1) {
+        return rawName;
+      }
+      const idx = duplicates.findIndex(p => p.id === player.id);
+      const orderNum = idx >= 0 ? idx + 1 : 1;
+      const typeLabel = player.isGuest ? '임의' : '회원';
+      const ageOrGrade = player.age ? `${player.age}세` : (player.grade || '');
+      const suffix = ageOrGrade ? `${typeLabel}·${ageOrGrade}` : `${typeLabel}${orderNum}`;
+      return `${rawName} (${suffix})`;
+    }
+
     function renderModalPlayersList() {
       const grid = document.getElementById('modalPlayersSelectionGrid');
       const countBadge = document.getElementById('modalSelectedPlayerCountBadge');
@@ -2172,23 +2197,62 @@
 
       grid.innerHTML = registeredPlayers.map(p => {
         const isSel = adminSelectedPlayerIds.includes(p.id);
-        const w = getPlayerSkillWeight(p);
-        const ageLabel = formatHtmlManAgeLabel(p.birthDate, p.age);
+        const displayName = getHtmlDisambiguatedName(p, registeredPlayers);
         return `
           <button type="button" onclick="toggleAdminPlayerSelect('${p.id}'); renderModalPlayersList();" class="p-2 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-            isSel ? 'bg-emerald-950/80 border-emerald-400 text-white' : 'bg-slate-900/70 border-slate-800 text-slate-400'
+            isSel
+              ? (p.isGuest ? 'bg-amber-950/80 border-amber-400 text-white shadow-sm' : 'bg-emerald-950/80 border-emerald-400 text-white shadow-sm')
+              : (p.isGuest ? 'bg-slate-900/70 border-slate-800 text-slate-300 hover:border-amber-500/50' : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:border-emerald-500/50')
           }">
             <div class="truncate pr-1">
-              <div class="flex items-center gap-1">
-                <span class="text-[11px] font-bold truncate">${p.name}</span>
-                <span class="text-[8px] px-1 rounded ${p.isGuest ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">${p.isGuest ? '미가입' : '가입'}</span>
+              <div class="flex items-center gap-1.5 truncate">
+                <span class="text-[11px] font-bold truncate ${p.isGuest ? 'text-amber-200' : 'text-emerald-200'}">${displayName}</span>
+                <span class="text-[8px] px-1 py-0.2 rounded font-bold shrink-0 ${p.isGuest ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">${p.isGuest ? '임의' : '회원'}</span>
               </div>
-              <span class="text-[9px] text-slate-400 block">${p.grade}${ageLabel ? `·${ageLabel}` : ''} (실력 ${w}점)</span>
             </div>
-            <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${isSel ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-500'}">${isSel ? '✓' : '+'}</span>
+            <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${
+              isSel ? (p.isGuest ? 'bg-amber-400 text-slate-950' : 'bg-emerald-400 text-slate-950') : 'bg-slate-800 text-slate-500'
+            }">${isSel ? '✓' : '+'}</span>
           </button>
         `;
       }).join('');
+
+      // 하단 참여 확정 칩 업데이트
+      const wrapper = document.getElementById('modalConfirmedParticipantsWrapper');
+      const chipsEl = document.getElementById('modalConfirmedParticipantsChips');
+      const titleEl = document.getElementById('modalConfirmedParticipantsTitle');
+      const selectedList = registeredPlayers.filter(p => adminSelectedPlayerIds.includes(p.id));
+
+      if (wrapper && chipsEl) {
+        if (selectedList.length === 0) {
+          wrapper.classList.add('hidden');
+          chipsEl.innerHTML = '';
+        } else {
+          wrapper.classList.remove('hidden');
+          const guestCount = selectedList.filter(p => p.isGuest).length;
+          const memberCount = selectedList.length - guestCount;
+          if (titleEl) {
+            titleEl.innerText = `현재 대회 참여 확정 선수 (${selectedList.length}명: 회원 ${memberCount}명 / 임의 ${guestCount}명)`;
+          }
+          chipsEl.innerHTML = selectedList.map((p, idx) => {
+            const chipName = getHtmlDisambiguatedName(p, selectedList);
+            return `
+              <span
+                onclick="toggleAdminPlayerSelect('${p.id}'); renderModalPlayersList();"
+                title="클릭 시 선택 해제"
+                class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition ${
+                  p.isGuest
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-300'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-300'
+                }"
+              >
+                <span>${idx + 1}. ${chipName}</span>
+                <span class="text-[9px] opacity-75 font-normal">✕</span>
+              </span>
+            `;
+          }).join('');
+        }
+      }
     }
 
     function addModalGuestPlayer() {

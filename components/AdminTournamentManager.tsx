@@ -585,6 +585,24 @@ export default function AdminTournamentManager({
     return true;
   });
 
+  // 동명이인 자동 구분 표식 계산 (동명이인이 2명 이상일 때만 구분 정보 부착)
+  const getDisambiguatedName = (player: ParticipantPlayer, playerList: ParticipantPlayer[]) => {
+    const rawName = (player.name || '').trim();
+    const duplicates = playerList.filter((p) => (p.name || '').trim() === rawName);
+    if (duplicates.length <= 1) {
+      return rawName;
+    }
+
+    // 동일 이름 내에서 구분 식별자 생성
+    const idx = duplicates.findIndex((p) => p.id === player.id);
+    const orderNum = idx >= 0 ? idx + 1 : 1;
+    const typeLabel = player.isGuest ? '임의' : '회원';
+    const ageOrGrade = player.age ? `${player.age}세` : player.grade || '';
+
+    const suffix = ageOrGrade ? `${typeLabel}·${ageOrGrade}` : `${typeLabel}${orderNum}`;
+    return `${rawName} (${suffix})`;
+  };
+
   // 수동 슬롯 기본값 동기화
   useEffect(() => {
     if (selectedParticipants.length >= 4) {
@@ -1641,8 +1659,7 @@ export default function AdminTournamentManager({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
           {filteredPlayers.map((player) => {
             const isSelected = selectedParticipants.some((p) => p.id === player.id);
-            const pt = getPlayerWeight(player);
-            const ageLabel = formatManAgeLabel(player.birthDate, player.age);
+            const displayName = getDisambiguatedName(player, allAvailablePlayers);
             return (
               <button
                 key={player.id}
@@ -1650,31 +1667,40 @@ export default function AdminTournamentManager({
                 onClick={() => togglePlayerSelection(player)}
                 className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
                   isSelected
-                    ? 'bg-emerald-950/70 border-emerald-400 text-white shadow-sm'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? player.isGuest
+                      ? 'bg-amber-950/70 border-amber-400 text-white shadow-sm'
+                      : 'bg-emerald-950/70 border-emerald-400 text-white shadow-sm'
+                    : player.isGuest
+                    ? 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-amber-500/50'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-emerald-500/50'
                 }`}
               >
                 <div className="truncate pr-1">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold truncate">{player.name}</span>
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span
+                      className={`text-xs font-bold truncate ${
+                        player.isGuest ? 'text-amber-200' : 'text-emerald-200'
+                      }`}
+                    >
+                      {displayName}
+                    </span>
                     {player.isGuest ? (
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                        미가입/임의
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">
+                        임의
                       </span>
                     ) : (
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
-                        가입회원
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold shrink-0">
+                        회원
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {player.grade}{ageLabel ? ` · ${ageLabel}` : ''} (실력 {pt}점)
-                  </span>
                 </div>
                 <span
                   className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
                     isSelected
-                      ? 'bg-emerald-400 text-slate-950'
+                      ? player.isGuest
+                        ? 'bg-amber-400 text-slate-950'
+                        : 'bg-emerald-400 text-slate-950'
                       : 'bg-slate-800 text-slate-500'
                   }`}
                 >
@@ -1738,25 +1764,26 @@ export default function AdminTournamentManager({
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {selectedParticipants.map((p, idx) => (
-                  <span
-                    key={p.id}
-                    onClick={() => togglePlayerSelection(p)}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer transition ${
-                      p.isGuest
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-red-500/20'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20'
-                    }`}
-                  >
-                    <span>
-                      {idx + 1}. {p.name} ({p.grade}·{getPlayerWeight(p)}점)
+                {selectedParticipants.map((p, idx) => {
+                  const displayName = getDisambiguatedName(p, selectedParticipants);
+                  return (
+                    <span
+                      key={p.id}
+                      onClick={() => togglePlayerSelection(p)}
+                      title="클릭 시 선택 해제"
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition shadow-sm ${
+                        p.isGuest
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-300'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-300'
+                      }`}
+                    >
+                      <span>
+                        {idx + 1}. {displayName}
+                      </span>
+                      <span className="text-[10px] opacity-75 font-normal">✕</span>
                     </span>
-                    <span className="text-[9px] opacity-80">
-                      {p.isGuest ? '[미가입/임의]' : '[가입회원]'}
-                    </span>
-                    <span className="text-[10px] opacity-75">✕</span>
-                  </span>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
