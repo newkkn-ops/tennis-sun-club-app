@@ -3189,7 +3189,6 @@ export default function TennisApp() {
                 {/* 현재 선택된 대회 방식(KDK 또는 토너먼트)에 연계된 빠른 이동 버튼만 단독 노출 */}
                 <div className="space-y-2">
                   {currentTournament.format === 'kdk' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         onClick={() => setActiveTab('kdk')}
                         className="w-full p-3 bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-2xl text-left transition group shadow-md cursor-pointer"
@@ -3208,26 +3207,6 @@ export default function TennisApp() {
                         </p>
                       </button>
 
-                      {/* 관리자·회원 누구나 열 수 있는 전체 게임현황 & KDK 기록표 전용 버튼 */}
-                      <button
-                        type="button"
-                        onClick={() => setShowKdkOverallBoard(true)}
-                        className="w-full p-3 bg-gradient-to-br from-amber-950/50 via-slate-900 to-slate-900 border border-amber-500/40 hover:border-amber-400 rounded-2xl text-left transition group shadow-md cursor-pointer flex flex-col justify-between"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-black text-amber-300 group-hover:text-amber-200 flex items-center gap-1.5">
-                            <span>📊</span>
-                            <span>전체 게임현황 · KDK 기록표 보기</span>
-                          </span>
-                          <span className="text-[10px] font-black bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md shadow-xs">
-                            공용 조회 열기 🔍
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">
-                          KDK 순서표 전체 매치와 5단계 순위 공식 기록표를 한눈에 파악합니다.
-                        </p>
-                      </button>
-                    </div>
                   ) : (
                     <button
                       onClick={() => setActiveTab('tournament')}
