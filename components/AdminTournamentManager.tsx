@@ -36,6 +36,13 @@ export interface AssignedMatch {
   status: 'waiting' | 'playing' | 'completed';
 }
 
+export interface GroupCourtInfo {
+  groupId: string;
+  groupName: string;
+  playerIds: string[];
+  assignedCourts: number[];
+}
+
 export interface TournamentConfig {
   id: string;
   title: string;
@@ -46,6 +53,8 @@ export interface TournamentConfig {
   minGamesPerPlayer?: number;
   participants: ParticipantPlayer[];
   matches: AssignedMatch[];
+  groups?: GroupCourtInfo[];
+  groupCourtMap?: Record<string, number[]>;
   status: 'pending' | 'ongoing' | 'finished';
   createdAt: string;
 }
@@ -129,6 +138,32 @@ export default function AdminTournamentManager({
   );
   const [autoBalanceOption, setAutoBalanceOption] = useState<'BALANCE' | 'RANDOM'>('BALANCE');
 
+  // [그룹별 참여선수 등록 (A그룹 ~ D그룹) & 코트 매핑 상태]
+  // 기본 그룹: A그룹, B그룹, C그룹, D그룹 (그룹 추가/삭제 가능)
+  const [groups, setGroups] = useState<string[]>(['A그룹', 'B그룹', 'C그룹', 'D그룹']);
+  const [activeGroupTab, setActiveGroupTab] = useState<string>('A그룹');
+  // 그룹별 배정 선수 ID 목록: Record<groupName, playerId[]>
+  const [groupPlayerMap, setGroupPlayerMap] = useState<Record<string, string[]>>({
+    'A그룹': [],
+    'B그룹': [],
+    'C그룹': [],
+    'D그룹': [],
+  });
+  // 그룹별 지정 코트 목록: Record<groupName, number[]> (예: A그룹 -> [1, 2], B그룹 -> [3])
+  const [groupCourtMap, setGroupCourtMap] = useState<Record<string, number[]>>({
+    'A그룹': [1],
+    'B그룹': [2],
+    'C그룹': [3],
+    'D그룹': [],
+  });
+  // 그룹별 수동 시드 지정 상태: Record<groupName, Record<playerId, string>> ('none' | 'seed1' ~ 'seed10')
+  const [groupSeedMap, setGroupSeedMap] = useState<Record<string, Record<string, string>>>({
+    'A그룹': {},
+    'B그룹': {},
+    'C그룹': {},
+    'D그룹': {},
+  });
+
   // [KDK 코트별 선수 우선 배정 & 시드 관리 상태]
   // 코트별 배정 선수 ID 목록: Record<courtNumber, playerId[]>
   const [courtPlayerMap, setCourtPlayerMap] = useState<Record<number, string[]>>({});
@@ -198,7 +233,182 @@ export default function AdminTournamentManager({
       });
       return changed ? next : prev;
     });
+
+    // 그룹별 배정 명단에서도 제외된 선수 자동 정리
+    setGroupPlayerMap((prev) => {
+      let changed = false;
+      const next: Record<string, string[]> = {};
+      Object.entries(prev).forEach(([gName, pIds]) => {
+        const filtered = pIds.filter((id) => validIds.has(id));
+        if (filtered.length !== pIds.length) changed = true;
+        next[gName] = filtered;
+      });
+      return changed ? next : prev;
+    });
+
+    setGroupSeedMap((prev) => {
+      let changed = false;
+      const next: Record<string, Record<string, string>> = {};
+      Object.entries(prev).forEach(([gName, sMap]) => {
+        const nextSub: Record<string, string> = {};
+        Object.entries(sMap).forEach(([id, sVal]) => {
+          if (validIds.has(id)) {
+            nextSub[id] = sVal;
+          } else {
+            changed = true;
+          }
+        });
+        next[gName] = nextSub;
+      });
+      return changed ? next : prev;
+    });
   }, [selectedParticipants]);
+
+  // 그룹 추가 핸들러
+  const handleAddGroup = () => {
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const currentCount = groups.length;
+    const nextLetter = currentCount < letters.length ? letters[currentCount] : `G${currentCount + 1}`;
+    const newGroupName = `${nextLetter}그룹`;
+    if (groups.includes(newGroupName)) {
+      alert(`이미 ${newGroupName}이 존재합니다.`);
+      return;
+    }
+    setGroups((prev) => [...prev, newGroupName]);
+    setGroupPlayerMap((prev) => ({ ...prev, [newGroupName]: [] }));
+    setGroupCourtMap((prev) => ({ ...prev, [newGroupName]: [] }));
+    setGroupSeedMap((prev) => ({ ...prev, [newGroupName]: {} }));
+    setActiveGroupTab(newGroupName);
+  };
+
+  // 그룹 삭제 핸들러
+  const handleRemoveGroup = (groupNameToRemove: string) => {
+    if (groups.length <= 1) {
+      alert('최소 1개 이상의 그룹이 필요합니다.');
+      return;
+    }
+    const confirmDelete = window.confirm(`[${groupNameToRemove}]을(를) 삭제하시겠습니까? 배정된 선수와 코트 정보가 해제됩니다.`);
+    if (!confirmDelete) return;
+
+    const nextGroups = groups.filter((g) => g !== groupNameToRemove);
+    setGroups(nextGroups);
+    if (activeGroupTab === groupNameToRemove) {
+      setActiveGroupTab(nextGroups[0]);
+    }
+    setGroupPlayerMap((prev) => {
+      const copy = { ...prev };
+      delete copy[groupNameToRemove];
+      return copy;
+    });
+    setGroupCourtMap((prev) => {
+      const copy = { ...prev };
+      delete copy[groupNameToRemove];
+      return copy;
+    });
+    setGroupSeedMap((prev) => {
+      const copy = { ...prev };
+      delete copy[groupNameToRemove];
+      return copy;
+    });
+  };
+
+  // 특정 그룹의 사용 코트 번호 토글
+  const toggleGroupCourt = (groupName: string, courtNum: number) => {
+    setGroupCourtMap((prev) => {
+      const currentList = prev[groupName] || [];
+      const exists = currentList.includes(courtNum);
+      const nextList = exists
+        ? currentList.filter((c) => c !== courtNum)
+        : [...currentList, courtNum].sort((a, b) => a - b);
+      return { ...prev, [groupName]: nextList };
+    });
+  };
+
+  // 특정 그룹에 선수 추가/제거 토글 (다른 그룹 배정 시 원천 차단)
+  const togglePlayerInGroup = (groupName: string, playerId: string) => {
+    const currentList = groupPlayerMap[groupName] || [];
+    const isCurrentAssigned = currentList.includes(playerId);
+
+    // 다른 그룹에 이미 배정되어 있는지 확인
+    const otherGroup = Object.keys(groupPlayerMap).find(
+      (g) => g !== groupName && groupPlayerMap[g]?.includes(playerId)
+    );
+
+    if (!isCurrentAssigned && otherGroup) {
+      const p = selectedParticipants.find((item) => item.id === playerId);
+      alert(`⚠️ [${p?.name || '선수'}] 님은 이미 [${otherGroup}]에 배정되어 있습니다.\n중복 배정을 방지하기 위해 해당 그룹에서 먼저 해제한 후 선택해 주세요.`);
+      return;
+    }
+
+    setGroupPlayerMap((prev) => {
+      const list = prev[groupName] || [];
+      const exists = list.includes(playerId);
+      const nextList = exists
+        ? list.filter((id) => id !== playerId)
+        : [...list, playerId];
+
+      // 선수가 제거되면 시드도 초기화
+      if (exists) {
+        setGroupSeedMap((sPrev) => {
+          const sub = { ...(sPrev[groupName] || {}) };
+          delete sub[playerId];
+          return { ...sPrev, [groupName]: sub };
+        });
+      }
+
+      return { ...prev, [groupName]: nextList };
+    });
+  };
+
+  // 그룹 내 특정 선수의 수동 시드 지정 ('none' | 'seed1' ~ 'seed10')
+  const handleSetPlayerGroupSeed = (groupName: string, playerId: string, seedType: string) => {
+    setGroupSeedMap((prev) => {
+      const currentSub = { ...(prev[groupName] || {}) };
+      if (seedType && seedType !== 'none') {
+        Object.keys(currentSub).forEach((otherId) => {
+          if (otherId !== playerId && currentSub[otherId] === seedType) {
+            currentSub[otherId] = 'none';
+          }
+        });
+      }
+      currentSub[playerId] = seedType;
+      return { ...prev, [groupName]: currentSub };
+    });
+  };
+
+  // 전체 참여 선수를 활성 그룹들에 실력 균등(스네이크) 자동 분배
+  const handleAutoDistributeParticipantsToGroups = () => {
+    if (selectedParticipants.length < 4) {
+      alert('참여선수를 최소 4명 이상 선택해 주세요.');
+      return;
+    }
+    const activeGroups = groups.length > 0 ? groups : ['A그룹', 'B그룹'];
+    const sorted = [...selectedParticipants].sort(
+      (a, b) => getCompositeSkillScore(b) - getCompositeSkillScore(a)
+    );
+
+    const newGroupMap: Record<string, string[]> = {};
+    activeGroups.forEach((g) => {
+      newGroupMap[g] = [];
+    });
+
+    sorted.forEach((p, idx) => {
+      const roundIdx = Math.floor(idx / activeGroups.length);
+      const pos = idx % activeGroups.length;
+      const gIdx = roundIdx % 2 === 0 ? pos : activeGroups.length - 1 - pos;
+      const targetGroup = activeGroups[gIdx];
+      newGroupMap[targetGroup].push(p.id);
+    });
+
+    setGroupPlayerMap(newGroupMap);
+    // 시드 초기화
+    const resetSeed: Record<string, Record<string, string>> = {};
+    activeGroups.forEach((g) => {
+      resetSeed[g] = {};
+    });
+    setGroupSeedMap(resetSeed);
+    alert(`⚖️ 전체 ${selectedParticipants.length}명의 선수가 ${activeGroups.length}개 그룹(${activeGroups.join(', ')})에 실력 순위 스네이크 방식으로 균등 분배되었습니다!`);
+  };
 
   // 특정 코트에 선수 추가/제거 토글
   const togglePlayerInCourt = (courtNum: number, playerId: string) => {
@@ -456,6 +666,130 @@ export default function AdminTournamentManager({
       }
       return [...prev, courtNum].sort((a, b) => a - b);
     });
+  };
+
+  // ============================================================================
+  // [🌟 그룹별(A~D그룹) KDK 대진표 자동 생성 엔진]
+  // - 각 그룹에 배정된 선수를 기준으로 V2025 KDK 순환 대진표(인당 minGamesPerPlayer 게임) 생성
+  // - 각 그룹에 지정된 사용 코트(예: A그룹 -> [1, 2], B그룹 -> [3])를 경기 번호에 우선 배분
+  // - 지정 코트가 없는 그룹은 전체 selectedCourts에서 순환 배정
+  // ============================================================================
+  const handleGenerateKdkMatchesForGroups = () => {
+    if (!tournamentTitle.trim()) {
+      alert('먼저 1단계에서 대회명을 입력해 주세요.');
+      return;
+    }
+    const activeGroupsWithPlayers = groups.filter(
+      (g) => (groupPlayerMap[g] || []).length >= 4
+    );
+
+    if (activeGroupsWithPlayers.length === 0) {
+      alert(
+        '최소 1개 이상의 그룹에 4명 이상의 선수가 등록되어야 대진표를 생성할 수 있습니다.\n[전체 인원 그룹별 실력 균등 자동 분배]를 누르거나 각 그룹 탭에서 선수를 등록해 주세요.'
+      );
+      return;
+    }
+
+    const parseSeedRank = (s?: string) => {
+      if (!s || s === 'none') return 999;
+      const match = s.match(/seed(\d+)/);
+      return match ? parseInt(match[1], 10) : 999;
+    };
+
+    const generated: AssignedMatch[] = [];
+    const allCourts = selectedCourts.length > 0 ? selectedCourts : [1, 2];
+
+    activeGroupsWithPlayers.forEach((gName) => {
+      const pIds = groupPlayerMap[gName] || [];
+      const gPlayers = pIds
+        .map((id) => selectedParticipants.find((p) => p.id === id))
+        .filter(Boolean) as ParticipantPlayer[];
+
+      if (gPlayers.length < 4) return;
+
+      const groupCourts = (groupCourtMap[gName] || []).filter((c) => allCourts.includes(c));
+      const effectiveCourts = groupCourts.length > 0 ? groupCourts : allCourts;
+
+      // 시드 파싱
+      const seedMap = groupSeedMap[gName] || {};
+      const manualSeedIds = Object.keys(seedMap)
+        .filter((id) => seedMap[id] && seedMap[id] !== 'none' && gPlayers.some((p) => p.id === id))
+        .sort((a, b) => parseSeedRank(seedMap[a]) - parseSeedRank(seedMap[b]));
+
+      const mappedPlayers = gPlayers.map((p) => ({
+        id: p.id,
+        name: p.name,
+        grade: p.grade,
+        birthDate: p.birthDate,
+        age: p.age,
+        experienceYears: p.experienceYears,
+        gender: p.gender,
+        isGuest: p.isGuest,
+      }));
+
+      // 대표 코트 번호 (그룹의 첫번째 코트 또는 1번)
+      const baseCourt = effectiveCourts[0] || 1;
+
+      const games = generateCourtKDKGames(baseCourt, mappedPlayers, minGamesPerPlayer, {
+        minGamesPerPlayer,
+        assignMode: manualSeedIds.length > 0 ? 'SEED_AUTO' : 'AUTO',
+        seedPlayerIds: manualSeedIds,
+        overrideTotalGames: Math.max(minGamesPerPlayer, Math.ceil((mappedPlayers.length * minGamesPerPlayer) / 4)),
+      });
+
+      games.forEach((g, gIdx) => {
+        const pA1 = gPlayers.find((p) => p.id === g.teamA[0].id) || (g.teamA[0] as ParticipantPlayer);
+        const pA2 = gPlayers.find((p) => p.id === g.teamA[1].id) || (g.teamA[1] as ParticipantPlayer);
+        const pB1 = gPlayers.find((p) => p.id === g.teamB[0].id) || (g.teamB[0] as ParticipantPlayer);
+        const pB2 = gPlayers.find((p) => p.id === g.teamB[1].id) || (g.teamB[1] as ParticipantPlayer);
+
+        const weights = calcMatchWeights([pA1, pA2], [pB1, pB2]);
+        const assignedCourt = effectiveCourts[gIdx % effectiveCourts.length];
+        const seedNote = manualSeedIds.length > 0 ? ` · 시드(${manualSeedIds.length}명) 고정` : '';
+
+        generated.push({
+          id: `match_grp_${gName}_g${g.gameNumber}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          round: g.gameNumber,
+          roundName: `[${gName}] 제 ${g.gameNumber}경기 (${assignedCourt}코트 배정${seedNote})`,
+          courtNumber: assignedCourt,
+          teamA: [pA1, pA2],
+          teamB: [pB1, pB2],
+          ...weights,
+          scoreA: 0,
+          scoreB: 0,
+          status: gIdx === 0 ? 'playing' : 'waiting',
+        });
+      });
+    });
+
+    setAssignedMatches(generated);
+
+    // KdkCourtOperations 호환용 courtPlayerMap 동기화
+    const newCourtPlayerMap: Record<number, string[]> = {};
+    allCourts.forEach((c) => {
+      newCourtPlayerMap[c] = [];
+    });
+    // 그룹별 지정 코트에 선수들 분산 매핑
+    groups.forEach((gName) => {
+      const pIds = groupPlayerMap[gName] || [];
+      const gCourts = (groupCourtMap[gName] || []).filter((c) => allCourts.includes(c));
+      const targetCourts = gCourts.length > 0 ? gCourts : allCourts;
+      pIds.forEach((pid, pIdx) => {
+        const cTarget = targetCourts[pIdx % targetCourts.length];
+        if (newCourtPlayerMap[cTarget] && !newCourtPlayerMap[cTarget].includes(pid)) {
+          newCourtPlayerMap[cTarget].push(pid);
+        }
+      });
+    });
+    setCourtPlayerMap(newCourtPlayerMap);
+
+    alert(
+      `🎉 [그룹별 KDK 대진표 자동 편성 완료]\n\n` +
+      `• 생성 그룹: ${activeGroupsWithPlayers.map((g) => `${g}(${(groupPlayerMap[g] || []).length}명)`).join(', ')}\n` +
+      `• 인당 게임수: 최소 ${minGamesPerPlayer}게임 보장\n` +
+      `• 생성 경기: 총 ${generated.length}경기\n\n` +
+      `하단 대진표 미리보기에서 그룹별 매치 구성 및 배정 코트를 확인하세요!`
+    );
   };
 
   // ============================================================================
@@ -933,6 +1267,13 @@ export default function AdminTournamentManager({
       minGamesPerPlayer,
       participants: selectedParticipants,
       matches: assignedMatches,
+      groups: groups.map((g) => ({
+        groupId: g,
+        groupName: g,
+        playerIds: groupPlayerMap[g] || [],
+        assignedCourts: groupCourtMap[g] || [],
+      })),
+      groupCourtMap,
       status: 'ongoing',
       createdAt: new Date().toISOString(),
     };
@@ -1523,8 +1864,8 @@ export default function AdminTournamentManager({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <span>⚡</span>
-            <span>자동 방식 (경기실력 차이 최소화)</span>
+            <span>👥</span>
+            <span>그룹별(A~D) 참여선수 등록 & KDK 대진</span>
           </button>
 
           <button
@@ -1537,124 +1878,314 @@ export default function AdminTournamentManager({
             }`}
           >
             <span>🖐️</span>
-            <span>수동 방식 (코트·선수 직접배치)</span>
+            <span>코트별 선수 직접배치 & 토너먼트 매칭</span>
           </button>
         </div>
 
-        {/* [A] 자동 방식 설정 패널 */}
+        {/* [A] 그룹별(A그룹~D그룹) 참여선수 등록 및 KDK 순서표 생성 패널 */}
         {assignmentType === 'AUTO' && (
-          <div className="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3.5">
+          <div className="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-4">
             {tournamentMode === 'KDK' ? (
-              /* KDK 전용: 스네이크 실력균등 자동 분배 및 KDK 대진표 자동 생성 */
-              <div className="space-y-3.5">
-                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-400 text-slate-950 font-black text-[11px] flex items-center justify-center">
-                        ⚡
-                      </span>
-                      <span className="text-xs font-black text-emerald-300">
-                        KDK 실력 스네이크 자동 분배 및 대진표 생성
-                      </span>
-                    </div>
+              <div className="space-y-4">
+                {/* 상단 그룹 헤더 & 컨트롤 */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                  <div>
+                    <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                      <span>🎾</span>
+                      <span>그룹별(A~D) 참여선수 등록 및 코트 지정</span>
+                    </span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      코트별 선수 직접 등록 대신 그룹별로 참여 선수를 등록하고, 각 그룹이 사용할 코트를 지정합니다.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     <span className="text-[10px] text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 font-bold">
-                      1인 최소 {minGamesPerPlayer}게임 고정 순환
+                      1인 최소 {minGamesPerPlayer}게임 KDK 순환
                     </span>
+                    <button
+                      type="button"
+                      onClick={handleAddGroup}
+                      className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-[11px] font-black cursor-pointer transition flex items-center gap-1"
+                      title="새로운 그룹 추가 (E그룹 등)"
+                    >
+                      <span>＋</span>
+                      <span>그룹 추가</span>
+                    </button>
                   </div>
-
-                  <p className="text-[11px] text-slate-300 leading-relaxed">
-                    선택된 전체 참여 선수 <strong>{selectedParticipants.length}명</strong>을 부수와 점수 순으로 정렬하여, 지정된 <strong>{selectedCourts.length}개 코트</strong>({selectedCourts.map((c) => `${c}코트`).join(', ')})에 <strong>스네이크(1→2→3→3→2→1) 방식</strong>으로 균등 배분한 뒤 코트별 KDK_V2025 순환 대진표를 한 번에 자동 생성합니다.
-                  </p>
-
-                  <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[10px] text-slate-400 space-y-1">
-                    <div>• <strong>가중치 기준</strong>: 금배 10점 · 은배 8점 · 국화 7점 · 동배 6점 · 개나리 5점 · 테린이 3점</div>
-                    <div>• <strong>중복 출전 차단</strong>: 한 경기에 동일 선수가 양 팀에 중복 출전하지 않으며 코트 간 중복 배정도 차단됩니다.</div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleAutoAssignKdkSnakeAndGenerate}
-                    className="w-full py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>⚡</span>
-                    <span>
-                      전체 인원 스네이크 실력 균등 분배 & KDK 대진표 자동 생성 ({selectedCourts.length}개 코트 · 최소 {minGamesPerPlayer}게임)
-                    </span>
-                  </button>
                 </div>
 
-                {/* 현재 코트별 배분 현황 미리보기 */}
-                {selectedCourts.some((c) => (courtPlayerMap[c] || []).length > 0) && (
-                  <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 space-y-2">
-                    <span className="text-xs font-black text-amber-300 block">
-                      🏟️ 코트별 자동 배분 명단 현황
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {/* 그룹 탭 버튼 목록 (A그룹, B그룹, C그룹, D그룹...) */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  {groups.map((gName) => {
+                    const count = (groupPlayerMap[gName] || []).length;
+                    const cList = groupCourtMap[gName] || [];
+                    const isActive = activeGroupTab === gName;
+                    return (
+                      <div key={gName} className="flex items-center shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setActiveGroupTab(gName)}
+                          className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isActive
+                              ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                              : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <span>{gName}</span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                              isActive ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-emerald-300'
+                            }`}
+                          >
+                            {count}명
+                          </span>
+                          {cList.length > 0 && (
+                            <span
+                              className={`text-[9px] px-1 rounded ${
+                                isActive ? 'bg-slate-950/30 text-slate-950' : 'text-amber-400'
+                              }`}
+                            >
+                              ({cList.join(',')}코트)
+                            </span>
+                          )}
+                        </button>
+                        {groups.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGroup(gName)}
+                            className="ml-1 w-5 h-5 rounded-md text-slate-500 hover:text-red-400 hover:bg-slate-800 text-[10px] font-bold flex items-center justify-center cursor-pointer transition"
+                            title={`${gName} 삭제`}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 현재 활성화된 그룹의 상세 설정 카드 */}
+                <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-3.5 space-y-3 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-amber-300">
+                        🏷️ [{activeGroupTab}] 참여 선수 (
+                        {(groupPlayerMap[activeGroupTab] || []).length}명 등록됨)
+                      </span>
+                      {(groupPlayerMap[activeGroupTab] || []).length < 4 && (
+                        <span className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                          최소 4명 필요
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 이 그룹이 사용할 코트 번호 지정 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400 shrink-0">
+                        🏟️ 사용 코트 지정:
+                      </span>
                       {selectedCourts.map((cNum) => {
-                        const pIds = courtPlayerMap[cNum] || [];
-                        const cPlayers = pIds
-                          .map((id) => selectedParticipants.find((p) => p.id === id))
-                          .filter(Boolean) as ParticipantPlayer[];
+                        const isCourtAssigned = (groupCourtMap[activeGroupTab] || []).includes(cNum);
                         return (
-                          <div key={cNum} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1">
-                            <div className="flex justify-between items-center text-[11px] font-black">
-                              <span className="text-amber-400">{cNum}번 코트</span>
-                              <span className="text-emerald-400">{cPlayers.length}명</span>
+                          <button
+                            key={cNum}
+                            type="button"
+                            onClick={() => toggleGroupCourt(activeGroupTab, cNum)}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition cursor-pointer ${
+                              isCourtAssigned
+                                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-xs'
+                                : 'bg-slate-950 text-slate-500 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            {cNum}코트 {isCourtAssigned ? '✓' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 현재 그룹에 등록된 선수 명단 & 시드 지정 */}
+                  {(groupPlayerMap[activeGroupTab] || []).length === 0 ? (
+                    <div className="text-center py-5 text-xs text-slate-500 bg-slate-950/60 rounded-xl border border-dashed border-slate-800">
+                      아직 {activeGroupTab}에 등록된 선수가 없습니다. 아래 선수 풀에서 클릭하여 추가하세요.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(groupPlayerMap[activeGroupTab] || []).map((pId) => {
+                        const player = selectedParticipants.find((p) => p.id === pId);
+                        if (!player) return null;
+                        const currentSeed = (groupSeedMap[activeGroupTab] || {})[pId] || 'none';
+                        return (
+                          <div
+                            key={pId}
+                            className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0 flex items-center gap-1.5">
+                              <span className="font-bold text-white truncate">{player.name}</span>
+                              <span className="text-[10px] text-slate-400 shrink-0">
+                                ({player.grade}·{getPlayerWeight(player)}점)
+                              </span>
+                              {player.isGuest && (
+                                <span className="text-[9px] bg-slate-800 text-slate-400 px-1 rounded shrink-0">
+                                  미가입
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[10px] text-slate-300 truncate">
-                              {cPlayers.map((p) => p.name).join(', ') || '배정 대기중'}
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* 시드 선택 드롭다운 */}
+                              <select
+                                value={currentSeed}
+                                onChange={(e) =>
+                                  handleSetPlayerGroupSeed(activeGroupTab, pId, e.target.value)
+                                }
+                                className={`px-2 py-1 rounded-lg text-[10px] font-black border cursor-pointer ${
+                                  currentSeed !== 'none'
+                                    ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                                    : 'bg-slate-900 text-slate-400 border-slate-800'
+                                }`}
+                              >
+                                <option value="none">시드 없음</option>
+                                <option value="seed1">⭐ 1시드</option>
+                                <option value="seed2">⭐ 2시드</option>
+                                <option value="seed3">⭐ 3시드</option>
+                                <option value="seed4">⭐ 4시드</option>
+                                <option value="seed5">5시드</option>
+                                <option value="seed6">6시드</option>
+                                <option value="seed7">7시드</option>
+                                <option value="seed8">8시드</option>
+                                <option value="seed9">9시드</option>
+                                <option value="seed10">10시드</option>
+                              </select>
+
+                              {/* 제거 버튼 */}
+                              <button
+                                type="button"
+                                onClick={() => togglePlayerInGroup(activeGroupTab, pId)}
+                                className="w-6 h-6 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-black flex items-center justify-center cursor-pointer transition"
+                                title="그룹 배정 해제"
+                              >
+                                ✕
+                              </button>
                             </div>
                           </div>
                         );
                       })}
                     </div>
+                  )}
+
+                  {/* 전체 참여 선수 풀: 현재 그룹 선택 / 타 그룹 배정 disabled 차단 */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 mt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-300">
+                        ➕ [{activeGroupTab}] 선수 등록 / 해제 (클릭 시 토글)
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        미배정 인원:{' '}
+                        <strong className="text-emerald-400">
+                          {
+                            selectedParticipants.filter(
+                              (p) =>
+                                !Object.values(groupPlayerMap).some((ids) => ids.includes(p.id))
+                            ).length
+                          }
+                        </strong>
+                        명 / 총 {selectedParticipants.length}명
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                      {selectedParticipants.map((p) => {
+                        const isAssignedToThisGroup = (
+                          groupPlayerMap[activeGroupTab] || []
+                        ).includes(p.id);
+
+                        // 다른 그룹에 이미 배정된 경우 확인
+                        const assignedOtherGroup = Object.keys(groupPlayerMap).find(
+                          (g) => g !== activeGroupTab && groupPlayerMap[g]?.includes(p.id)
+                        );
+
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              if (assignedOtherGroup) {
+                                alert(
+                                  `⚠️ [${p.name}] 님은 이미 [${assignedOtherGroup}]에 배정되어 있습니다.\n중복 배정을 방지하기 위해 해당 그룹에서 먼저 해제한 후 선택해 주세요.`
+                                );
+                                return;
+                              }
+                              togglePlayerInGroup(activeGroupTab, p.id);
+                            }}
+                            disabled={Boolean(assignedOtherGroup)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                              isAssignedToThisGroup
+                                ? 'bg-emerald-400 text-slate-950 border-emerald-300 font-black shadow-sm'
+                                : assignedOtherGroup
+                                ? 'bg-slate-950/40 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-45'
+                                : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <span>{p.name}</span>
+                            <span className="text-[9px] opacity-75">
+                              ({p.grade}·{getPlayerWeight(p)}점)
+                            </span>
+                            {isAssignedToThisGroup && (
+                              <span className="text-[9px] bg-slate-950/20 px-1 rounded font-black">
+                                ✓
+                              </span>
+                            )}
+                            {assignedOtherGroup && (
+                              <span className="text-[9px] bg-slate-900 text-amber-500 font-bold px-1 rounded border border-amber-500/20">
+                                [{assignedOtherGroup} 배정됨]
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
+                </div>
+
+                {/* 자동 분배 & 대진표 생성 컨트롤 액션 버튼 */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAutoDistributeParticipantsToGroups}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <span>⚖️</span>
+                    <span>
+                      전체 인원 그룹별 실력 균등 자동 분배 ({selectedParticipants.length}명 ➔ {groups.length}개 그룹 스네이크 배치)
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateKdkMatchesForGroups}
+                    className="w-full py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs transition shadow-xl shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>
+                      그룹별 KDK 대진표 자동 생성 (선택된 {groups.length}개 그룹 · 1인 최소 {minGamesPerPlayer}게임 보장)
+                    </span>
+                  </button>
+                  <p className="text-[10px] text-center text-slate-400">
+                    💡 각 그룹에 배정된 선수를 기준으로 V2025 표준 파트너 순환 대진표가 자동 편성되며, 경기 진행 중 관리자가 지정한 코트로 자동 투입됩니다.
+                  </p>
+                </div>
               </div>
             ) : (
-              /* 토너먼트 모드 전용 설정 */
+              /* 토너먼트 모드 전용 */
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-emerald-300">배정 기준:</span>
-                    <button
-                      type="button"
-                      onClick={() => setAutoBalanceOption('BALANCE')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                        autoBalanceOption === 'BALANCE'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400'
-                          : 'bg-slate-900 text-slate-400 border-slate-800'
-                      }`}
-                    >
-                      ⚖️ 경기 실력차 제로(0) 균형 배정 (권장)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAutoBalanceOption('RANDOM')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                        autoBalanceOption === 'RANDOM'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400'
-                          : 'bg-slate-900 text-slate-400 border-slate-800'
-                      }`}
-                    >
-                      🎲 무작위 추첨
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 text-[11px] text-slate-300">
-                  💡 <strong>실력차 제로(0) 자동배정 원리</strong>: 금배(10점)·은배(8점)·국화(7점)·동배(6점)·개나리(5점)·테린이(3점) 가중치를 합산하여 <strong>Team A와 Team B의 실력 합산 점수 차이가 0점(최소)</strong>이 되도록 파트너를 자동 조합합니다.
-                </div>
-
+                <p className="text-xs text-slate-300">토너먼트 자동 배정 설정</p>
                 <button
                   type="button"
                   onClick={handleAutoAssign}
-                  className="w-full py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black rounded-xl text-xs cursor-pointer"
                 >
-                  <span>⚖️</span>
-                  <span>
-                    토너먼트 코트 및 선수 자동 배정 실행 ({selectedParticipants.length}명 / {selectedCourts.length}개 코트)
-                  </span>
+                  토너먼트 자동 배정 실행
                 </button>
               </div>
             )}
