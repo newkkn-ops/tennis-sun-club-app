@@ -525,6 +525,146 @@ export default function AdminUserManagement({
     alert(`🎉 [${created.name} (${created.grade}${ageSuffix})] 회원이 Supabase DB에 정회원으로 등록되었습니다.`);
   };
 
+  // =========================================================================
+  // [🧪 테스트 회원 50명 일괄 생성 및 🗑️ 일괄 삭제 기능]
+  // =========================================================================
+  const [isTestCreating, setIsTestCreating] = useState<boolean>(false);
+  const [isTestDeleting, setIsTestDeleting] = useState<boolean>(false);
+
+  const handleCreate50TestUsers = async () => {
+    if (isTestCreating || isTestDeleting) return;
+    const confirmCreate = confirm(
+      "🧪 [테스트 회원 50명 생성]\n\n" +
+      "다양한 부수(금배/은배/국화/동배/개나리/테린이), 연령대(20~60대), 전적을 가진 50명의 테스트 회원을 생성합니다.\n" +
+      "계속 진행하시겠습니까?"
+    );
+    if (!confirmCreate) return;
+
+    setIsTestCreating(true);
+    try {
+      const grades = ['금배', '은배', '국화', '동배', '개나리', '테린이'];
+      const sampleNames = [
+        '김민준', '이서연', '박도윤', '최아린', '정예준', '강하은', '조시우', '윤지아', '장주원', '임채원',
+        '한서진', '오수아', '서지호', '신지우', '권유준', '황다은', '안도현', '송서현', '전건우', '홍서아',
+        '문선우', '손유나', '양지훈', '배소율', '백준혁', '허하윤', '유시윤', '남민서', '심우진', '노채은',
+        '하진우', '곽지민', '성민재', '차은우', '구시후', '우서윤', '주태윤', '유연우', '나지환', '진소은',
+        '민정우', '엄하율', '채승우', '원지유', '천이준', '방다인', '공현우', '현예나', '함도율', '변서우'
+      ];
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+
+      const testPayloads = sampleNames.map((name, index) => {
+        const numStr = String(index + 1).padStart(2, '0');
+        const testName = `테스트_${name}${numStr}`;
+        const grade = grades[index % grades.length];
+        const gender: 'M' | 'F' = index % 2 === 0 ? 'M' : 'F';
+
+        // 20대(23세) ~ 60대(68세) 골고루 분배
+        const age = 23 + ((index * 7) % 46);
+        const birthYear = currentYear - age;
+        const birthMonth = String((index % 12) + 1).padStart(2, '0');
+        const birthDay = String(((index * 3) % 28) + 1).padStart(2, '0');
+        const birthDate = `${birthYear}-${birthMonth}-${birthDay}`;
+
+        // 다양한 전적(승/패/득실) 시뮬레이션 데이터
+        const wins = (index * 3) % 15;
+        const losses = (index * 2) % 10;
+        const pointsDiff = (wins - losses) * 4 + ((index % 5) - 2);
+
+        // 유효한 UUID v4 형식 시퀀스 생성
+        const hexSeq = (index + 1).toString(16).padStart(4, '0');
+        const simulatedUuid = `00000000-0000-4000-8000-00000000${hexSeq}`;
+
+        return {
+          id: simulatedUuid,
+          name: testName,
+          gender,
+          grade,
+          role: 'member',
+          status: 'approved',
+          push_subscription: {
+            username: `test_user${numStr}`,
+            email: `test_${numStr}@suntennis.com`,
+            phone: `010-9999-${numStr.padStart(4, '0')}`,
+            birth_date: birthDate,
+            age,
+            wins,
+            losses,
+            pointDiff: pointsDiff,
+            pointsFor: wins * 6 + 12,
+            pointsAgainst: losses * 6,
+            status: 'approved',
+            approval_status: 'approved',
+            requested_at: new Date(Date.now() - (50 - index) * 60000).toISOString(),
+          },
+        };
+      });
+
+      // 1. Supabase public.users 테이블에 일괄 upsert
+      const { error: upsertError } = await supabase
+        .from('users')
+        .upsert(testPayloads, { onConflict: 'id' });
+
+      if (upsertError) {
+        console.warn('Test users full upsert warning, retrying without manual id:', upsertError.message);
+        const fallbackPayloads = testPayloads.map(({ id: _ignoreId, ...rest }) => rest);
+        const { error: retryError } = await supabase.from('users').insert(fallbackPayloads);
+        if (retryError) {
+          alert(`❌ 테스트 회원 생성 실패: ${retryError.message}`);
+          return;
+        }
+      }
+
+      // 2. 전체 회원 목록 즉시 재조회
+      await fetchUsersFromDb();
+      if (onRefreshUsers) {
+        await onRefreshUsers();
+      }
+
+      alert("🎉 [테스트 회원 50명 생성 완료!]\n\n금배/은배/국화/동배/개나리/테린이 및 20~60대 다양한 연령과 전적으로 50명이 등록되었습니다.\n새 대회 개설 모달에서 바로 선택 및 대진표 편성이 가능합니다.");
+    } catch (err: any) {
+      alert(`❌ 테스트 회원 생성 중 오류 발생: ${err?.message || err}`);
+    } finally {
+      setIsTestCreating(false);
+    }
+  };
+
+  const handleDeleteAllTestUsers = async () => {
+    if (isTestCreating || isTestDeleting) return;
+    const confirmDelete = confirm(
+      "⚠️ [테스트 회원 일괄 삭제]\n\n" +
+      "이름이 '테스트_'로 시작하는 모든 테스트 회원을 DB에서 삭제합니다.\n" +
+      "(실제 회원은 전혀 삭제되지 않습니다)\n\n" +
+      "정말 삭제하시겠습니까?"
+    );
+    if (!confirmDelete) return;
+
+    setIsTestDeleting(true);
+    try {
+      const { error: delError } = await supabase
+        .from('users')
+        .delete()
+        .like('name', '테스트_%');
+
+      if (delError) {
+        alert(`❌ 테스트 회원 삭제 실패: ${delError.message}`);
+        return;
+      }
+
+      // 상태 동기화 및 재조회
+      await fetchUsersFromDb();
+      if (onRefreshUsers) {
+        await onRefreshUsers();
+      }
+
+      alert("🗑️ 모든 '테스트_' 회원이 정상적으로 일괄 삭제되었습니다!");
+    } catch (err: any) {
+      alert(`❌ 테스트 회원 삭제 중 오류 발생: ${err?.message || err}`);
+    } finally {
+      setIsTestDeleting(false);
+    }
+  };
   const safeUsers: ManagedMember[] = (Array.isArray(users) ? users : []).filter(
     (u): u is ManagedMember => Boolean(u && u.id)
   );
@@ -704,7 +844,31 @@ export default function AdminUserManagement({
 
         {isMemberSectionOpen && (
           <div className="space-y-3 pt-2.5 border-t border-slate-800">
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* [🧪 테스트 회원 50명 생성] & [🗑️ 테스트 회원 일괄 삭제] */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCreate50TestUsers}
+                  disabled={isTestCreating || isTestDeleting}
+                  className="px-2.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black rounded-xl text-[11px] shadow-md flex items-center gap-1 transition cursor-pointer"
+                  title="다양한 등급/나이/전적을 가진 50명의 테스트 회원을 한 번에 생성합니다"
+                >
+                  <span>🧪</span>
+                  <span>{isTestCreating ? '생성 중...' : '테스트 회원 50명 생성'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAllTestUsers}
+                  disabled={isTestCreating || isTestDeleting}
+                  className="px-2.5 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 disabled:opacity-50 text-rose-300 hover:text-white font-black rounded-xl text-[11px] shadow-sm flex items-center gap-1 transition cursor-pointer"
+                  title="이름이 '테스트_'로 시작하는 회원만 안전하게 일괄 삭제합니다"
+                >
+                  <span>🗑️</span>
+                  <span>{isTestDeleting ? '삭제 중...' : '테스트 회원 일괄 삭제'}</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowAddForm(!showAddForm)}

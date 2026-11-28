@@ -357,6 +357,12 @@ export default function TennisApp() {
   const [currentTournament, setCurrentTournament] = useState<TournamentRecord>(tournamentHistory[0]);
   const [adminTourFilter, setAdminTourFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
 
+  // 종료된 대회 판별 기준: status가 'completed' 또는 'ended'인 경우 잠금(Read-Only)
+  const isTournamentLocked = Boolean(
+    currentTournament &&
+    (currentTournament.status === 'completed' || (currentTournament as any).status === 'ended' || (currentTournament as any).is_ended === true)
+  );
+
   // 선택한 대회 방식(KDK vs 토너먼트)에 연계된 화면만 노출되도록 탭 자동 동기화
   useEffect(() => {
     if (activeTab === 'tournament' && currentTournament.format === 'kdk') {
@@ -377,6 +383,11 @@ export default function TennisApp() {
     field: 'name' | 'date' | 'format' | 'courtCount',
     value: any
   ) => {
+    const target = tournamentHistory.find((t) => t.id === tourId);
+    if (target && (target.status === 'completed' || (target as any).status === 'ended' || (target as any).is_ended === true)) {
+      alert('🔒 종료된 대회의 정보는 데이터 무결성을 위해 수정할 수 없습니다.');
+      return;
+    }
     setTournamentHistory((prev) => {
       const next = prev.map((t) => (t.id === tourId ? { ...t, [field]: value } : t));
       persistTournamentHistory(next);
@@ -938,6 +949,10 @@ export default function TennisApp() {
 
   // 관리자가 코트 넘버를 코트 수에 맞게 계속 생성하는 함수 (+)
   const handleAddCourt = () => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회입니다. 경기 및 코트 설정을 수정할 수 없습니다.');
+      return;
+    }
     setCourts((prev) => {
       const nextNumber = prev.length > 0 ? Math.max(...prev.map((c) => c.courtNumber)) + 1 : 1;
       const newCourt: CourtMatch = {
@@ -955,6 +970,10 @@ export default function TennisApp() {
 
   // 관리자가 코트 수를 1개 줄이는 함수 (-)
   const handleRemoveCourt = () => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회입니다. 경기 및 코트 설정을 수정할 수 없습니다.');
+      return;
+    }
     if (courts.length <= 1) {
       alert('최소 1개 이상의 코트가 유지되어야 합니다.');
       return;
@@ -964,6 +983,10 @@ export default function TennisApp() {
 
   // 특정 코트 개별 삭제 함수
   const handleDeleteCourt = (courtId: number) => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회입니다. 경기 및 코트 설정을 수정할 수 없습니다.');
+      return;
+    }
     if (courts.length <= 1) {
       alert('최소 1개 이상의 코트가 유지되어야 합니다.');
       return;
@@ -978,6 +1001,10 @@ export default function TennisApp() {
   // ----------------------------------------------------
   // 4-1. 등록 선수(가입회원 + 미가입회원/임의선수) 자동 배정 (경기 실력 차이 최소화 스마트 밸런싱)
   const handleAutoAssignPlayers = () => {
+    if (isTournamentLocked) {
+      alert('🔒 종료된 대회입니다. 선수 배정을 수정할 수 없습니다.');
+      return;
+    }
     const selectedPool = registeredPlayers.filter((p) =>
       newTourSelectedPlayerIds.includes(p.id)
     );

@@ -912,6 +912,7 @@ export default function AdminTournamentManager({
         </button>
 
         {openSteps.step2 && (
+          <>
           <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-800">
             <button
               type="button"
@@ -1032,6 +1033,7 @@ export default function AdminTournamentManager({
               )}
             </div>
           )}
+          </>
         )}
       </div>
 

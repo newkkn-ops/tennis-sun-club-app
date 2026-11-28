@@ -1049,6 +1049,7 @@ export default function KdkCourtOperations({
       if (willComplete && targetGame) {
         // Supabase matches 테이블 및 player_stats 누적 집계에 경기 결과 실시간 저장
         recordMatchResultToSupabase({
+          tournamentId: 'active_tournament',
           roundName: `${tournamentName} - ${court.courtNumber}번 코트 제 ${targetGame.gameNumber} 게임`,
           courtNumber: court.courtNumber,
           teamAPlayerIds: [targetGame.teamA[0]?.id, targetGame.teamA[1]?.id].filter(Boolean),
